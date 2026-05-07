@@ -31,7 +31,7 @@ ECL 是 **Evolution Constraint Language**，可以理解为 **演进约束语言
 
 简单说，ECL 就是把“这次为什么改、怎么改、不能破坏什么、怎么验证、做完留下些什么”写成仓库里的标准流程。
 
-在 core harness 里，ECL 主要落到：
+在默认创建的 Harness 里，ECL 主要由这些文件和目录承载：
 
 - `docs/ECL.md`
 - `harness/changes/active/`
