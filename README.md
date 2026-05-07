@@ -4,11 +4,11 @@
 
 给项目装上 AI Agent 协作操作系统。
 
-`ecl-harness-engineer` 是一个 Codex / Agent Skill，用来为代码仓库创建 **AI Agent 协作基础设施**：项目入口地图、ECL 变更流程、任务状态交接、机械校验、CI gate，以及基于历史变更的轻量 auto-evolve。
+`ecl-harness-engineer` 是一个 Codex / Agent Skill，用来为代码仓库创建 **演进约束式 Agent Harness**：项目入口地图、ECL 变更流程、任务状态交接、机械校验、CI gate，以及基于历史变更的轻量 auto-evolve。
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-cc785c)
 ![Agent Skill](https://img.shields.io/badge/Agent%20Skill-ecl--harness--engineer-181715)
-![ECL](https://img.shields.io/badge/ECL-change%20tracking-5db8a6)
+![ECL](https://img.shields.io/badge/ECL-evolution%20constraint%20language-5db8a6)
 ![Auto Evolve](https://img.shields.io/badge/auto--evolve-independent%20review-e8a55a)
 
 ```bash
@@ -16,6 +16,30 @@ npx skills add qinghui316/ecl-harness-engineer
 ```
 
 GitHub repo: [qinghui316/ecl-harness-engineer](https://github.com/qinghui316/ecl-harness-engineer)
+
+---
+
+## ECL 是什么
+
+ECL 是 **Evolution Constraint Language**，可以理解为 **演进约束语言**。
+
+它不是一种编程语言，而是一套让 AI Agent 开发更稳的项目协作约束：
+
+- **Evolution**：项目会持续演进，不是一次性改完。
+- **Constraint**：每次改动都要明确目标、边界、验收标准、验证命令和风险记录。
+- **Language**：用统一格式把这些约束写进仓库，让不同 Agent、不同会话都能读懂并接着做。
+
+简单说，ECL 就是把“这次为什么改、怎么改、不能破坏什么、怎么验证、做完留下些什么”写成仓库里的标准流程。
+
+在 core harness 里，ECL 主要落到：
+
+- `docs/ECL.md`
+- `harness/changes/active/`
+- `harness/changes/archive/`
+- `harness/changes/INDEX.json`
+- `docs/STATUS.md`
+
+所以 **ECL Harness Engineer** 可以理解为：一个给项目创建“演进约束式 Agent Harness”的 skill。
 
 ---
 
@@ -57,7 +81,7 @@ Harness Engineering 的目标是让仓库自己成为 Agent 的工作环境：**
 ```text
 AGENTS.md                         # Agent 入口地图，不是长篇手册
 docs/
-  ECL.md                          # Evolution Constraint Language 操作手册
+  ECL.md                          # 演进约束语言操作手册
   STATUS.md                       # 无 active change 时的轻量交接状态
   ARCHITECTURE.md                 # 项目架构说明
   DEVELOPMENT.md                  # 开发与验证命令
@@ -247,7 +271,7 @@ bash scripts/lint-encoding.sh
 ## 参考与致谢
 
 - [darwin-skill](https://github.com/alchaincyf/darwin-skill)：独立评分、棘轮机制、keep / revert 思路来源。
-- [原版 Harness Skill / market.hiclaw.io](https://market.hiclaw.io/skills/product-69e7187be4b0d28be543a809)：Harness Engineering、ECL、Agent 协作基础设施方向参考。
+- [原版 Harness Skill / market.hiclaw.io](https://market.hiclaw.io/skills/product-69e7187be4b0d28be543a809)：Harness Engineering、Agent 协作基础设施方向参考。
 
 
 ## License
