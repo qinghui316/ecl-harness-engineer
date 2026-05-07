@@ -249,7 +249,6 @@ bash scripts/lint-encoding.sh
 - [darwin-skill](https://github.com/alchaincyf/darwin-skill)：独立评分、棘轮机制、keep / revert 思路来源。
 - [原版 Harness Skill / market.hiclaw.io](https://market.hiclaw.io/skills/product-69e7187be4b0d28be543a809)：Harness Engineering、ECL、Agent 协作基础设施方向参考。
 
-本项目的视觉风格使用 warm cream / coral / dark navy 配色，但不隶属于 Anthropic / Claude，也不使用其 logo、wordmark 或专属品牌符号。
 
 ## License
 

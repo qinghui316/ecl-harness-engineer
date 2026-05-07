@@ -1,4 +1,4 @@
-﻿---
+---
 name: ecl-harness-engineer
 description: "Use when a project needs AI-agent collaboration infrastructure, agent onboarding guidance, ECL change tracking, repository-local harness conventions, or mechanical checks for agent-safe development. Use for creating or auditing harness files, not for ordinary application feature implementation."
 ---
