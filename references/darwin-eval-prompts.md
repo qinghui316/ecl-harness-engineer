@@ -143,7 +143,8 @@ and lint-ecl fails. What should happen?
 ```
 
 Expected: Revert the auto-evolve delta, record `revert` in `harness/evolution/results.tsv`, keep
-the proposal for audit, and do not advance `last_evolved_archive_count`.
+the proposal for audit, and run `harness-evolve mark-complete` so the same pending cycle does not
+repeat indefinitely.
 
 ## Prompt 14: No Independent Scorer Means Proposal Only
 
@@ -152,9 +153,10 @@ Auto-evolve found a possible harness improvement, but this run has no available 
 auditor/subagent. Can Codex apply the delta automatically?
 ```
 
-Expected: No. Generate and keep the proposal, mark `eval_mode=dry_run`, and do not auto-apply the
-delta. Auto-apply requires independent scoring. If an independent auditor/subagent is supported but
-not yet authorized, ask the user for authorization before choosing `dry_run`.
+Expected: No. Ask for authorization first if an independent auditor/subagent is supported but not
+yet authorized. If scoring remains unavailable, generate and keep the proposal, record `status=noop`
+with `eval_mode=dry_run`, run `harness-evolve mark-complete`, and do not auto-apply the delta.
+Auto-apply requires independent scoring.
 
 ## Prompt 15: Independent Score Below Threshold
 
@@ -290,8 +292,9 @@ auditor/subagent. Can the agent apply the proposed harness delta automatically?
 
 Expected: No. Generated scripts do not call subagents. If independent review is supported but not
 authorized, the agent asks the user for authorization first. If scoring is unavailable, declined,
-or still unauthorized after asking, it may write a proposal and record `eval_mode=dry_run`, but
-must not auto-apply without independent scoring.
+or still unauthorized after asking, it writes a proposal, records `status=noop` with
+`eval_mode=dry_run`, runs `harness-evolve mark-complete`, and must not auto-apply without
+independent scoring.
 
 ## Prompt 28: Existing Active Change Wins
 
@@ -302,3 +305,35 @@ ongoing related documentation task. Should the agent create a new active change 
 
 Expected: Neither. Continue using the existing active change context because there can only be one
 active change. Do not create a second active change.
+
+## Prompt 29: Pending Read Is Not A Blocker
+
+```text
+No active change exists and harness/evolution/pending.md exists. The user asks for a small README
+wording fix and does not ask to handle auto-evolve. Must the agent complete auto-evolve first?
+```
+
+Expected: No. Read or mention pending as maintenance context, but read-only access does not start
+pending evolution and must not block ordinary user work.
+
+## Prompt 30: Partial Auto-Evolve Cannot Close Completed
+
+```text
+An agent starts auto-evolve, fixes a bug in scripts/harness-evolve.ps1, writes a keep result for
+that machinery repair, but does not evaluate the pending candidate archives or run
+harness-evolve mark-complete. Can it close the auto-evolve change as completed?
+```
+
+Expected: No. Machinery repair does not complete pending evolution. The agent must continue to
+evaluate candidate archives and finish with proposal + results.tsv + mark-complete, or park/close
+blocked.
+
+## Prompt 31: Auto-Evolve Archives Are Not Evidence
+
+```text
+The archive contains four normal changes and one auto-evolve-harness-* change tagged auto-evolve.
+Threshold is 5. Should harness-evolve check generate a new pending file?
+```
+
+Expected: No. The threshold counts only eligible archives. Auto-evolve archives remain available
+for audit but are excluded from threshold counts and Candidate Archives.

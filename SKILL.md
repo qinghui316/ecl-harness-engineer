@@ -503,7 +503,9 @@ AGENTS.md content gate:
 - Main source entrypoints and task-to-directory mapping are visible.
 - Verification guidance maps to task type.
 - Context loading reads `docs/ECL.md` first, then active change when present.
-- If no active change exists and `harness/evolution/pending.md` exists, read it before `docs/STATUS.md` and run the auto-evolve workflow unless the user task is urgent.
+- If no active change exists and `harness/evolution/pending.md` exists, read it before
+  `docs/STATUS.md` and mention it as pending maintenance. Reading it for context does not start
+  auto-evolve and must not block ordinary user work unless the user asks to handle it.
 - If no active change exists and no pending evolution exists, context loading reads `docs/STATUS.md` before task-specific project docs.
 - For structured work, `docs/ECL.md` explains Small Change vs Structured Change, bounded Intake
   Review, plan-first input handling, and the spec/plan review gate.
@@ -543,13 +545,18 @@ context. The Codex run that handles pending evolution should request an independ
 when available. If the environment supports independent review but user authorization is missing,
 ask the user for authorization before falling back.
 
-When `harness/evolution/pending.md` exists and no active change exists, create
-`auto-evolve-harness-{date}`, read the bounded archive window, write a proposal, then apply only
-the smallest evidence-backed delta that passes review. No independent scorer = no auto-apply:
-if independent scoring is unavailable, declined, or still unauthorized after asking, keep the
-proposal, mark `eval_mode=dry_run`, and stop.
-Keep only if hard gates pass, score is at least 80, independent review passes, and verification
-passes; otherwise record `rejected`, `noop`, or `revert` in `harness/evolution/results.tsv`.
+`harness/evolution/pending.md` is a maintenance reminder, not a hard lock. Reading it for context
+does not start pending evolution. Pending evolution starts only when Codex creates or uses an
+`auto-evolve-harness-*` change, writes an evolution proposal/result, or edits Harness files based
+on the pending evidence. Once started, finish with a proposal, one `harness/evolution/results.tsv`
+row, and `harness-evolve mark-complete`; otherwise park or close blocked, not completed.
+
+Apply only the smallest evidence-backed delta that passes review. No independent scorer =
+no auto-apply: ask for authorization when independent review is supported but not authorized; if
+scoring is unavailable, declined, or still unauthorized after asking, record `noop` with
+`eval_mode=dry_run`, keep the proposal, run `mark-complete`, and stop. Machinery repair
+(`harness-evolve`, pending templates, lint) does not complete pending evolution by itself; after
+repair, still evaluate candidate archives or leave the work parked/blocked.
 
 Detailed proposal format, scoring weights, status values, and complexity budget live in
 `references/ecl-harness.md`.
@@ -651,9 +658,11 @@ Use a single `harness/changes/active/` task for personal development. Move pause
 ### 7. Harness Evolves From Evidence
 
 Every few closed changes, the generated `scripts/harness-evolve.* check` command may create
-`harness/evolution/pending.md`. Treat it as a prompt to improve harness rules from real archived
-evidence. Do not turn one-off business bugs into permanent process. Keep only changes that improve
-the audit score and pass validation.
+`harness/evolution/pending.md`. Treat it as a maintenance reminder to improve harness rules from
+real archived evidence, not as a hard blocker for unrelated user work. If you start acting on the
+pending evidence, finish with proposal + results.tsv + `mark-complete`, or park/block the work.
+Do not turn one-off business bugs into permanent process. Keep only changes that improve the audit
+score and pass validation.
 
 ---
 

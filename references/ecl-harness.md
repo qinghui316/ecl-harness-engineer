@@ -114,25 +114,33 @@ Core ECL includes auto-evolve threshold checking by default. This is not the adv
 observability, or long-term memory profile. It is a small loop that learns from closed changes:
 
 ```text
-close/reindex -> count new archive evidence -> generate pending.md when threshold reached
-pending.md + no active change -> Codex creates auto-evolve active change
-Codex writes proposal -> independent scoring -> smallest harness delta -> verify -> keep/revert/rejected/noop
+close/reindex -> count eligible archive evidence -> generate pending.md when threshold reached
+pending.md + no active change -> Codex reads it as pending maintenance
+started pending evolution -> proposal -> independent scoring or dry_run -> verify -> results.tsv -> mark-complete
 ```
 
 Rules:
 
 - `scripts/harness-evolve.*` only performs mechanical counting and pending generation.
+- `harness/evolution/pending.md` is a maintenance reminder, not a hard lock. Reading it for context
+  does not start pending evolution and must not block ordinary user work.
+- Pending evolution starts when Codex creates or uses an `auto-evolve-harness-*` change, writes an
+  evolution proposal/result, or edits Harness files based on pending evidence.
 - Generated scripts do not call subagents. They create pending context; the Codex run that handles
   pending evolution requests an independent auditor/subagent when available. If the environment
   supports independent review but user authorization is missing, ask the user for authorization
   before falling back.
 - Codex performs semantic extraction and file edits, inside a dedicated active change.
-- Codex must write a proposal before editing harness files. Rejected candidates stay in the
-  proposal and must not enter AGENTS.md, ECL, STATUS, lint, or CI.
+- Once pending evolution starts, Codex must finish with a proposal, one `results.tsv` row, and
+  `harness-evolve mark-complete`; otherwise park or close blocked, not completed.
+- Codex must write a proposal before editing harness files. Rejected or no-op candidates stay in
+  the proposal and must not enter AGENTS.md, ECL, STATUS, lint, or CI.
 - Auto-apply requires independent auditor/subagent scoring. If independent scoring is unavailable,
-  declined, or still unauthorized after asking, use `eval_mode=dry_run`, keep the proposal, and do
-  not auto-apply the delta.
+  declined, or still unauthorized after asking, record `noop` with `eval_mode=dry_run`, keep the
+  proposal, run `mark-complete`, and do not auto-apply the delta.
 - No independent scorer = no auto-apply.
+- Machinery repair (`harness-evolve`, pending templates, lint) is allowed as a prerequisite but does
+  not complete pending evolution by itself. After repair, evaluate candidate archives or park/block.
 - Complexity budget: prefer clarifying or replacing existing rules over adding new sections. If an
   idea can be expressed by editing an existing paragraph, do not create a new document, directory,
   script, or workflow.
@@ -143,8 +151,10 @@ Rules:
 - The default auto-evolve path must not create `harness/eval`, `harness/trace`, `harness/state`,
   `harness/checkpoints`, `harness/memory`, or `harness/metrics`.
 - A delta is kept only when hard gates pass, score is at least 80, independent review passes, and
-  validation passes; otherwise log `rejected`, `noop`, or revert it and log `revert` in
-  `harness/evolution/results.tsv`.
+  validation passes; otherwise log `noop` for reviewed evidence with no durable rule, `rejected`
+  for proposals that fail hard gates before apply, or revert the failed applied delta and log
+  `revert` in `harness/evolution/results.tsv`. Every started pending evolution ends with
+  `harness-evolve mark-complete` or stays parked/blocked.
 
 Auto-evolve scoring:
 
@@ -156,7 +166,8 @@ Auto-evolve scoring:
 | Regression safety | 20 |
 | Context cost | 10 |
 
-`results.tsv` status values are `keep`, `revert`, `rejected`, and `noop`. Use
+`results.tsv` status values are `keep`, `revert`, `rejected`, and `noop`. Prefer `noop` for
+reviewed candidates that yield no durable harness rule. Use
 `eval_mode=independent_review` when a separate auditor/subagent scored the proposal and
 `eval_mode=dry_run` when independent scoring was unavailable, declined, or still unauthorized after
 asking. The `note` field must explain why a candidate was rejected, no-op'd, or reverted.
@@ -435,7 +446,9 @@ Load context progressively:
 2. `docs/ECL.md`
 3. If active exists: `harness/changes/active/summary.md`
 4. If active exists: `harness/changes/active/spec.md`, `plan.md`, `tasks.md`, and relevant `reviews/`
-5. If no active exists and `harness/evolution/pending.md` exists: read it and run the auto-evolve workflow before ordinary resume work, unless the user task is urgent
+5. If no active exists and `harness/evolution/pending.md` exists: read it before `docs/STATUS.md`
+   and mention it as pending maintenance. Reading it does not start auto-evolve; ordinary user work
+   may continue unless the user asks to handle the pending evidence.
 6. If no active exists and no pending evolution exists: `docs/STATUS.md`
 7. Relevant architecture, design, API, or reference docs for the task
 8. `harness/changes/INDEX.json` only when selecting historical context
@@ -1086,6 +1099,15 @@ function Write-State($State) {
   Write-Text $StatePath (($State | ConvertTo-Json -Depth 8) + "`n")
 }
 
+function Test-AutoEvolveArchive($Item) {
+  $id = [string]$Item.id
+  if ($id -match "^auto-evolve-harness-") { return $true }
+  foreach ($tag in @($Item.tags)) {
+    if ([string]$tag -eq "auto-evolve") { return $true }
+  }
+  return $false
+}
+
 function Get-ArchiveItems {
   if (-not (Test-Path -LiteralPath $IndexPath)) {
     throw "Missing harness/changes/INDEX.json. Run scripts/harness-change.ps1 reindex first."
@@ -1094,7 +1116,9 @@ function Get-ArchiveItems {
   if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
   $parsed = $raw | ConvertFrom-Json
   $items = @($parsed | ForEach-Object { $_ })
-  return @($items | Where-Object { $_.location -eq "archive" } | Sort-Object updated_at, id)
+  return @($items | Where-Object {
+    $_.location -eq "archive" -and -not (Test-AutoEvolveArchive $_)
+  } | Sort-Object updated_at, id)
 }
 
 function Ensure-ResultsHeader {
@@ -1129,22 +1153,23 @@ function New-Pending([object[]]$ArchiveItems, $State, [string]$TriggerReason) {
     $candidateLines += "- $path/summary.md"
   }
   $now = (Get-Date).ToString("s")
-  $content = @"
+  $content = @'
 # Harness Evolution Pending
 
-Generated at: $now
+Generated at: {{NOW}}
 
 ## Trigger
 
-- Reason: $TriggerReason
-- Archived changes since last evolution: $($ArchiveItems.Count - [int]$State.last_evolved_archive_count)
-- Threshold: $($State.threshold)
-- Scan window: $($State.window)
+- Reason: {{TRIGGER_REASON}}
+- Eligible archived changes since last evolution: {{DELTA}}
+- Threshold: {{THRESHOLD}}
+- Scan window: {{WINDOW}}
 - INDEX source: harness/changes/INDEX.json
+- Excludes: archive ids beginning with auto-evolve-harness- and archives tagged auto-evolve
 
 ## Candidate Archives
 
-$($candidateLines -join "`n")
+{{CANDIDATE_LINES}}
 
 ## Instruction For Codex
 
@@ -1156,12 +1181,23 @@ Run harness auto-evolve:
 5. Generate `harness/evolution/proposals/YYYY-MM-DD-auto-evolve.md` from the proposal template in docs/ECL.md or references/ecl-harness.md before editing harness files.
 6. Request one independent auditor/subagent score before applying. If independent review is
    supported but not authorized, ask the user for authorization first. If scoring is unavailable,
-   declined, or still unauthorized after asking, record `eval_mode=dry_run` and do not auto-apply.
+   declined, or still unauthorized after asking, record `status=noop` with `eval_mode=dry_run` and
+   do not auto-apply.
 7. Apply only accepted candidates with archive evidence, project relevance, score >= 80, and independent approval.
 8. Prefer clarifying existing rules over adding new sections, documents, scripts, or workflows.
 9. Run harness checks and relevant business gates.
-10. Keep only if verification passes; otherwise revert the delta. Record `keep`, `revert`, `rejected`, or `noop` in `harness/evolution/results.tsv`, with a clear note for rejected/noop/revert.
-"@
+10. Record one terminal result in `harness/evolution/results.tsv`: `keep` for accepted deltas,
+    `noop` for reviewed evidence with no durable rule, `rejected` for pre-apply hard-gate
+    failures, or `revert` if an applied delta fails validation.
+11. Run `harness-evolve mark-complete` after writing the result. If you cannot complete these
+    steps, park or close blocked; do not close completed while leaving the same pending file.
+'@
+  $content = $content.Replace("{{NOW}}", $now)
+  $content = $content.Replace("{{TRIGGER_REASON}}", $TriggerReason)
+  $content = $content.Replace("{{DELTA}}", [string]($ArchiveItems.Count - [int]$State.last_evolved_archive_count))
+  $content = $content.Replace("{{THRESHOLD}}", [string]$State.threshold)
+  $content = $content.Replace("{{WINDOW}}", [string]$State.window)
+  $content = $content.Replace("{{CANDIDATE_LINES}}", ($candidateLines -join "`n"))
   Write-Text $PendingPath $content
   $State.pending = $true
   Write-State $State
@@ -1179,7 +1215,11 @@ function Check-Evolution {
   if (-not $state.threshold) { $state.threshold = $Threshold }
   if (-not $state.window) { $state.window = $Window }
   $archives = @(Get-ArchiveItems)
-  $delta = $archives.Count - [int]$state.last_evolved_archive_count
+  if ([int]$state.last_evolved_archive_count -gt $archives.Count) {
+    $state.last_evolved_archive_count = $archives.Count
+    Write-State $state
+  }
+  $delta = [Math]::Max(0, $archives.Count - [int]$state.last_evolved_archive_count)
   if ($delta -lt [int]$state.threshold) {
     Write-Output "Harness evolution not due ($delta/$($state.threshold) new archived changes)."
     return
@@ -1374,5 +1414,7 @@ If `lint-ecl` reports stale `INDEX.json`, run the generated `harness-change rein
 then rerun `lint-ecl`.
 If `lint-ecl` reports missing `docs/STATUS.md`, create it from the STATUS template. Do not let
 CI or hooks generate it automatically.
-If `harness/evolution/pending.md` exists and no active change exists, run the Codex auto-evolve
-workflow before ordinary resume work. Do not let hooks or CI apply the pending changes.
+If `harness/evolution/pending.md` exists and no active change exists, read it as pending
+maintenance before `docs/STATUS.md`. Reading it does not start auto-evolve or block ordinary user
+work. Once Codex starts acting on pending evidence, finish with proposal + results.tsv +
+`harness-evolve mark-complete`, or park/block. Do not let hooks or CI apply pending changes.
