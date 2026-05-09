@@ -96,7 +96,7 @@ understandable before describing harness workflow.
 
 1. Read this file.
 2. Read [ECL](docs/ECL.md) for change lifecycle and context rules.
-3. If `harness/changes/active/summary.md` exists, read active change summary/spec/tasks/reviews before any task-specific docs.
+3. If `harness/changes/active/summary.md` exists, read active change summary/spec/plan/tasks/reviews before any task-specific docs.
 4. If no active change exists and `harness/evolution/pending.md` exists, read it before ordinary resume work.
 5. If no active change exists and no pending evolution exists, read [Status](docs/STATUS.md) for recent handoff context.
 6. Read `README.md` for product/domain context when present.
@@ -190,7 +190,7 @@ Use `docs/STATUS.md` as a lightweight handoff file. It should be short enough to
 
 - Do not load all archive history by default.
 - Start with the selected archived `summary.md`.
-- Read archived spec/tasks/reviews only for explicit resume, debugging, review, or failure analysis.
+- Read archived spec/plan/tasks/reviews only for explicit resume, debugging, review, or failure analysis.
 ```
 
 Close-change update rule:

@@ -88,7 +88,7 @@ or metrics.
 | Check | How | Pass Criteria |
 |-------|-----|---------------|
 | changes directories exist | `test -d harness/changes/active && test -d harness/changes/parking && test -d harness/changes/archive` | Directories exist |
-| change templates exist | `test -f harness/templates/change/summary.md` etc. | 4-file template exists |
+| change templates exist | `test -f harness/templates/change/summary.md` etc. | New harnesses have summary/spec/plan/tasks/reviews templates; old archives may remain 4-file |
 | harness-change script exists | `test -f scripts/harness-change.*` | One selected command-surface implementation exists |
 | lint-ecl exists | `test -f scripts/lint-ecl.*` | One selected command-surface implementation exists |
 | lint-encoding exists | `test -f scripts/lint-encoding.*` | One selected command-surface implementation exists |

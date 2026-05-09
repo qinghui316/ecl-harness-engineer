@@ -38,6 +38,13 @@ Before implementation starts, require an approved plan review. Record it as
 `plan_review: "approved"` in `summary.md` front matter or as an approved plan review in
 `reviews/`. This gate prevents raw requirements from moving directly into coding.
 
+Structured changes use plan-aware intake. If the user provides only a requirement, ask the smallest
+set of high-impact questions needed to draft `spec.md`. If the user already provides a plan, review
+that plan as a draft, split WHAT/WHY into `spec.md` and HOW into `plan.md`, and ask only about gaps
+that affect implementation direction or acceptance. Each intake round asks at most three questions.
+Low-risk unknowns become assumptions; high-impact unknowns become `[NEEDS CLARIFICATION: ...]` and
+block implementation.
+
 ### 1.2 When to create a change
 
 Create a change when any condition applies:
@@ -78,7 +85,7 @@ Rules:
 Close-change STATUS protocol:
 
 1. Before closing active work, update `docs/STATUS.md` from active `summary.md`, `spec.md`,
-   `tasks.md`, and relevant `reviews/` with completed work, validation, residual risks, and
+   `plan.md`, `tasks.md`, and relevant `reviews/` with completed work, validation, residual risks, and
    the next resume point.
 2. Run the generated `scripts/harness-change.* close <completed|blocked|abandoned>` command so the active change
    moves to `archive/` and `INDEX.json` is rebuilt.
@@ -185,12 +192,15 @@ Minimal proposal template:
 
 ## 2. Default Change Template
 
-Use the 4-file template by default.
+Use the 5-file template by default for new active changes. Old archived changes that only have the
+previous 4-file template remain valid and must not fail compatibility checks solely because
+`plan.md` is absent.
 
 ```text
 harness/changes/active/
   summary.md
   spec.md
+  plan.md
   tasks.md
   reviews/
 ```
@@ -204,6 +214,8 @@ slug: "{{SLUG}}"
 status: "in_progress"
 location: "active"
 phase: "intake"
+intake_status: "pending"
+spec_review: "pending"
 plan_review: "pending"
 modules: []
 files: []
@@ -229,7 +241,7 @@ Pending.
 
 ## Next Step
 
-- Clarify constraints and update `spec.md`.
+- Run Intake Review, then update `spec.md` and `plan.md`.
 ```
 
 ### 2.2 `spec.md`
@@ -237,15 +249,23 @@ Pending.
 ```markdown
 # Spec
 
-## Evidence
+## Intake Review
+
+- Intake type: Small Change | Structured Change
+- Input shape: requirement-first | plan-first | mixed
+- Questions asked this round: 0
+
+## Goal And Evidence
 
 - Real problem or user request:
 - Current behavior:
 - Source of evidence:
 
-## Requirement Hypotheses
+## User Scenarios And Success
 
-- Pending.
+- Primary user/system scenario:
+- Success criteria:
+- Acceptance criteria:
 
 ## Non-Goals
 
@@ -255,58 +275,108 @@ Pending.
 
 - Pending.
 
-## Acceptance Criteria
+## Assumptions
 
 - Pending.
 
-## Options
+## Open Questions
 
-- Pending.
+- [NEEDS CLARIFICATION: Replace with a specific high-impact question, or remove before implementation.]
 
-## Red/Blue Notes
+## Resolved Clarifications
 
 - Pending.
 ```
 
-### 2.3 `tasks.md`
+### 2.3 `plan.md`
+
+```markdown
+# Plan
+
+## Technical Approach
+
+- Pending.
+
+## Impacted Modules And Files
+
+- Pending.
+
+## Interfaces, Data, Permissions
+
+- Pending.
+
+## Spec Gaps Found From Planning
+
+- Pending.
+
+## Risks And Mitigations
+
+- Pending.
+
+## Verification Plan
+
+- Pending.
+```
+
+### 2.4 `tasks.md`
 
 ```markdown
 # Tasks
 
-## Implementation Tasks
+## Format
 
-- [ ] Pending implementation task.
+- `- [ ] T001 [P?] [US?] Action with target path and validation note`
+- `[P]` means parallel-safe. `[US1]` maps to a user story when stories exist.
 
-## Test Tasks
+## Setup / Intake
 
-- [ ] Pending validation task.
+- [ ] T001 Review `spec.md` and `plan.md` gates before implementation.
+
+## Implementation
+
+- [ ] T002 Pending implementation task with target path.
+
+## Validation
+
+- [ ] T003 Pending validation task with command or scenario.
 
 ## Deferred Tasks
 
 - None.
 ```
 
-### 2.4 `reviews/review.md`
+### 2.5 `reviews/review.md`
 
 ```markdown
 # Review
 
+## Intake Review
+
+- Status: pending
+- Notes:
+
+## Spec Review
+
+- Status: pending
+- Open high-impact clarifications:
+- WHAT/HOW separation:
+
 ## Plan Review
 
 - Status: pending
+- Spec gaps found from planning:
 
 ## Code Review
 
 - Status: pending
 
-## Test Review
+## Validation Review
 
 - Status: pending
 ```
 
-Complex tasks may split `spec.md` into `assumptions.md`, `constraints.md`,
-`options.md`, and `red-blue.md`; and split `tasks.md` into `implementation.md`,
-`test-mapping.md`, and `regression.md`.
+Complex tasks may split `spec.md`, `plan.md`, or `tasks.md` into focused supporting files only when
+the single files become hard to navigate. Do not split small or ordinary changes by default.
 
 ## 3. Context Loading
 
@@ -315,13 +385,13 @@ Load context progressively:
 1. `AGENTS.md`
 2. `docs/ECL.md`
 3. If active exists: `harness/changes/active/summary.md`
-4. If active exists: `harness/changes/active/spec.md`, `tasks.md`, and relevant `reviews/`
+4. If active exists: `harness/changes/active/spec.md`, `plan.md`, `tasks.md`, and relevant `reviews/`
 5. If no active exists and `harness/evolution/pending.md` exists: read it and run the auto-evolve workflow before ordinary resume work, unless the user task is urgent
 6. If no active exists and no pending evolution exists: `docs/STATUS.md`
 7. Relevant architecture, design, API, or reference docs for the task
 8. `harness/changes/INDEX.json` only when selecting historical context
 9. Selected archived `summary.md` files only
-10. Selected archived spec/tasks/reviews only for explicit resume, review, failure debugging, or auto-evolve evidence extraction
+10. Selected archived spec/plan/tasks/reviews only for explicit resume, review, failure debugging, or auto-evolve evidence extraction
 
 The normal path reads current task context and stable docs. If active change exists, do not use
 `docs/STATUS.md` as authority. Archive history is never loaded wholesale. Search or read history
@@ -595,6 +665,8 @@ slug: "$slug"
 status: "in_progress"
 location: "active"
 phase: "intake"
+intake_status: "pending"
+spec_review: "pending"
 plan_review: "pending"
 modules: []
 files: []
@@ -620,20 +692,28 @@ Pending.
 
 ## Next Step
 
-- Clarify constraints and update ``spec.md``.
+- Run Intake Review, then update ``spec.md`` and ``plan.md``.
 "@
   Write-Text (Join-Path $Active "spec.md") @"
 # Spec
 
-## Evidence
+## Intake Review
+
+- Intake type: Small Change | Structured Change
+- Input shape: requirement-first | plan-first | mixed
+- Questions asked this round: 0
+
+## Goal And Evidence
 
 - Real problem or user request:
 - Current behavior:
 - Source of evidence:
 
-## Requirement Hypotheses
+## User Scenarios And Success
 
-- Pending.
+- Primary user/system scenario:
+- Success criteria:
+- Acceptance criteria:
 
 ## Non-Goals
 
@@ -643,28 +723,64 @@ Pending.
 
 - Pending.
 
-## Acceptance Criteria
+## Assumptions
 
 - Pending.
 
-## Options
+## Open Questions
+
+- [NEEDS CLARIFICATION: Replace with a specific high-impact question, or remove before implementation.]
+
+## Resolved Clarifications
+
+- Pending.
+"@
+  Write-Text (Join-Path $Active "plan.md") @"
+# Plan
+
+## Technical Approach
 
 - Pending.
 
-## Red/Blue Notes
+## Impacted Modules And Files
+
+- Pending.
+
+## Interfaces, Data, Permissions
+
+- Pending.
+
+## Spec Gaps Found From Planning
+
+- Pending.
+
+## Risks And Mitigations
+
+- Pending.
+
+## Verification Plan
 
 - Pending.
 "@
   Write-Text (Join-Path $Active "tasks.md") @"
 # Tasks
 
-## Implementation Tasks
+## Format
 
-- [ ] Pending implementation task.
+- ``- [ ] T001 [P?] [US?] Action with target path and validation note``
+- ``[P]`` means parallel-safe. ``[US1]`` maps to a user story when stories exist.
 
-## Test Tasks
+## Setup / Intake
 
-- [ ] Pending validation task.
+- [ ] T001 Review ``spec.md`` and ``plan.md`` gates before implementation.
+
+## Implementation
+
+- [ ] T002 Pending implementation task with target path.
+
+## Validation
+
+- [ ] T003 Pending validation task with command or scenario.
 
 ## Deferred Tasks
 
@@ -673,15 +789,27 @@ Pending.
   Write-Text (Join-Path $Active "reviews/review.md") @"
 # Review
 
+## Intake Review
+
+- Status: pending
+- Notes:
+
+## Spec Review
+
+- Status: pending
+- Open high-impact clarifications:
+- WHAT/HOW separation:
+
 ## Plan Review
 
 - Status: pending
+- Spec gaps found from planning:
 
 ## Code Review
 
 - Status: pending
 
-## Test Review
+## Validation Review
 
 - Status: pending
 "@
@@ -691,6 +819,10 @@ Pending.
 
 function Validate-Change([string]$Dir) {
   $required = @("summary.md", "spec.md", "tasks.md")
+  $isActive = ((Resolve-Path -LiteralPath $Dir).Path -eq (Resolve-Path -LiteralPath $Active).Path)
+  if ($isActive) {
+    $required = @("summary.md", "spec.md", "plan.md", "tasks.md")
+  }
   foreach ($file in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $Dir $file))) {
       throw "Missing $file in $Dir"
@@ -703,7 +835,22 @@ function Validate-Change([string]$Dir) {
   $meta = Parse-FrontMatter $summary
   $status = $meta["status"]
   if (-not $status) { throw "summary.md missing status front matter." }
+  $phase = $meta["phase"]
+  $planReview = $meta["plan_review"]
+  $spec = Read-Text (Join-Path $Dir "spec.md")
+  $reviewText = ""
+  $reviewPath = Join-Path $Dir "reviews/review.md"
+  if (Test-Path -LiteralPath $reviewPath) { $reviewText = Read-Text $reviewPath }
   $tasks = Read-Text (Join-Path $Dir "tasks.md")
+  if ($isActive -and $phase -match "^(implement|validate|done)$" -and $spec -match "\[NEEDS CLARIFICATION:") {
+    throw "spec.md has high-impact [NEEDS CLARIFICATION] markers. Resolve them or move the change back to intake/plan before implementation."
+  }
+  if ($isActive -and $phase -match "^(implement|validate|done)$" -and $planReview -ne "approved" -and $reviewText -notmatch "(?is)Plan Review.*Status:\s*approved") {
+    throw "summary.md plan_review must be approved before implementation. Record plan approval in summary.md or reviews/review.md."
+  }
+  if ($isActive -and $tasks -match "(?m)^- \[[ xX]\] (?!T\d{3})" -and $tasks -notmatch "## Deferred Tasks") {
+    throw "tasks.md task lines must use T### ids with target paths and validation notes so agents can execute them predictably."
+  }
   if ($status -eq "completed") {
     $validation = Get-ValidationStatus $summary $meta
     if ($validation -ne "pass") { throw "completed change must have validation_status: pass or a passing Validation section." }
@@ -796,7 +943,7 @@ function Search-Index([string]$Query) {
 
 function Show-Context {
   Write-Output "Required:"
-  foreach ($p in @("AGENTS.md", "docs/ECL.md", "harness/changes/active/summary.md", "harness/changes/active/spec.md", "harness/changes/active/tasks.md")) {
+  foreach ($p in @("AGENTS.md", "docs/ECL.md", "harness/changes/active/summary.md", "harness/changes/active/spec.md", "harness/changes/active/plan.md", "harness/changes/active/tasks.md")) {
     if (Test-Path -LiteralPath (Join-Path $Root $p)) { Write-Output "- $p" }
   }
   if (-not (Test-Path -LiteralPath (Join-Path $Root "harness/changes/active/summary.md")) -and
@@ -955,7 +1102,7 @@ $($candidateLines -join "`n")
 Run harness auto-evolve:
 1. Read docs/ECL.md and this pending file.
 2. Inspect the candidate archive summaries first.
-3. Read spec/tasks/reviews only when evidence requires it.
+3. Read spec/plan/tasks/reviews only when evidence requires it.
 4. Extract repeated failures, verification gaps, user corrections, and reusable constraints.
 5. Generate `harness/evolution/proposals/YYYY-MM-DD-auto-evolve.md` from the proposal template in docs/ECL.md or references/ecl-harness.md before editing harness files.
 6. Request one independent auditor/subagent score before applying. No independent scorer = no auto-apply.
@@ -1066,13 +1213,30 @@ if (-not (Test-Path -LiteralPath $StatusPath)) {
 }
 
 if (Test-Path -LiteralPath (Join-Path $Active "summary.md")) {
-  foreach ($file in @("summary.md", "spec.md", "tasks.md")) {
+  foreach ($file in @("summary.md", "spec.md", "plan.md", "tasks.md")) {
     if (-not (Test-Path -LiteralPath (Join-Path $Active $file))) {
       Fail "Active change missing $file."
     }
   }
   if (-not (Test-Path -LiteralPath (Join-Path $Active "reviews"))) {
     Fail "Active change missing reviews/."
+  }
+  $summary = Get-Content -Encoding UTF8 -Raw -LiteralPath (Join-Path $Active "summary.md")
+  $spec = Get-Content -Encoding UTF8 -Raw -LiteralPath (Join-Path $Active "spec.md")
+  $tasks = Get-Content -Encoding UTF8 -Raw -LiteralPath (Join-Path $Active "tasks.md")
+  $review = ""
+  $reviewPath = Join-Path $Active "reviews/review.md"
+  if (Test-Path -LiteralPath $reviewPath) { $review = Get-Content -Encoding UTF8 -Raw -LiteralPath $reviewPath }
+  $phase = [regex]::Match($summary, '(?m)^phase:\s*"?([^"\r\n]+)"?').Groups[1].Value
+  $planReview = [regex]::Match($summary, '(?m)^plan_review:\s*"?([^"\r\n]+)"?').Groups[1].Value
+  if ($phase -match "^(implement|validate|done)$" -and $spec -match "\[NEEDS CLARIFICATION:") {
+    Fail "Active spec.md still has high-impact [NEEDS CLARIFICATION] markers. Resolve them or move phase back to intake/plan."
+  }
+  if ($phase -match "^(implement|validate|done)$" -and $planReview -ne "approved" -and $review -notmatch "(?is)Plan Review.*Status:\s*approved") {
+    Fail "Active change cannot enter implementation until plan_review is approved in summary.md or an equivalent approved Plan Review is recorded."
+  }
+  if ($tasks -match "(?m)^- \[[ xX]\] (?!T\d{3})") {
+    Fail "tasks.md contains executable task lines without T### ids. Use '- [ ] T001 [P?] [US?] Action with target path and validation note'."
   }
 }
 

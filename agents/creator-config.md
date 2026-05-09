@@ -237,6 +237,7 @@ harness/
 │   └── change/
 │       ├── summary.md
 │       ├── spec.md
+│       ├── plan.md
 │       ├── tasks.md
 │       └── reviews/
 │           └── review.md
@@ -310,7 +311,7 @@ no supported command surface is inferable.
 
 - `scripts/harness-change.{ps1|sh|mjs|py}`: implements `new`, `status`, `validate`, `park`, `resume`, `close`, `search`, `context`, and `reindex`.
 - `scripts/harness-evolve.{ps1|sh|mjs|py}`: implements `check`, `collect`, and `mark-complete` for default auto-evolve threshold checks.
-- `scripts/lint-ecl.{ps1|sh|mjs|py}`: validates active change structure, `docs/STATUS.md` presence, completed validation, pending task consistency, and generated index freshness.
+- `scripts/lint-ecl.{ps1|sh|mjs|py}`: validates active change structure, `docs/STATUS.md` presence, `plan.md`, completed validation, pending task consistency, spec clarification gates, plan review gates, task id formatting, and generated index freshness.
 - `scripts/lint-encoding.{ps1|sh|mjs|py}`: scans source/docs for mojibake markers and UTF-8 risks.
 
 Rules:

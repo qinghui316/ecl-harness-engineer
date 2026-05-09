@@ -87,7 +87,7 @@ docs/
   DEVELOPMENT.md                  # 开发与验证命令
 harness/
   changes/
-    active/                       # 当前任务上下文
+    active/                       # 当前任务上下文（summary/spec/plan/tasks/reviews）
     parking/                      # 暂停任务
     archive/                      # 已关闭任务
     INDEX.json                    # 脚本生成索引，不手写
@@ -102,6 +102,10 @@ scripts/
   lint-ecl.{ps1|sh|mjs|py}        # ECL 结构校验
   lint-encoding.{ps1|sh|mjs|py}   # UTF-8 / 乱码风险校验
 ```
+
+Structured changes use a lightweight plan-aware ECL flow: `spec.md` records WHAT/WHY, `plan.md`
+records HOW and planning-discovered spec gaps, and `tasks.md` is generated only after the spec/plan
+gate is ready. Small local changes can skip the full active-change template when validation is clear.
 
 
 ## Auto-Evolve：让 Harness 从项目历史里进化

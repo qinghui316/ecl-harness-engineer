@@ -32,7 +32,7 @@ Use ecl-harness-engineer to add personal-development change tracking to a small 
 single active task, parking/archive, and automatic INDEX.json generation.
 ```
 
-Expected: Recommend the 4-file change template, single-active rule, docs/STATUS.md handoff,
+Expected: Recommend the summary/spec/plan/tasks/reviews change template, single-active rule, docs/STATUS.md handoff,
 script-generated INDEX.json, explicit park/close/resume transitions, and hook/CI validation
 without automatic doc mutation.
 
@@ -55,7 +55,7 @@ Use ecl-harness-engineer to define context loading for a project that has both d
 harness/changes/active/summary.md. Which source controls the current task?
 ```
 
-Expected: Active change controls the current task. Read active summary/spec/tasks/reviews before
+Expected: Active change controls the current task. Read active summary/spec/plan/tasks/reviews before
 task-specific docs. STATUS is not authoritative while active exists.
 
 ## Prompt 6: Core Harness Must Not Create Advanced Empty Directories
@@ -132,7 +132,7 @@ The repository has both harness/changes/active/summary.md and harness/evolution/
 Which context should Codex handle first?
 ```
 
-Expected: Active change remains authoritative. Read active summary/spec/tasks/reviews first and
+Expected: Active change remains authoritative. Read active summary/spec/plan/tasks/reviews first and
 defer auto-evolve until the active change is closed or parked.
 
 ## Prompt 13: Darwin Ratchet For Harness Evolution
@@ -184,3 +184,66 @@ or commands. Is it valid?
 
 Expected: No. Accepted candidates require archived evidence and project relevance. Independent
 review must return `rejected` or `noop`.
+
+## Prompt 18: Small Change Skips Full ECL
+
+```text
+Use ecl-harness-engineer guidance for a project where the user asks: "Fix one typo in README.md."
+Should the harness require a full active change with spec/plan/tasks?
+```
+
+Expected: Treat as Small Change. Do not require a full active change. The agent should make the
+local fix, preserve unrelated files, and report the verification used.
+
+## Prompt 19: Vague Requirement Needs Bounded Intake
+
+```text
+Use ecl-harness-engineer guidance for a user request: "Add a permissions module."
+What should the agent do before generating implementation tasks?
+```
+
+Expected: Treat as Structured Change. Extract a draft `spec.md` and ask at most three high-impact
+questions about users/scenarios, acceptance criteria, permissions/data boundaries, or compatibility.
+Do not generate implementation tasks from the first vague requirement.
+
+## Prompt 20: User Already Provided A Plan
+
+```text
+The user provides a detailed implementation plan for adding role-based access control, including
+files to change and test commands. How should ecl-harness-engineer guidance handle this?
+```
+
+Expected: Treat the user plan as a draft input, not as final truth. Split WHAT/WHY into `spec.md`
+and HOW into `plan.md`. If target users, acceptance criteria, non-goals, and verification are clear,
+do not re-interview from scratch. If any high-impact gaps remain, ask only those questions.
+
+## Prompt 21: Plan Missing Acceptance Criteria
+
+```text
+The user gives a plan with implementation steps for a search feature but no success metrics,
+non-goals, or validation scenario. Can the agent proceed to implementation?
+```
+
+Expected: No. Record the missing acceptance and boundary information in `spec.md` as
+`[NEEDS CLARIFICATION: ...]`, ask bounded high-impact questions, and block implementation until the
+spec/plan gate is satisfied.
+
+## Prompt 22: Planning Exposes A Spec Gap
+
+```text
+During draft planning, the agent realizes a proposed API change may require data migration and
+backward compatibility decisions that were not in the spec. Where should this be recorded?
+```
+
+Expected: Record it in `plan.md` under `Spec Gaps Found From Planning`, add or update the related
+open question in `spec.md`, and keep `plan_review` pending until resolved.
+
+## Prompt 23: Boundary Check For Platform Scope
+
+```text
+Use ecl-harness-engineer to improve AI coding workflow. Should it create a Jira/Confluence sync,
+a chat UI for requirements intake, or default eval/trace/memory directories?
+```
+
+Expected: No. Keep the skill scoped to harness creation/audit, ECL templates, scripts, lint gates,
+and docs. Advanced platform directories or external sync only appear when explicitly requested.
