@@ -504,8 +504,9 @@ AGENTS.md content gate:
 - Verification guidance maps to task type.
 - Context loading reads `docs/ECL.md` first, then active change when present.
 - If no active change exists and `harness/evolution/pending.md` exists, read it before
-  `docs/STATUS.md` and mention it as pending maintenance. Reading it for context does not start
-  auto-evolve and must not block ordinary user work unless the user asks to handle it.
+  `docs/STATUS.md`, mention it as pending maintenance, and ask whether to handle it now unless the
+  user already prioritized the current task. Reading or asking does not start auto-evolve and must
+  not block ordinary user work.
 - If no active change exists and no pending evolution exists, context loading reads `docs/STATUS.md` before task-specific project docs.
 - For structured work, `docs/ECL.md` explains Small Change vs Structured Change, bounded Intake
   Review, plan-first input handling, and the spec/plan review gate.
@@ -541,9 +542,9 @@ semantic improvement pass.
 Trigger model: `harness-change close` and `reindex` run `harness-evolve check`; `new` only reminds
 when pending exists. Hooks and CI may warn, but must not modify docs, scripts, STATUS, or changes.
 Generated scripts do not call subagents. They only count archive evidence and create pending
-context. The Codex run that handles pending evolution should request an independent auditor/subagent
-when available. If the environment supports independent review but user authorization is missing,
-ask the user for authorization before falling back.
+context. When no active change exists and Codex notices pending maintenance, it should ask the user
+whether to handle it now unless the user already prioritized the current task. Asking does not start
+pending evolution.
 
 `harness/evolution/pending.md` is a maintenance reminder, not a hard lock. Reading it for context
 does not start pending evolution. Pending evolution starts only when Codex creates or uses an
@@ -552,9 +553,11 @@ on the pending evidence. Once started, finish with a proposal, one `harness/evol
 row, and `harness-evolve mark-complete`; otherwise park or close blocked, not completed.
 
 Apply only the smallest evidence-backed delta that passes review. No independent scorer =
-no auto-apply: ask for authorization when independent review is supported but not authorized; if
-scoring is unavailable, declined, or still unauthorized after asking, record `noop` with
-`eval_mode=dry_run`, keep the proposal, run `mark-complete`, and stop. Machinery repair
+no auto-apply: user approval to handle pending implies permission to request an independent
+auditor/subagent when the environment supports it. If the environment still requires explicit
+authorization, ask once. If scoring is unavailable, declined, or still unauthorized after asking,
+record `noop` with `eval_mode=dry_run`, keep the proposal, run `mark-complete`, and stop.
+Machinery repair
 (`harness-evolve`, pending templates, lint) does not complete pending evolution by itself; after
 repair, still evaluate candidate archives or leave the work parked/blocked.
 
@@ -660,7 +663,9 @@ Use a single `harness/changes/active/` task for personal development. Move pause
 Every few closed changes, the generated `scripts/harness-evolve.* check` command may create
 `harness/evolution/pending.md`. Treat it as a maintenance reminder to improve harness rules from
 real archived evidence, not as a hard blocker for unrelated user work. If you start acting on the
-pending evidence, finish with proposal + results.tsv + `mark-complete`, or park/block the work.
+pending evidence, first refresh `harness/changes/INDEX.json` and use the current eligible archive
+window; the Candidate Archives in an old pending file are a trigger snapshot, not the only evidence.
+Then finish with proposal + results.tsv + `mark-complete`, or park/block the work.
 Do not turn one-off business bugs into permanent process. Keep only changes that improve the audit
 score and pass validation.
 

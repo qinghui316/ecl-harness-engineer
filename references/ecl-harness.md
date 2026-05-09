@@ -115,7 +115,7 @@ observability, or long-term memory profile. It is a small loop that learns from 
 
 ```text
 close/reindex -> count eligible archive evidence -> generate pending.md when threshold reached
-pending.md + no active change -> Codex reads it as pending maintenance
+pending.md + no active change -> Codex asks whether to handle pending maintenance now
 started pending evolution -> proposal -> independent scoring or dry_run -> verify -> results.tsv -> mark-complete
 ```
 
@@ -124,12 +124,15 @@ Rules:
 - `scripts/harness-evolve.*` only performs mechanical counting and pending generation.
 - `harness/evolution/pending.md` is a maintenance reminder, not a hard lock. Reading it for context
   does not start pending evolution and must not block ordinary user work.
+- When no active change exists and pending maintenance is present, Codex should ask the user whether
+  to handle it now unless the user already prioritized the current task. A user yes starts the
+  pending evolution flow; a no leaves pending in place and ordinary work continues.
 - Pending evolution starts when Codex creates or uses an `auto-evolve-harness-*` change, writes an
   evolution proposal/result, or edits Harness files based on pending evidence.
 - Generated scripts do not call subagents. They create pending context; the Codex run that handles
-  pending evolution requests an independent auditor/subagent when available. If the environment
-  supports independent review but user authorization is missing, ask the user for authorization
-  before falling back.
+  pending evolution requests an independent auditor/subagent when available. User approval to handle
+  pending implies permission to request independent review; if the environment still requires
+  explicit authorization, ask once before falling back.
 - Codex performs semantic extraction and file edits, inside a dedicated active change.
 - Once pending evolution starts, Codex must finish with a proposal, one `results.tsv` row, and
   `harness-evolve mark-complete`; otherwise park or close blocked, not completed.
@@ -141,6 +144,9 @@ Rules:
 - No independent scorer = no auto-apply.
 - Machinery repair (`harness-evolve`, pending templates, lint) is allowed as a prerequisite but does
   not complete pending evolution by itself. After repair, evaluate candidate archives or park/block.
+- Before evaluating candidates, rebuild `harness/changes/INDEX.json` and use the current eligible
+  archive window. Candidate Archives inside an older pending file are a trigger snapshot, not the
+  only allowed evidence.
 - Complexity budget: prefer clarifying or replacing existing rules over adding new sections. If an
   idea can be expressed by editing an existing paragraph, do not create a new document, directory,
   script, or workflow.
@@ -446,9 +452,9 @@ Load context progressively:
 2. `docs/ECL.md`
 3. If active exists: `harness/changes/active/summary.md`
 4. If active exists: `harness/changes/active/spec.md`, `plan.md`, `tasks.md`, and relevant `reviews/`
-5. If no active exists and `harness/evolution/pending.md` exists: read it before `docs/STATUS.md`
-   and mention it as pending maintenance. Reading it does not start auto-evolve; ordinary user work
-   may continue unless the user asks to handle the pending evidence.
+5. If no active exists and `harness/evolution/pending.md` exists: read it before `docs/STATUS.md`,
+   mention it as pending maintenance, and ask whether to handle it now unless the user already
+   prioritized the current task. Asking or reading does not start auto-evolve.
 6. If no active exists and no pending evolution exists: `docs/STATUS.md`
 7. Relevant architecture, design, API, or reference docs for the task
 8. `harness/changes/INDEX.json` only when selecting historical context
@@ -459,7 +465,8 @@ The normal path reads current task context and stable docs. If active change exi
 `docs/STATUS.md` as authority. Archive history is never loaded wholesale. Search or read history
 only when the user asks to continue prior work, STATUS points to an archive path, the current task
 matches INDEX modules/files/tags, a current failure matches historical validation notes, or
-`harness/evolution/pending.md` selects a bounded archive window.
+`harness/evolution/pending.md` records a bounded trigger snapshot. When processing starts, refresh
+`harness/changes/INDEX.json` and use the current eligible archive window.
 
 ## 4. `docs/ECL.md` Required Contents
 
@@ -1171,18 +1178,22 @@ Generated at: {{NOW}}
 
 {{CANDIDATE_LINES}}
 
+These candidates are the trigger snapshot. Before processing, rebuild `harness/changes/INDEX.json`
+and use the current eligible archive window so changes closed after this file was generated are not
+missed.
+
 ## Instruction For Codex
 
 Run harness auto-evolve:
 1. Read docs/ECL.md and this pending file.
-2. Inspect the candidate archive summaries first.
+2. Rebuild `harness/changes/INDEX.json`, then inspect the current eligible archive window first.
 3. Read spec/plan/tasks/reviews only when evidence requires it.
 4. Extract repeated failures, verification gaps, user corrections, and reusable constraints.
 5. Generate `harness/evolution/proposals/YYYY-MM-DD-auto-evolve.md` from the proposal template in docs/ECL.md or references/ecl-harness.md before editing harness files.
-6. Request one independent auditor/subagent score before applying. If independent review is
-   supported but not authorized, ask the user for authorization first. If scoring is unavailable,
-   declined, or still unauthorized after asking, record `status=noop` with `eval_mode=dry_run` and
-   do not auto-apply.
+6. Request one independent auditor/subagent score before applying. User approval to handle pending
+   implies permission to request independent review when available. If the environment still
+   requires explicit authorization, ask once. If scoring is unavailable, declined, or still
+   unauthorized after asking, record `status=noop` with `eval_mode=dry_run` and do not auto-apply.
 7. Apply only accepted candidates with archive evidence, project relevance, score >= 80, and independent approval.
 8. Prefer clarifying existing rules over adding new sections, documents, scripts, or workflows.
 9. Run harness checks and relevant business gates.

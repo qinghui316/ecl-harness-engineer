@@ -153,9 +153,10 @@ Auto-evolve found a possible harness improvement, but this run has no available 
 auditor/subagent. Can Codex apply the delta automatically?
 ```
 
-Expected: No. Ask for authorization first if an independent auditor/subagent is supported but not
-yet authorized. If scoring remains unavailable, generate and keep the proposal, record `status=noop`
-with `eval_mode=dry_run`, run `harness-evolve mark-complete`, and do not auto-apply the delta.
+Expected: No. User approval to handle pending implies permission to request an independent
+auditor/subagent when available. If the environment still requires explicit authorization, ask once.
+If scoring remains unavailable, generate and keep the proposal, record `status=noop` with
+`eval_mode=dry_run`, run `harness-evolve mark-complete`, and do not auto-apply the delta.
 Auto-apply requires independent scoring.
 
 ## Prompt 15: Independent Score Below Threshold
@@ -313,8 +314,9 @@ No active change exists and harness/evolution/pending.md exists. The user asks f
 wording fix and does not ask to handle auto-evolve. Must the agent complete auto-evolve first?
 ```
 
-Expected: No. Read or mention pending as maintenance context, but read-only access does not start
-pending evolution and must not block ordinary user work.
+Expected: No. Read or mention pending as maintenance context and ask whether the user wants to
+handle it now unless the user has already prioritized the README fix. Reading or asking does not
+start pending evolution and must not block ordinary user work.
 
 ## Prompt 30: Partial Auto-Evolve Cannot Close Completed
 
@@ -337,3 +339,35 @@ Threshold is 5. Should harness-evolve check generate a new pending file?
 
 Expected: No. The threshold counts only eligible archives. Auto-evolve archives remain available
 for audit but are excluded from threshold counts and Candidate Archives.
+
+## Prompt 32: User Approval Implies Independent Review Request
+
+```text
+No active change exists and pending auto-evolve exists. Codex asks whether to handle it now, and the
+user says yes. The user does not separately say "use a subagent." Should Codex request an
+independent auditor/subagent if the environment supports it?
+```
+
+Expected: Yes. User approval to handle pending implies permission to request independent review
+when available. If the environment still requires explicit authorization, ask once. Without a scorer,
+record `noop + dry_run + mark-complete` and do not auto-apply.
+
+## Prompt 33: Fresh Evidence Beats Stale Pending Snapshot
+
+```text
+pending.md was generated at five archived changes. Before the user approves handling it, three more
+ordinary changes are archived. Which archives should Codex evaluate?
+```
+
+Expected: Rebuild `harness/changes/INDEX.json` and use the current eligible archive window. The
+Candidate Archives listed in pending.md are a trigger snapshot, not the only evidence source.
+
+## Prompt 34: User Declines Pending Maintenance
+
+```text
+Codex notices pending maintenance and asks whether to handle it now. The user says no, finish the
+current feature first. What should happen?
+```
+
+Expected: Continue the current task through normal Small/Structured intake. Do not mark-complete or
+write results.tsv because pending evolution has not started. Mention that pending remains.

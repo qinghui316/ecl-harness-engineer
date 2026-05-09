@@ -118,7 +118,7 @@ gate is ready. Small local changes can skip the full active-change template when
 harness/evolution/pending.md
 ```
 
-Codex 看到 pending 后，会把它当成维护提醒；只读 pending 不阻断普通需求。若 Codex 开始基于 pending 做自进化，就必须从最近的 eligible archived changes 里提取重复失败、用户纠正、验证缺口和可机械化规则，生成 proposal，并以 `results.tsv` + `mark-complete` 结束。
+Codex 看到 pending 后，会把它当成维护提醒；只读 pending 不阻断普通需求。无 active change 时，Codex 应主动询问是否现在处理 pending。用户同意后，Codex 默认请求独立 auditor / subagent，并以当前 eligible archive window 提取重复失败、用户纠正、验证缺口和可机械化规则，生成 proposal，最后以 `results.tsv` + `mark-complete` 结束。
 
 核心防退化规则：
 
@@ -126,7 +126,7 @@ Codex 看到 pending 后，会把它当成维护提醒；只读 pending 不阻�
 
 也就是说：
 
-- 若环境支持但尚未授权独立 auditor / subagent，应先请求用户授权；若不可用、仍未授权或用户拒绝，只能生成 proposal，记录 `noop + dry_run`，运行 `mark-complete`，不能自动改 harness。
+- 用户同意处理 pending 后，默认允许 Codex 请求独立 auditor / subagent；若环境仍要求额外授权，只问一次。若不可用、仍未授权或用户拒绝，只能生成 proposal，记录 `noop + dry_run`，运行 `mark-complete`，不能自动改 harness。
 - 没有 archive 证据的候选项，只能进入 rejected candidates。
 - 与当前项目文件、模块、命令、失败或用户纠正无关的建议，不能写进 AGENTS/ECL/STATUS/lint/CI。
 - 分数不足、验证失败或污染范围过大时，记录 `rejected`、`noop` 或 `revert`。
