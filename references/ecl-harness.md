@@ -123,13 +123,15 @@ Rules:
 
 - `scripts/harness-evolve.*` only performs mechanical counting and pending generation.
 - Generated scripts do not call subagents. They create pending context; the Codex run that handles
-  pending evolution requests an independent auditor/subagent when the environment and user
-  authorization allow it.
+  pending evolution requests an independent auditor/subagent when available. If the environment
+  supports independent review but user authorization is missing, ask the user for authorization
+  before falling back.
 - Codex performs semantic extraction and file edits, inside a dedicated active change.
 - Codex must write a proposal before editing harness files. Rejected candidates stay in the
   proposal and must not enter AGENTS.md, ECL, STATUS, lint, or CI.
-- Auto-apply requires independent auditor/subagent scoring. If no independent scorer is available,
-  use `eval_mode=dry_run`, keep the proposal, and do not auto-apply the delta.
+- Auto-apply requires independent auditor/subagent scoring. If independent scoring is unavailable,
+  declined, or still unauthorized after asking, use `eval_mode=dry_run`, keep the proposal, and do
+  not auto-apply the delta.
 - No independent scorer = no auto-apply.
 - Complexity budget: prefer clarifying or replacing existing rules over adding new sections. If an
   idea can be expressed by editing an existing paragraph, do not create a new document, directory,
@@ -156,8 +158,8 @@ Auto-evolve scoring:
 
 `results.tsv` status values are `keep`, `revert`, `rejected`, and `noop`. Use
 `eval_mode=independent_review` when a separate auditor/subagent scored the proposal and
-`eval_mode=dry_run` when no independent scorer was available. The `note` field must explain why a
-candidate was rejected, no-op'd, or reverted.
+`eval_mode=dry_run` when independent scoring was unavailable, declined, or still unauthorized after
+asking. The `note` field must explain why a candidate was rejected, no-op'd, or reverted.
 
 Minimal proposal template:
 
@@ -1152,7 +1154,9 @@ Run harness auto-evolve:
 3. Read spec/plan/tasks/reviews only when evidence requires it.
 4. Extract repeated failures, verification gaps, user corrections, and reusable constraints.
 5. Generate `harness/evolution/proposals/YYYY-MM-DD-auto-evolve.md` from the proposal template in docs/ECL.md or references/ecl-harness.md before editing harness files.
-6. Request one independent auditor/subagent score before applying. No independent scorer = no auto-apply.
+6. Request one independent auditor/subagent score before applying. If independent review is
+   supported but not authorized, ask the user for authorization first. If scoring is unavailable,
+   declined, or still unauthorized after asking, record `eval_mode=dry_run` and do not auto-apply.
 7. Apply only accepted candidates with archive evidence, project relevance, score >= 80, and independent approval.
 8. Prefer clarifying existing rules over adding new sections, documents, scripts, or workflows.
 9. Run harness checks and relevant business gates.

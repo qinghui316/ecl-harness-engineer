@@ -126,7 +126,7 @@ Codex 看到 pending 后，会从最近的 archived changes 里提取重复失�
 
 也就是说：
 
-- 没有独立 auditor / subagent 评分时，只能生成 proposal，不能自动改 harness。
+- 若环境支持但尚未授权独立 auditor / subagent，应先请求用户授权；若不可用、仍未授权或用户拒绝，只能生成 proposal，记录 `dry_run`，不能自动改 harness。
 - 没有 archive 证据的候选项，只能进入 rejected candidates。
 - 与当前项目文件、模块、命令、失败或用户纠正无关的建议，不能写进 AGENTS/ECL/STATUS/lint/CI。
 - 分数不足、验证失败或污染范围过大时，记录 `rejected`、`noop` 或 `revert`。

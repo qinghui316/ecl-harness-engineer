@@ -540,12 +540,14 @@ Trigger model: `harness-change close` and `reindex` run `harness-evolve check`; 
 when pending exists. Hooks and CI may warn, but must not modify docs, scripts, STATUS, or changes.
 Generated scripts do not call subagents. They only count archive evidence and create pending
 context. The Codex run that handles pending evolution should request an independent auditor/subagent
-when the environment and user authorization allow it.
+when available. If the environment supports independent review but user authorization is missing,
+ask the user for authorization before falling back.
 
 When `harness/evolution/pending.md` exists and no active change exists, create
 `auto-evolve-harness-{date}`, read the bounded archive window, write a proposal, then apply only
 the smallest evidence-backed delta that passes review. No independent scorer = no auto-apply:
-without an independent auditor/subagent, keep the proposal, mark `eval_mode=dry_run`, and stop.
+if independent scoring is unavailable, declined, or still unauthorized after asking, keep the
+proposal, mark `eval_mode=dry_run`, and stop.
 Keep only if hard gates pass, score is at least 80, independent review passes, and verification
 passes; otherwise record `rejected`, `noop`, or `revert` in `harness/evolution/results.tsv`.
 
