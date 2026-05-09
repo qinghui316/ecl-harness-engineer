@@ -87,7 +87,7 @@ docs/
   DEVELOPMENT.md                  # 开发与验证命令
 harness/
   changes/
-    active/                       # 当前任务上下文
+    active/                       # 当前任务上下文（summary/spec/plan/tasks/reviews）
     parking/                      # 暂停任务
     archive/                      # 已关闭任务
     INDEX.json                    # 脚本生成索引，不手写
@@ -103,6 +103,10 @@ scripts/
   lint-encoding.{ps1|sh|mjs|py}   # UTF-8 / 乱码风险校验
 ```
 
+Structured changes use a lightweight plan-aware ECL flow: `spec.md` records WHAT/WHY, `plan.md`
+records HOW and planning-discovered spec gaps, and `tasks.md` is generated only after the spec/plan
+gate is ready. Small local changes can skip the full active-change template when validation is clear.
+
 
 ## Auto-Evolve：让 Harness 从项目历史里进化
 
@@ -114,7 +118,7 @@ scripts/
 harness/evolution/pending.md
 ```
 
-Codex 看到 pending 后，会从最近的 archived changes 里提取重复失败、用户纠正、验证缺口和可机械化规则，生成 proposal。
+Codex 看到 pending 后，会把它当成维护提醒；只读 pending 不阻断普通需求。无 active change 时，Codex 应主动询问是否现在处理 pending。用户同意后，Codex 默认请求独立 auditor / subagent，并以当前 eligible archive window 提取重复失败、用户纠正、验证缺口和可机械化规则，生成 proposal，最后以 `results.tsv` + `mark-complete` 结束。
 
 核心防退化规则：
 
@@ -122,10 +126,11 @@ Codex 看到 pending 后，会从最近的 archived changes 里提取重复失�
 
 也就是说：
 
-- 没有独立 auditor / subagent 评分时，只能生成 proposal，不能自动改 harness。
+- 用户同意处理 pending 后，默认允许 Codex 请求独立 auditor / subagent；若环境仍要求额外授权，只问一次。若不可用、仍未授权或用户拒绝，只能生成 proposal，记录 `noop + dry_run`，运行 `mark-complete`，不能自动改 harness。
 - 没有 archive 证据的候选项，只能进入 rejected candidates。
 - 与当前项目文件、模块、命令、失败或用户纠正无关的建议，不能写进 AGENTS/ECL/STATUS/lint/CI。
 - 分数不足、验证失败或污染范围过大时，记录 `rejected`、`noop` 或 `revert`。
+- auto-evolve 自己产生的 archive 只用于审计，不计入下一轮 threshold 或 Candidate Archives。
 
 这借鉴了 Darwin-style ratchet：**只保留有证据、可验证、分数达标的改进。**
 

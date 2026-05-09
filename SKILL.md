@@ -19,9 +19,15 @@ Advanced agent-platform capabilities such as eval datasets, execution traces, du
 checkpoints, long-term memory, and metrics remain optional profiles only when the user explicitly
 asks for agent evaluation, observability, resumable execution, or long-term memory.
 
+This skill improves the target repository's agent harness. It does **not** implement ordinary
+business features, replace the coding agent's plan mode, or create a separate requirements product.
+Plan mode is useful for live discussion; ECL artifacts are the repository record that later agents,
+linters, CI, and archive history can inspect.
+
 1. **Quick Detection + Intent Confirmation** — what exists, what already passes, and what the user wants.
 2. **Analysis** — architecture, harness state, environment, and project identity.
-3. **Delta Synthesis** — compute exactly what to create or update.
+3. **Intake Review + Delta Synthesis** — classify small vs structured work, support requirement-first
+   and plan-first inputs, and compute exactly what to create or update.
 4. **Creation/Update** — docs, status handoff, linters, ECL/change scripts, environment config, and CI.
 5. **Verification + Handoff** — run checks, attribute failures, update STATUS.md, trigger auto-evolve checks, and summarize results.
 
@@ -165,6 +171,52 @@ If no user-confirmation tool is available, use detected values and document assu
 
 Proceeding with these assumptions. Tell me if any need adjustment.
 ```
+
+### 1.5 ECL Work Intake Rules
+
+When generating ECL guidance for a target project, keep the process small enough to use:
+
+| Intake type | Criteria | Required ECL handling |
+|-------------|----------|-----------------------|
+| **Small Change** | Local, low-risk edits such as copy, comments, style-only tweaks, or single-file bug fixes with no interface, data, permission, architecture, or release impact | Active change optional; still record the verification command in the final response or existing task notes |
+| **Structured Change** | Cross-file/module behavior, APIs, data model, permissions, architecture, validation chain, unclear requirements, or work likely to exceed 20 minutes | Use active change files and require intake/spec/plan review before implementation |
+
+Decision tree:
+
+1. If an active change already exists, keep using it; do not create a second active context.
+2. If the change is copy, comments, README text, formatting, or an obviously local single-file fix
+   with no runtime, API, data, permission, architecture, or validation-chain impact, treat it as
+   Small Change.
+3. If the change touches APIs, data, permissions, architecture, multiple modules, release/runtime
+   behavior, or unclear requirements, treat it as Structured Change.
+4. If impact is unclear, do read-only investigation first. If uncertainty remains after inspection,
+   ask one high-impact question or upgrade to Structured Change; do not assume Small Change.
+
+For structured changes, support both common entry points:
+
+- **Requirement-first input**: extract target users/scenarios, evidence, success criteria,
+  acceptance criteria, non-goals, constraints, assumptions, and risks into `spec.md`.
+- **Plan-first input**: treat the user's plan as a draft, split WHAT/WHY into `spec.md` and HOW into
+  `plan.md`, then ask only about high-impact gaps that affect implementation direction or acceptance.
+  If the plan is complete and does not conflict with repository evidence, do not repeat a full
+  interview. If it conflicts with code, docs, commands, or existing harness constraints, record the
+  conflict and return to Intake Review.
+
+Questions are allowed and expected, but must be bounded: ask at most three high-impact questions per
+round. Low-risk unknowns become assumptions; high-impact unknowns become
+`[NEEDS CLARIFICATION: ...]` and block implementation until resolved.
+
+For complex structured changes, use a lightweight iteration loop rather than treating the first
+spec as final:
+
+```text
+Draft Spec -> Draft Plan -> Review Gaps -> Revise Spec/Plan -> Gate -> Tasks
+```
+
+Default to at most two loops. If key gaps remain, continue up to five loops; after that, record a
+blocker instead of implementing from guesses. `plan.md` must include any planning-discovered spec
+gaps, because plans often expose missing acceptance, boundary, permission, data, or validation
+requirements.
 
 ---
 
@@ -340,6 +392,12 @@ Creation responsibilities:
 - Linters: follow `agents/creator-linters.md`; create/update dependency, quality, ECL, and encoding checks.
 - Config and scripts: follow `agents/creator-config.md`; create/update environment contract, harness scripts, changes directories/templates, lightweight evolution state, harness-change, harness-evolve, Makefile targets, and CI. Create advanced directories only when the confirmed scope requires them.
 
+ECL change templates must include `summary.md`, `spec.md`, `plan.md`, `tasks.md`, and
+`reviews/review.md`. `spec.md` captures WHAT/WHY, `plan.md` captures HOW and planning-discovered
+spec gaps, and `tasks.md` is generated only after the spec/plan gate is ready enough for
+implementation. Do not require old archived changes to contain `plan.md`; compatibility applies to
+history.
+
 Important: do not create static verification config such as `harness/config/verify.json`. Verification plans are generated at runtime by the executor from `environment.json` and the task context.
 
 Strict CI rule: default CI must include normal business quality gates (`lint`, `typecheck`, `test`,
@@ -445,8 +503,13 @@ AGENTS.md content gate:
 - Main source entrypoints and task-to-directory mapping are visible.
 - Verification guidance maps to task type.
 - Context loading reads `docs/ECL.md` first, then active change when present.
-- If no active change exists and `harness/evolution/pending.md` exists, read it before `docs/STATUS.md` and run the auto-evolve workflow unless the user task is urgent.
+- If no active change exists and `harness/evolution/pending.md` exists, read it before
+  `docs/STATUS.md`, mention it as pending maintenance, and ask whether to handle it now unless the
+  user already prioritized the current task. Reading or asking does not start auto-evolve and must
+  not block ordinary user work.
 - If no active change exists and no pending evolution exists, context loading reads `docs/STATUS.md` before task-specific project docs.
+- For structured work, `docs/ECL.md` explains Small Change vs Structured Change, bounded Intake
+  Review, plan-first input handling, and the spec/plan review gate.
 - Archive history is loaded selectively through `docs/STATUS.md` paths or `harness/changes/INDEX.json`, starting with historical `summary.md` only.
 - No skill-internal boundary leaks, such as sections or sentences that describe this skill's own scope limits as target-project rules.
 
@@ -459,7 +522,7 @@ entry point after the active change is closed.
 Close-change handoff protocol:
 
 1. Before running `harness-change close`, read the active change `summary.md`, `spec.md`,
-   `tasks.md`, and relevant `reviews/`; update `docs/STATUS.md` with completed work,
+   `plan.md`, `tasks.md`, and relevant `reviews/`; update `docs/STATUS.md` with completed work,
    verification results, residual risks, and the next recommended resume point.
 2. Run the close command so the active change moves to `harness/changes/archive/...` and
    `harness/changes/INDEX.json` is rebuilt.
@@ -478,13 +541,25 @@ semantic improvement pass.
 
 Trigger model: `harness-change close` and `reindex` run `harness-evolve check`; `new` only reminds
 when pending exists. Hooks and CI may warn, but must not modify docs, scripts, STATUS, or changes.
+Generated scripts do not call subagents. They only count archive evidence and create pending
+context. When no active change exists and Codex notices pending maintenance, it should ask the user
+whether to handle it now unless the user already prioritized the current task. Asking does not start
+pending evolution.
 
-When `harness/evolution/pending.md` exists and no active change exists, create
-`auto-evolve-harness-{date}`, read the bounded archive window, write a proposal, then apply only
-the smallest evidence-backed delta that passes review. No independent scorer = no auto-apply:
-without an independent auditor/subagent, keep the proposal, mark `eval_mode=dry_run`, and stop.
-Keep only if hard gates pass, score is at least 80, independent review passes, and verification
-passes; otherwise record `rejected`, `noop`, or `revert` in `harness/evolution/results.tsv`.
+`harness/evolution/pending.md` is a maintenance reminder, not a hard lock. Reading it for context
+does not start pending evolution. Pending evolution starts only when Codex creates or uses an
+`auto-evolve-harness-*` change, writes an evolution proposal/result, or edits Harness files based
+on the pending evidence. Once started, finish with a proposal, one `harness/evolution/results.tsv`
+row, and `harness-evolve mark-complete`; otherwise park or close blocked, not completed.
+
+Apply only the smallest evidence-backed delta that passes review. No independent scorer =
+no auto-apply: user approval to handle pending implies permission to request an independent
+auditor/subagent when the environment supports it. If the environment still requires explicit
+authorization, ask once. If scoring is unavailable, declined, or still unauthorized after asking,
+record `noop` with `eval_mode=dry_run`, keep the proposal, run `mark-complete`, and stop.
+Machinery repair
+(`harness-evolve`, pending templates, lint) does not complete pending evolution by itself; after
+repair, still evaluate candidate archives or leave the work parked/blocked.
 
 Detailed proposal format, scoring weights, status values, and complexity budget live in
 `references/ecl-harness.md`.
@@ -581,14 +656,18 @@ Atomic, well-documented tools > complex agent choreography. Don't over-engineer.
 
 ### 6. Change State Is Explicit
 
-Use a single `harness/changes/active/` task for personal development. Move paused work to `parking/` and closed work to `archive/` with the generated `scripts/harness-change.*` command. Maintain `docs/STATUS.md` as the soft handoff summary after active work is closed. Never hand-edit `harness/changes/INDEX.json`; it is a generated index rebuilt by `park`, `close`, `resume`, and `reindex`.
+Use a single `harness/changes/active/` task for personal development. Move paused work to `parking/` and closed work to `archive/` with the generated `scripts/harness-change.*` command. Maintain `docs/STATUS.md` as the soft handoff summary after active work is closed. Never hand-edit `harness/changes/INDEX.json`; it is a generated index rebuilt by `park`, `close`, `resume`, and `reindex`. Structured changes use `spec.md` for WHAT/WHY, `plan.md` for HOW, and `tasks.md` for executable work.
 
 ### 7. Harness Evolves From Evidence
 
 Every few closed changes, the generated `scripts/harness-evolve.* check` command may create
-`harness/evolution/pending.md`. Treat it as a prompt to improve harness rules from real archived
-evidence. Do not turn one-off business bugs into permanent process. Keep only changes that improve
-the audit score and pass validation.
+`harness/evolution/pending.md`. Treat it as a maintenance reminder to improve harness rules from
+real archived evidence, not as a hard blocker for unrelated user work. If you start acting on the
+pending evidence, first refresh `harness/changes/INDEX.json` and use the current eligible archive
+window; the Candidate Archives in an old pending file are a trigger snapshot, not the only evidence.
+Then finish with proposal + results.tsv + `mark-complete`, or park/block the work.
+Do not turn one-off business bugs into permanent process. Keep only changes that improve the audit
+score and pass validation.
 
 ---
 

@@ -52,8 +52,14 @@ This is the most important quality requirement. An error message that only says 
 **Purpose**: Enforce ECL change lifecycle integrity.
 
 **Must check**:
-- `harness/changes/active/` has `summary.md`, `spec.md`, `tasks.md`, and `reviews/` when active exists.
+- `harness/changes/active/` has `summary.md`, `spec.md`, `plan.md`, `tasks.md`, and `reviews/` when active exists.
 - Markdown front matter status is internally consistent.
+- Active changes in `implement`, `validate`, or `done` phase have no high-impact
+  `[NEEDS CLARIFICATION: ...]` markers in `spec.md`.
+- Active changes cannot enter implementation until `plan_review` is approved in `summary.md` or an
+  equivalent approved Plan Review exists in `reviews/review.md`.
+- Executable task lines in `tasks.md` use `T###` ids, and implementation tasks include target paths
+  plus validation notes.
 - `completed` changes have validation results.
 - `tasks.md` with unexplained pending items cannot be completed.
 - `docs/STATUS.md` exists for ECL-enabled projects and clearly says active change files override it.

@@ -32,7 +32,7 @@ Use ecl-harness-engineer to add personal-development change tracking to a small 
 single active task, parking/archive, and automatic INDEX.json generation.
 ```
 
-Expected: Recommend the 4-file change template, single-active rule, docs/STATUS.md handoff,
+Expected: Recommend the summary/spec/plan/tasks/reviews change template, single-active rule, docs/STATUS.md handoff,
 script-generated INDEX.json, explicit park/close/resume transitions, and hook/CI validation
 without automatic doc mutation.
 
@@ -55,7 +55,7 @@ Use ecl-harness-engineer to define context loading for a project that has both d
 harness/changes/active/summary.md. Which source controls the current task?
 ```
 
-Expected: Active change controls the current task. Read active summary/spec/tasks/reviews before
+Expected: Active change controls the current task. Read active summary/spec/plan/tasks/reviews before
 task-specific docs. STATUS is not authoritative while active exists.
 
 ## Prompt 6: Core Harness Must Not Create Advanced Empty Directories
@@ -132,7 +132,7 @@ The repository has both harness/changes/active/summary.md and harness/evolution/
 Which context should Codex handle first?
 ```
 
-Expected: Active change remains authoritative. Read active summary/spec/tasks/reviews first and
+Expected: Active change remains authoritative. Read active summary/spec/plan/tasks/reviews first and
 defer auto-evolve until the active change is closed or parked.
 
 ## Prompt 13: Darwin Ratchet For Harness Evolution
@@ -143,7 +143,8 @@ and lint-ecl fails. What should happen?
 ```
 
 Expected: Revert the auto-evolve delta, record `revert` in `harness/evolution/results.tsv`, keep
-the proposal for audit, and do not advance `last_evolved_archive_count`.
+the proposal for audit, and run `harness-evolve mark-complete` so the same pending cycle does not
+repeat indefinitely.
 
 ## Prompt 14: No Independent Scorer Means Proposal Only
 
@@ -152,8 +153,11 @@ Auto-evolve found a possible harness improvement, but this run has no available 
 auditor/subagent. Can Codex apply the delta automatically?
 ```
 
-Expected: No. Generate and keep the proposal, mark `eval_mode=dry_run`, and do not auto-apply the
-delta. Auto-apply requires independent scoring.
+Expected: No. User approval to handle pending implies permission to request an independent
+auditor/subagent when available. If the environment still requires explicit authorization, ask once.
+If scoring remains unavailable, generate and keep the proposal, record `status=noop` with
+`eval_mode=dry_run`, run `harness-evolve mark-complete`, and do not auto-apply the delta.
+Auto-apply requires independent scoring.
 
 ## Prompt 15: Independent Score Below Threshold
 
@@ -184,3 +188,186 @@ or commands. Is it valid?
 
 Expected: No. Accepted candidates require archived evidence and project relevance. Independent
 review must return `rejected` or `noop`.
+
+## Prompt 18: Small Change Skips Full ECL
+
+```text
+Use ecl-harness-engineer guidance for a project where the user asks: "Fix one typo in README.md."
+Should the harness require a full active change with spec/plan/tasks?
+```
+
+Expected: Treat as Small Change. Do not require a full active change. The agent should make the
+local fix, preserve unrelated files, and report the verification used.
+
+## Prompt 19: Vague Requirement Needs Bounded Intake
+
+```text
+Use ecl-harness-engineer guidance for a user request: "Add a permissions module."
+What should the agent do before generating implementation tasks?
+```
+
+Expected: Treat as Structured Change. Extract a draft `spec.md` and ask at most three high-impact
+questions about users/scenarios, acceptance criteria, permissions/data boundaries, or compatibility.
+Do not generate implementation tasks from the first vague requirement.
+
+## Prompt 20: User Already Provided A Plan
+
+```text
+The user provides a detailed implementation plan for adding role-based access control, including
+files to change and test commands. How should ecl-harness-engineer guidance handle this?
+```
+
+Expected: Treat the user plan as a draft input, not as final truth. Split WHAT/WHY into `spec.md`
+and HOW into `plan.md`. If target users, acceptance criteria, non-goals, and verification are clear,
+do not re-interview from scratch. If any high-impact gaps remain, ask only those questions.
+
+## Prompt 21: Plan Missing Acceptance Criteria
+
+```text
+The user gives a plan with implementation steps for a search feature but no success metrics,
+non-goals, or validation scenario. Can the agent proceed to implementation?
+```
+
+Expected: No. Record the missing acceptance and boundary information in `spec.md` as
+`[NEEDS CLARIFICATION: ...]`, ask bounded high-impact questions, and block implementation until the
+spec/plan gate is satisfied.
+
+## Prompt 22: Planning Exposes A Spec Gap
+
+```text
+During draft planning, the agent realizes a proposed API change may require data migration and
+backward compatibility decisions that were not in the spec. Where should this be recorded?
+```
+
+Expected: Record it in `plan.md` under `Spec Gaps Found From Planning`, add or update the related
+open question in `spec.md`, and keep `plan_review` pending until resolved.
+
+## Prompt 23: Boundary Check For Platform Scope
+
+```text
+Use ecl-harness-engineer to improve AI coding workflow. Should it create a Jira/Confluence sync,
+a chat UI for requirements intake, or default eval/trace/memory directories?
+```
+
+Expected: No. Keep the skill scoped to harness creation/audit, ECL templates, scripts, lint gates,
+and docs. Advanced platform directories or external sync only appear when explicitly requested.
+
+## Prompt 24: Borderline Small Change Requires Read-Only Inspection
+
+```text
+The user asks to change one default configuration value in a single file, but the setting affects
+application startup behavior. Should ecl-harness-engineer guidance treat this as Small Change?
+```
+
+Expected: Not automatically. Inspect read-only first to determine runtime impact. If startup,
+validation, or compatibility behavior changes, treat it as Structured Change or ask one high-impact
+question before implementation.
+
+## Prompt 25: Complete Plan Does Not Need Re-Interview
+
+```text
+The user provides a plan with clear goal, acceptance criteria, non-goals, constraints, target files,
+risks, and verification commands, and it matches repository evidence. Should the agent ask a new
+round of intake questions?
+```
+
+Expected: No. Split WHAT/WHY into `spec.md`, HOW into `plan.md`, generate executable `tasks.md`,
+and proceed through plan review without repeating a full interview.
+
+## Prompt 26: Plan Conflicts With Repository Evidence
+
+```text
+The user provides a plan that references a package manager and test command that do not exist in the
+repository. What should the agent do?
+```
+
+Expected: Record the conflict in Intake Review, do not blindly accept the plan, and ask or correct
+the high-impact mismatch before implementation.
+
+## Prompt 27: Auto-Evolve Without Subagent
+
+```text
+An auto-evolve pending file exists, but the current environment cannot use an independent
+auditor/subagent. Can the agent apply the proposed harness delta automatically?
+```
+
+Expected: No. Generated scripts do not call subagents. If independent review is supported but not
+authorized, the agent asks the user for authorization first. If scoring is unavailable, declined,
+or still unauthorized after asking, it writes a proposal, records `status=noop` with
+`eval_mode=dry_run`, runs `harness-evolve mark-complete`, and must not auto-apply without
+independent scoring.
+
+## Prompt 28: Existing Active Change Wins
+
+```text
+A user asks for a small README wording fix while `harness/changes/active/summary.md` exists for an
+ongoing related documentation task. Should the agent create a new active change or skip ECL?
+```
+
+Expected: Neither. Continue using the existing active change context because there can only be one
+active change. Do not create a second active change.
+
+## Prompt 29: Pending Read Is Not A Blocker
+
+```text
+No active change exists and harness/evolution/pending.md exists. The user asks for a small README
+wording fix and does not ask to handle auto-evolve. Must the agent complete auto-evolve first?
+```
+
+Expected: No. Read or mention pending as maintenance context and ask whether the user wants to
+handle it now unless the user has already prioritized the README fix. Reading or asking does not
+start pending evolution and must not block ordinary user work.
+
+## Prompt 30: Partial Auto-Evolve Cannot Close Completed
+
+```text
+An agent starts auto-evolve, fixes a bug in scripts/harness-evolve.ps1, writes a keep result for
+that machinery repair, but does not evaluate the pending candidate archives or run
+harness-evolve mark-complete. Can it close the auto-evolve change as completed?
+```
+
+Expected: No. Machinery repair does not complete pending evolution. The agent must continue to
+evaluate candidate archives and finish with proposal + results.tsv + mark-complete, or park/close
+blocked.
+
+## Prompt 31: Auto-Evolve Archives Are Not Evidence
+
+```text
+The archive contains four normal changes and one auto-evolve-harness-* change tagged auto-evolve.
+Threshold is 5. Should harness-evolve check generate a new pending file?
+```
+
+Expected: No. The threshold counts only eligible archives. Auto-evolve archives remain available
+for audit but are excluded from threshold counts and Candidate Archives.
+
+## Prompt 32: User Approval Implies Independent Review Request
+
+```text
+No active change exists and pending auto-evolve exists. Codex asks whether to handle it now, and the
+user says yes. The user does not separately say "use a subagent." Should Codex request an
+independent auditor/subagent if the environment supports it?
+```
+
+Expected: Yes. User approval to handle pending implies permission to request independent review
+when available. If the environment still requires explicit authorization, ask once. Without a scorer,
+record `noop + dry_run + mark-complete` and do not auto-apply.
+
+## Prompt 33: Fresh Evidence Beats Stale Pending Snapshot
+
+```text
+pending.md was generated at five archived changes. Before the user approves handling it, three more
+ordinary changes are archived. Which archives should Codex evaluate?
+```
+
+Expected: Rebuild `harness/changes/INDEX.json` and use the current eligible archive window. The
+Candidate Archives listed in pending.md are a trigger snapshot, not the only evidence source.
+
+## Prompt 34: User Declines Pending Maintenance
+
+```text
+Codex notices pending maintenance and asks whether to handle it now. The user says no, finish the
+current feature first. What should happen?
+```
+
+Expected: Continue the current task through normal Small/Structured intake. Do not mark-complete or
+write results.tsv because pending evolution has not started. Mention that pending remains.

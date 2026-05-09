@@ -38,6 +38,16 @@ Before implementation starts, require an approved plan review. Record it as
 `plan_review: "approved"` in `summary.md` front matter or as an approved plan review in
 `reviews/`. This gate prevents raw requirements from moving directly into coding.
 
+Structured changes use plan-aware intake. If the user provides only a requirement, ask the smallest
+set of high-impact questions needed to draft `spec.md`. If the user already provides a plan, review
+that plan as a draft, split WHAT/WHY into `spec.md` and HOW into `plan.md`, and ask only about gaps
+that affect implementation direction or acceptance. If the plan is complete and does not conflict
+with repository evidence, do not restart the interview. If it conflicts with code, docs, commands,
+or existing harness constraints, record the conflict and return to Intake Review. Each intake round
+asks at most three questions.
+Low-risk unknowns become assumptions; high-impact unknowns become `[NEEDS CLARIFICATION: ...]` and
+block implementation.
+
 ### 1.2 When to create a change
 
 Create a change when any condition applies:
@@ -53,6 +63,16 @@ Small, local fixes can skip `harness/changes` if the final response records vali
 Evidence, non-goals, options, and plan review are mandatory for non-trivial active changes. Small
 local fixes that skip a change do not need the full template, but the final response must still
 record assumptions and validation.
+
+Decision tree:
+
+1. Existing active change: keep using it; do not create another active context.
+2. Small Change: copy, comments, README text, formatting, or an obviously local single-file fix with
+   no runtime, API, data, permission, architecture, or validation-chain impact.
+3. Structured Change: APIs, data, permissions, architecture, multiple modules, release/runtime
+   behavior, unclear requirements, or work likely to exceed 20 minutes.
+4. Unclear impact: inspect read-only first. If uncertainty remains, ask one high-impact question or
+   upgrade to Structured Change; do not assume Small Change.
 
 ### 1.3 Change lifecycle
 
@@ -78,7 +98,7 @@ Rules:
 Close-change STATUS protocol:
 
 1. Before closing active work, update `docs/STATUS.md` from active `summary.md`, `spec.md`,
-   `tasks.md`, and relevant `reviews/` with completed work, validation, residual risks, and
+   `plan.md`, `tasks.md`, and relevant `reviews/` with completed work, validation, residual risks, and
    the next resume point.
 2. Run the generated `scripts/harness-change.* close <completed|blocked|abandoned>` command so the active change
    moves to `archive/` and `INDEX.json` is rebuilt.
@@ -94,20 +114,39 @@ Core ECL includes auto-evolve threshold checking by default. This is not the adv
 observability, or long-term memory profile. It is a small loop that learns from closed changes:
 
 ```text
-close/reindex -> count new archive evidence -> generate pending.md when threshold reached
-pending.md + no active change -> Codex creates auto-evolve active change
-Codex writes proposal -> independent scoring -> smallest harness delta -> verify -> keep/revert/rejected/noop
+close/reindex -> count eligible archive evidence -> generate pending.md when threshold reached
+pending.md + no active change -> Codex asks whether to handle pending maintenance now
+started pending evolution -> proposal -> independent scoring or dry_run -> verify -> results.tsv -> mark-complete
 ```
 
 Rules:
 
 - `scripts/harness-evolve.*` only performs mechanical counting and pending generation.
+- `harness/evolution/pending.md` is a maintenance reminder, not a hard lock. Reading it for context
+  does not start pending evolution and must not block ordinary user work.
+- When no active change exists and pending maintenance is present, Codex should ask the user whether
+  to handle it now unless the user already prioritized the current task. A user yes starts the
+  pending evolution flow; a no leaves pending in place and ordinary work continues.
+- Pending evolution starts when Codex creates or uses an `auto-evolve-harness-*` change, writes an
+  evolution proposal/result, or edits Harness files based on pending evidence.
+- Generated scripts do not call subagents. They create pending context; the Codex run that handles
+  pending evolution requests an independent auditor/subagent when available. User approval to handle
+  pending implies permission to request independent review; if the environment still requires
+  explicit authorization, ask once before falling back.
 - Codex performs semantic extraction and file edits, inside a dedicated active change.
-- Codex must write a proposal before editing harness files. Rejected candidates stay in the
-  proposal and must not enter AGENTS.md, ECL, STATUS, lint, or CI.
-- Auto-apply requires independent auditor/subagent scoring. If no independent scorer is available,
-  use `eval_mode=dry_run`, keep the proposal, and do not auto-apply the delta.
+- Once pending evolution starts, Codex must finish with a proposal, one `results.tsv` row, and
+  `harness-evolve mark-complete`; otherwise park or close blocked, not completed.
+- Codex must write a proposal before editing harness files. Rejected or no-op candidates stay in
+  the proposal and must not enter AGENTS.md, ECL, STATUS, lint, or CI.
+- Auto-apply requires independent auditor/subagent scoring. If independent scoring is unavailable,
+  declined, or still unauthorized after asking, record `noop` with `eval_mode=dry_run`, keep the
+  proposal, run `mark-complete`, and do not auto-apply the delta.
 - No independent scorer = no auto-apply.
+- Machinery repair (`harness-evolve`, pending templates, lint) is allowed as a prerequisite but does
+  not complete pending evolution by itself. After repair, evaluate candidate archives or park/block.
+- Before evaluating candidates, rebuild `harness/changes/INDEX.json` and use the current eligible
+  archive window. Candidate Archives inside an older pending file are a trigger snapshot, not the
+  only allowed evidence.
 - Complexity budget: prefer clarifying or replacing existing rules over adding new sections. If an
   idea can be expressed by editing an existing paragraph, do not create a new document, directory,
   script, or workflow.
@@ -118,8 +157,10 @@ Rules:
 - The default auto-evolve path must not create `harness/eval`, `harness/trace`, `harness/state`,
   `harness/checkpoints`, `harness/memory`, or `harness/metrics`.
 - A delta is kept only when hard gates pass, score is at least 80, independent review passes, and
-  validation passes; otherwise log `rejected`, `noop`, or revert it and log `revert` in
-  `harness/evolution/results.tsv`.
+  validation passes; otherwise log `noop` for reviewed evidence with no durable rule, `rejected`
+  for proposals that fail hard gates before apply, or revert the failed applied delta and log
+  `revert` in `harness/evolution/results.tsv`. Every started pending evolution ends with
+  `harness-evolve mark-complete` or stays parked/blocked.
 
 Auto-evolve scoring:
 
@@ -131,10 +172,11 @@ Auto-evolve scoring:
 | Regression safety | 20 |
 | Context cost | 10 |
 
-`results.tsv` status values are `keep`, `revert`, `rejected`, and `noop`. Use
+`results.tsv` status values are `keep`, `revert`, `rejected`, and `noop`. Prefer `noop` for
+reviewed candidates that yield no durable harness rule. Use
 `eval_mode=independent_review` when a separate auditor/subagent scored the proposal and
-`eval_mode=dry_run` when no independent scorer was available. The `note` field must explain why a
-candidate was rejected, no-op'd, or reverted.
+`eval_mode=dry_run` when independent scoring was unavailable, declined, or still unauthorized after
+asking. The `note` field must explain why a candidate was rejected, no-op'd, or reverted.
 
 Minimal proposal template:
 
@@ -185,12 +227,15 @@ Minimal proposal template:
 
 ## 2. Default Change Template
 
-Use the 4-file template by default.
+Use the 5-file template by default for new active changes. Old archived changes that only have the
+previous 4-file template remain valid and must not fail compatibility checks solely because
+`plan.md` is absent.
 
 ```text
 harness/changes/active/
   summary.md
   spec.md
+  plan.md
   tasks.md
   reviews/
 ```
@@ -204,6 +249,8 @@ slug: "{{SLUG}}"
 status: "in_progress"
 location: "active"
 phase: "intake"
+intake_status: "pending"
+spec_review: "pending"
 plan_review: "pending"
 modules: []
 files: []
@@ -229,7 +276,7 @@ Pending.
 
 ## Next Step
 
-- Clarify constraints and update `spec.md`.
+- Run Intake Review, then update `spec.md` and `plan.md`.
 ```
 
 ### 2.2 `spec.md`
@@ -237,15 +284,23 @@ Pending.
 ```markdown
 # Spec
 
-## Evidence
+## Intake Review
+
+- Intake type: Small Change | Structured Change
+- Input shape: requirement-first | plan-first | mixed
+- Questions asked this round: 0
+
+## Goal And Evidence
 
 - Real problem or user request:
 - Current behavior:
 - Source of evidence:
 
-## Requirement Hypotheses
+## User Scenarios And Success
 
-- Pending.
+- Primary user/system scenario:
+- Success criteria:
+- Acceptance criteria:
 
 ## Non-Goals
 
@@ -255,58 +310,139 @@ Pending.
 
 - Pending.
 
-## Acceptance Criteria
+## Assumptions
 
 - Pending.
 
-## Options
+## Open Questions
 
-- Pending.
+- [NEEDS CLARIFICATION: Replace with a specific high-impact question, or remove before implementation.]
 
-## Red/Blue Notes
+## Resolved Clarifications
 
 - Pending.
 ```
 
-### 2.3 `tasks.md`
+### 2.3 `plan.md`
+
+```markdown
+# Plan
+
+## Technical Approach
+
+- Pending.
+
+## Impacted Modules And Files
+
+- Pending.
+
+## Interfaces, Data, Permissions
+
+- Pending.
+
+## Spec Gaps Found From Planning
+
+- Pending.
+
+## Risks And Mitigations
+
+- Pending.
+
+## Verification Plan
+
+- Pending.
+```
+
+### 2.4 `tasks.md`
 
 ```markdown
 # Tasks
 
-## Implementation Tasks
+## Format
 
-- [ ] Pending implementation task.
+- `- [ ] T001 [P?] [US?] Action with target path and validation note`
+- `[P]` means parallel-safe. `[US1]` maps to a user story when stories exist.
 
-## Test Tasks
+## Setup / Intake
 
-- [ ] Pending validation task.
+- [ ] T001 Review `spec.md` and `plan.md` gates before implementation.
+
+## Implementation
+
+- [ ] T002 Pending implementation task with target path.
+
+## Validation
+
+- [ ] T003 Pending validation task with command or scenario.
 
 ## Deferred Tasks
 
 - None.
 ```
 
-### 2.4 `reviews/review.md`
+### 2.5 `reviews/review.md`
 
 ```markdown
 # Review
 
+## Intake Review
+
+- Status: pending
+- Notes:
+
+## Spec Review
+
+- Status: pending
+- Open high-impact clarifications:
+- WHAT/HOW separation:
+
 ## Plan Review
 
 - Status: pending
+- Spec gaps found from planning:
 
 ## Code Review
 
 - Status: pending
 
-## Test Review
+## Validation Review
 
 - Status: pending
 ```
 
-Complex tasks may split `spec.md` into `assumptions.md`, `constraints.md`,
-`options.md`, and `red-blue.md`; and split `tasks.md` into `implementation.md`,
-`test-mapping.md`, and `regression.md`.
+Complex tasks may split `spec.md`, `plan.md`, or `tasks.md` into focused supporting files only when
+the single files become hard to navigate. Do not split small or ordinary changes by default.
+
+### 2.6 Short response examples
+
+Small Change final response:
+
+```markdown
+Updated the README typo. I treated this as a Small Change because it only touched documentation copy
+and had no runtime, API, data, permission, or architecture impact.
+
+Verification: reviewed the README diff.
+```
+
+Structured blocker response:
+
+```markdown
+I cannot safely move this to implementation yet. The draft plan leaves high-impact gaps:
+
+1. Which roles or actors must be supported?
+2. Which resources/actions require enforcement?
+3. What acceptance scenario proves the change works?
+
+I would record these in `spec.md` as `[NEEDS CLARIFICATION: ...]` and keep `plan_review: pending`.
+```
+
+Complete plan accepted response:
+
+```markdown
+The provided plan includes goal, acceptance criteria, non-goals, constraints, verification commands,
+and no conflicts with repository evidence. I would split it into `spec.md` for WHAT/WHY, `plan.md`
+for HOW, generate `tasks.md`, and proceed without another intake interview.
+```
 
 ## 3. Context Loading
 
@@ -315,19 +451,22 @@ Load context progressively:
 1. `AGENTS.md`
 2. `docs/ECL.md`
 3. If active exists: `harness/changes/active/summary.md`
-4. If active exists: `harness/changes/active/spec.md`, `tasks.md`, and relevant `reviews/`
-5. If no active exists and `harness/evolution/pending.md` exists: read it and run the auto-evolve workflow before ordinary resume work, unless the user task is urgent
+4. If active exists: `harness/changes/active/spec.md`, `plan.md`, `tasks.md`, and relevant `reviews/`
+5. If no active exists and `harness/evolution/pending.md` exists: read it before `docs/STATUS.md`,
+   mention it as pending maintenance, and ask whether to handle it now unless the user already
+   prioritized the current task. Asking or reading does not start auto-evolve.
 6. If no active exists and no pending evolution exists: `docs/STATUS.md`
 7. Relevant architecture, design, API, or reference docs for the task
 8. `harness/changes/INDEX.json` only when selecting historical context
 9. Selected archived `summary.md` files only
-10. Selected archived spec/tasks/reviews only for explicit resume, review, failure debugging, or auto-evolve evidence extraction
+10. Selected archived spec/plan/tasks/reviews only for explicit resume, review, failure debugging, or auto-evolve evidence extraction
 
 The normal path reads current task context and stable docs. If active change exists, do not use
 `docs/STATUS.md` as authority. Archive history is never loaded wholesale. Search or read history
 only when the user asks to continue prior work, STATUS points to an archive path, the current task
 matches INDEX modules/files/tags, a current failure matches historical validation notes, or
-`harness/evolution/pending.md` selects a bounded archive window.
+`harness/evolution/pending.md` records a bounded trigger snapshot. When processing starts, refresh
+`harness/changes/INDEX.json` and use the current eligible archive window.
 
 ## 4. `docs/ECL.md` Required Contents
 
@@ -595,6 +734,8 @@ slug: "$slug"
 status: "in_progress"
 location: "active"
 phase: "intake"
+intake_status: "pending"
+spec_review: "pending"
 plan_review: "pending"
 modules: []
 files: []
@@ -620,20 +761,28 @@ Pending.
 
 ## Next Step
 
-- Clarify constraints and update ``spec.md``.
+- Run Intake Review, then update ``spec.md`` and ``plan.md``.
 "@
   Write-Text (Join-Path $Active "spec.md") @"
 # Spec
 
-## Evidence
+## Intake Review
+
+- Intake type: Small Change | Structured Change
+- Input shape: requirement-first | plan-first | mixed
+- Questions asked this round: 0
+
+## Goal And Evidence
 
 - Real problem or user request:
 - Current behavior:
 - Source of evidence:
 
-## Requirement Hypotheses
+## User Scenarios And Success
 
-- Pending.
+- Primary user/system scenario:
+- Success criteria:
+- Acceptance criteria:
 
 ## Non-Goals
 
@@ -643,28 +792,64 @@ Pending.
 
 - Pending.
 
-## Acceptance Criteria
+## Assumptions
 
 - Pending.
 
-## Options
+## Open Questions
+
+- [NEEDS CLARIFICATION: Replace with a specific high-impact question, or remove before implementation.]
+
+## Resolved Clarifications
+
+- Pending.
+"@
+  Write-Text (Join-Path $Active "plan.md") @"
+# Plan
+
+## Technical Approach
 
 - Pending.
 
-## Red/Blue Notes
+## Impacted Modules And Files
+
+- Pending.
+
+## Interfaces, Data, Permissions
+
+- Pending.
+
+## Spec Gaps Found From Planning
+
+- Pending.
+
+## Risks And Mitigations
+
+- Pending.
+
+## Verification Plan
 
 - Pending.
 "@
   Write-Text (Join-Path $Active "tasks.md") @"
 # Tasks
 
-## Implementation Tasks
+## Format
 
-- [ ] Pending implementation task.
+- ``- [ ] T001 [P?] [US?] Action with target path and validation note``
+- ``[P]`` means parallel-safe. ``[US1]`` maps to a user story when stories exist.
 
-## Test Tasks
+## Setup / Intake
 
-- [ ] Pending validation task.
+- [ ] T001 Review ``spec.md`` and ``plan.md`` gates before implementation.
+
+## Implementation
+
+- [ ] T002 Pending implementation task with target path.
+
+## Validation
+
+- [ ] T003 Pending validation task with command or scenario.
 
 ## Deferred Tasks
 
@@ -673,15 +858,27 @@ Pending.
   Write-Text (Join-Path $Active "reviews/review.md") @"
 # Review
 
+## Intake Review
+
+- Status: pending
+- Notes:
+
+## Spec Review
+
+- Status: pending
+- Open high-impact clarifications:
+- WHAT/HOW separation:
+
 ## Plan Review
 
 - Status: pending
+- Spec gaps found from planning:
 
 ## Code Review
 
 - Status: pending
 
-## Test Review
+## Validation Review
 
 - Status: pending
 "@
@@ -691,6 +888,10 @@ Pending.
 
 function Validate-Change([string]$Dir) {
   $required = @("summary.md", "spec.md", "tasks.md")
+  $isActive = ((Resolve-Path -LiteralPath $Dir).Path -eq (Resolve-Path -LiteralPath $Active).Path)
+  if ($isActive) {
+    $required = @("summary.md", "spec.md", "plan.md", "tasks.md")
+  }
   foreach ($file in $required) {
     if (-not (Test-Path -LiteralPath (Join-Path $Dir $file))) {
       throw "Missing $file in $Dir"
@@ -703,7 +904,22 @@ function Validate-Change([string]$Dir) {
   $meta = Parse-FrontMatter $summary
   $status = $meta["status"]
   if (-not $status) { throw "summary.md missing status front matter." }
+  $phase = $meta["phase"]
+  $planReview = $meta["plan_review"]
+  $spec = Read-Text (Join-Path $Dir "spec.md")
+  $reviewText = ""
+  $reviewPath = Join-Path $Dir "reviews/review.md"
+  if (Test-Path -LiteralPath $reviewPath) { $reviewText = Read-Text $reviewPath }
   $tasks = Read-Text (Join-Path $Dir "tasks.md")
+  if ($isActive -and $phase -match "^(implement|validate|done)$" -and $spec -match "\[NEEDS CLARIFICATION:") {
+    throw "spec.md has high-impact [NEEDS CLARIFICATION] markers. Resolve them or move the change back to intake/plan before implementation."
+  }
+  if ($isActive -and $phase -match "^(implement|validate|done)$" -and $planReview -ne "approved" -and $reviewText -notmatch "(?is)Plan Review.*Status:\s*approved") {
+    throw "summary.md plan_review must be approved before implementation. Record plan approval in summary.md or reviews/review.md."
+  }
+  if ($isActive -and $tasks -match "(?m)^- \[[ xX]\] (?!T\d{3})" -and $tasks -notmatch "## Deferred Tasks") {
+    throw "tasks.md task lines must use T### ids with target paths and validation notes so agents can execute them predictably."
+  }
   if ($status -eq "completed") {
     $validation = Get-ValidationStatus $summary $meta
     if ($validation -ne "pass") { throw "completed change must have validation_status: pass or a passing Validation section." }
@@ -796,7 +1012,7 @@ function Search-Index([string]$Query) {
 
 function Show-Context {
   Write-Output "Required:"
-  foreach ($p in @("AGENTS.md", "docs/ECL.md", "harness/changes/active/summary.md", "harness/changes/active/spec.md", "harness/changes/active/tasks.md")) {
+  foreach ($p in @("AGENTS.md", "docs/ECL.md", "harness/changes/active/summary.md", "harness/changes/active/spec.md", "harness/changes/active/plan.md", "harness/changes/active/tasks.md")) {
     if (Test-Path -LiteralPath (Join-Path $Root $p)) { Write-Output "- $p" }
   }
   if (-not (Test-Path -LiteralPath (Join-Path $Root "harness/changes/active/summary.md")) -and
@@ -890,6 +1106,15 @@ function Write-State($State) {
   Write-Text $StatePath (($State | ConvertTo-Json -Depth 8) + "`n")
 }
 
+function Test-AutoEvolveArchive($Item) {
+  $id = [string]$Item.id
+  if ($id -match "^auto-evolve-harness-") { return $true }
+  foreach ($tag in @($Item.tags)) {
+    if ([string]$tag -eq "auto-evolve") { return $true }
+  }
+  return $false
+}
+
 function Get-ArchiveItems {
   if (-not (Test-Path -LiteralPath $IndexPath)) {
     throw "Missing harness/changes/INDEX.json. Run scripts/harness-change.ps1 reindex first."
@@ -898,7 +1123,9 @@ function Get-ArchiveItems {
   if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
   $parsed = $raw | ConvertFrom-Json
   $items = @($parsed | ForEach-Object { $_ })
-  return @($items | Where-Object { $_.location -eq "archive" } | Sort-Object updated_at, id)
+  return @($items | Where-Object {
+    $_.location -eq "archive" -and -not (Test-AutoEvolveArchive $_)
+  } | Sort-Object updated_at, id)
 }
 
 function Ensure-ResultsHeader {
@@ -933,37 +1160,55 @@ function New-Pending([object[]]$ArchiveItems, $State, [string]$TriggerReason) {
     $candidateLines += "- $path/summary.md"
   }
   $now = (Get-Date).ToString("s")
-  $content = @"
+  $content = @'
 # Harness Evolution Pending
 
-Generated at: $now
+Generated at: {{NOW}}
 
 ## Trigger
 
-- Reason: $TriggerReason
-- Archived changes since last evolution: $($ArchiveItems.Count - [int]$State.last_evolved_archive_count)
-- Threshold: $($State.threshold)
-- Scan window: $($State.window)
+- Reason: {{TRIGGER_REASON}}
+- Eligible archived changes since last evolution: {{DELTA}}
+- Threshold: {{THRESHOLD}}
+- Scan window: {{WINDOW}}
 - INDEX source: harness/changes/INDEX.json
+- Excludes: archive ids beginning with auto-evolve-harness- and archives tagged auto-evolve
 
 ## Candidate Archives
 
-$($candidateLines -join "`n")
+{{CANDIDATE_LINES}}
+
+These candidates are the trigger snapshot. Before processing, rebuild `harness/changes/INDEX.json`
+and use the current eligible archive window so changes closed after this file was generated are not
+missed.
 
 ## Instruction For Codex
 
 Run harness auto-evolve:
 1. Read docs/ECL.md and this pending file.
-2. Inspect the candidate archive summaries first.
-3. Read spec/tasks/reviews only when evidence requires it.
+2. Rebuild `harness/changes/INDEX.json`, then inspect the current eligible archive window first.
+3. Read spec/plan/tasks/reviews only when evidence requires it.
 4. Extract repeated failures, verification gaps, user corrections, and reusable constraints.
 5. Generate `harness/evolution/proposals/YYYY-MM-DD-auto-evolve.md` from the proposal template in docs/ECL.md or references/ecl-harness.md before editing harness files.
-6. Request one independent auditor/subagent score before applying. No independent scorer = no auto-apply.
+6. Request one independent auditor/subagent score before applying. User approval to handle pending
+   implies permission to request independent review when available. If the environment still
+   requires explicit authorization, ask once. If scoring is unavailable, declined, or still
+   unauthorized after asking, record `status=noop` with `eval_mode=dry_run` and do not auto-apply.
 7. Apply only accepted candidates with archive evidence, project relevance, score >= 80, and independent approval.
 8. Prefer clarifying existing rules over adding new sections, documents, scripts, or workflows.
 9. Run harness checks and relevant business gates.
-10. Keep only if verification passes; otherwise revert the delta. Record `keep`, `revert`, `rejected`, or `noop` in `harness/evolution/results.tsv`, with a clear note for rejected/noop/revert.
-"@
+10. Record one terminal result in `harness/evolution/results.tsv`: `keep` for accepted deltas,
+    `noop` for reviewed evidence with no durable rule, `rejected` for pre-apply hard-gate
+    failures, or `revert` if an applied delta fails validation.
+11. Run `harness-evolve mark-complete` after writing the result. If you cannot complete these
+    steps, park or close blocked; do not close completed while leaving the same pending file.
+'@
+  $content = $content.Replace("{{NOW}}", $now)
+  $content = $content.Replace("{{TRIGGER_REASON}}", $TriggerReason)
+  $content = $content.Replace("{{DELTA}}", [string]($ArchiveItems.Count - [int]$State.last_evolved_archive_count))
+  $content = $content.Replace("{{THRESHOLD}}", [string]$State.threshold)
+  $content = $content.Replace("{{WINDOW}}", [string]$State.window)
+  $content = $content.Replace("{{CANDIDATE_LINES}}", ($candidateLines -join "`n"))
   Write-Text $PendingPath $content
   $State.pending = $true
   Write-State $State
@@ -981,7 +1226,11 @@ function Check-Evolution {
   if (-not $state.threshold) { $state.threshold = $Threshold }
   if (-not $state.window) { $state.window = $Window }
   $archives = @(Get-ArchiveItems)
-  $delta = $archives.Count - [int]$state.last_evolved_archive_count
+  if ([int]$state.last_evolved_archive_count -gt $archives.Count) {
+    $state.last_evolved_archive_count = $archives.Count
+    Write-State $state
+  }
+  $delta = [Math]::Max(0, $archives.Count - [int]$state.last_evolved_archive_count)
   if ($delta -lt [int]$state.threshold) {
     Write-Output "Harness evolution not due ($delta/$($state.threshold) new archived changes)."
     return
@@ -1066,13 +1315,30 @@ if (-not (Test-Path -LiteralPath $StatusPath)) {
 }
 
 if (Test-Path -LiteralPath (Join-Path $Active "summary.md")) {
-  foreach ($file in @("summary.md", "spec.md", "tasks.md")) {
+  foreach ($file in @("summary.md", "spec.md", "plan.md", "tasks.md")) {
     if (-not (Test-Path -LiteralPath (Join-Path $Active $file))) {
       Fail "Active change missing $file."
     }
   }
   if (-not (Test-Path -LiteralPath (Join-Path $Active "reviews"))) {
     Fail "Active change missing reviews/."
+  }
+  $summary = Get-Content -Encoding UTF8 -Raw -LiteralPath (Join-Path $Active "summary.md")
+  $spec = Get-Content -Encoding UTF8 -Raw -LiteralPath (Join-Path $Active "spec.md")
+  $tasks = Get-Content -Encoding UTF8 -Raw -LiteralPath (Join-Path $Active "tasks.md")
+  $review = ""
+  $reviewPath = Join-Path $Active "reviews/review.md"
+  if (Test-Path -LiteralPath $reviewPath) { $review = Get-Content -Encoding UTF8 -Raw -LiteralPath $reviewPath }
+  $phase = [regex]::Match($summary, '(?m)^phase:\s*"?([^"\r\n]+)"?').Groups[1].Value
+  $planReview = [regex]::Match($summary, '(?m)^plan_review:\s*"?([^"\r\n]+)"?').Groups[1].Value
+  if ($phase -match "^(implement|validate|done)$" -and $spec -match "\[NEEDS CLARIFICATION:") {
+    Fail "Active spec.md still has high-impact [NEEDS CLARIFICATION] markers. Resolve them or move phase back to intake/plan."
+  }
+  if ($phase -match "^(implement|validate|done)$" -and $planReview -ne "approved" -and $review -notmatch "(?is)Plan Review.*Status:\s*approved") {
+    Fail "Active change cannot enter implementation until plan_review is approved in summary.md or an equivalent approved Plan Review is recorded."
+  }
+  if ($tasks -match "(?m)^- \[[ xX]\] (?!T\d{3})") {
+    Fail "tasks.md contains executable task lines without T### ids. Use '- [ ] T001 [P?] [US?] Action with target path and validation note'."
   }
 }
 
@@ -1159,5 +1425,7 @@ If `lint-ecl` reports stale `INDEX.json`, run the generated `harness-change rein
 then rerun `lint-ecl`.
 If `lint-ecl` reports missing `docs/STATUS.md`, create it from the STATUS template. Do not let
 CI or hooks generate it automatically.
-If `harness/evolution/pending.md` exists and no active change exists, run the Codex auto-evolve
-workflow before ordinary resume work. Do not let hooks or CI apply the pending changes.
+If `harness/evolution/pending.md` exists and no active change exists, read it as pending
+maintenance before `docs/STATUS.md`. Reading it does not start auto-evolve or block ordinary user
+work. Once Codex starts acting on pending evidence, finish with proposal + results.tsv +
+`harness-evolve mark-complete`, or park/block. Do not let hooks or CI apply pending changes.
