@@ -181,12 +181,26 @@ When generating ECL guidance for a target project, keep the process small enough
 | **Small Change** | Local, low-risk edits such as copy, comments, style-only tweaks, or single-file bug fixes with no interface, data, permission, architecture, or release impact | Active change optional; still record the verification command in the final response or existing task notes |
 | **Structured Change** | Cross-file/module behavior, APIs, data model, permissions, architecture, validation chain, unclear requirements, or work likely to exceed 20 minutes | Use active change files and require intake/spec/plan review before implementation |
 
+Decision tree:
+
+1. If an active change already exists, keep using it; do not create a second active context.
+2. If the change is copy, comments, README text, formatting, or an obviously local single-file fix
+   with no runtime, API, data, permission, architecture, or validation-chain impact, treat it as
+   Small Change.
+3. If the change touches APIs, data, permissions, architecture, multiple modules, release/runtime
+   behavior, or unclear requirements, treat it as Structured Change.
+4. If impact is unclear, do read-only investigation first. If uncertainty remains after inspection,
+   ask one high-impact question or upgrade to Structured Change; do not assume Small Change.
+
 For structured changes, support both common entry points:
 
 - **Requirement-first input**: extract target users/scenarios, evidence, success criteria,
   acceptance criteria, non-goals, constraints, assumptions, and risks into `spec.md`.
 - **Plan-first input**: treat the user's plan as a draft, split WHAT/WHY into `spec.md` and HOW into
   `plan.md`, then ask only about high-impact gaps that affect implementation direction or acceptance.
+  If the plan is complete and does not conflict with repository evidence, do not repeat a full
+  interview. If it conflicts with code, docs, commands, or existing harness constraints, record the
+  conflict and return to Intake Review.
 
 Questions are allowed and expected, but must be bounded: ask at most three high-impact questions per
 round. Low-risk unknowns become assumptions; high-impact unknowns become
@@ -524,6 +538,9 @@ semantic improvement pass.
 
 Trigger model: `harness-change close` and `reindex` run `harness-evolve check`; `new` only reminds
 when pending exists. Hooks and CI may warn, but must not modify docs, scripts, STATUS, or changes.
+Generated scripts do not call subagents. They only count archive evidence and create pending
+context. The Codex run that handles pending evolution should request an independent auditor/subagent
+when the environment and user authorization allow it.
 
 When `harness/evolution/pending.md` exists and no active change exists, create
 `auto-evolve-harness-{date}`, read the bounded archive window, write a proposal, then apply only

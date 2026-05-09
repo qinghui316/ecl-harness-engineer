@@ -41,7 +41,10 @@ Before implementation starts, require an approved plan review. Record it as
 Structured changes use plan-aware intake. If the user provides only a requirement, ask the smallest
 set of high-impact questions needed to draft `spec.md`. If the user already provides a plan, review
 that plan as a draft, split WHAT/WHY into `spec.md` and HOW into `plan.md`, and ask only about gaps
-that affect implementation direction or acceptance. Each intake round asks at most three questions.
+that affect implementation direction or acceptance. If the plan is complete and does not conflict
+with repository evidence, do not restart the interview. If it conflicts with code, docs, commands,
+or existing harness constraints, record the conflict and return to Intake Review. Each intake round
+asks at most three questions.
 Low-risk unknowns become assumptions; high-impact unknowns become `[NEEDS CLARIFICATION: ...]` and
 block implementation.
 
@@ -60,6 +63,16 @@ Small, local fixes can skip `harness/changes` if the final response records vali
 Evidence, non-goals, options, and plan review are mandatory for non-trivial active changes. Small
 local fixes that skip a change do not need the full template, but the final response must still
 record assumptions and validation.
+
+Decision tree:
+
+1. Existing active change: keep using it; do not create another active context.
+2. Small Change: copy, comments, README text, formatting, or an obviously local single-file fix with
+   no runtime, API, data, permission, architecture, or validation-chain impact.
+3. Structured Change: APIs, data, permissions, architecture, multiple modules, release/runtime
+   behavior, unclear requirements, or work likely to exceed 20 minutes.
+4. Unclear impact: inspect read-only first. If uncertainty remains, ask one high-impact question or
+   upgrade to Structured Change; do not assume Small Change.
 
 ### 1.3 Change lifecycle
 
@@ -109,6 +122,9 @@ Codex writes proposal -> independent scoring -> smallest harness delta -> verify
 Rules:
 
 - `scripts/harness-evolve.*` only performs mechanical counting and pending generation.
+- Generated scripts do not call subagents. They create pending context; the Codex run that handles
+  pending evolution requests an independent auditor/subagent when the environment and user
+  authorization allow it.
 - Codex performs semantic extraction and file edits, inside a dedicated active change.
 - Codex must write a proposal before editing harness files. Rejected candidates stay in the
   proposal and must not enter AGENTS.md, ECL, STATUS, lint, or CI.
@@ -377,6 +393,37 @@ Pending.
 
 Complex tasks may split `spec.md`, `plan.md`, or `tasks.md` into focused supporting files only when
 the single files become hard to navigate. Do not split small or ordinary changes by default.
+
+### 2.6 Short response examples
+
+Small Change final response:
+
+```markdown
+Updated the README typo. I treated this as a Small Change because it only touched documentation copy
+and had no runtime, API, data, permission, or architecture impact.
+
+Verification: reviewed the README diff.
+```
+
+Structured blocker response:
+
+```markdown
+I cannot safely move this to implementation yet. The draft plan leaves high-impact gaps:
+
+1. Which roles or actors must be supported?
+2. Which resources/actions require enforcement?
+3. What acceptance scenario proves the change works?
+
+I would record these in `spec.md` as `[NEEDS CLARIFICATION: ...]` and keep `plan_review: pending`.
+```
+
+Complete plan accepted response:
+
+```markdown
+The provided plan includes goal, acceptance criteria, non-goals, constraints, verification commands,
+and no conflicts with repository evidence. I would split it into `spec.md` for WHAT/WHY, `plan.md`
+for HOW, generate `tasks.md`, and proceed without another intake interview.
+```
 
 ## 3. Context Loading
 

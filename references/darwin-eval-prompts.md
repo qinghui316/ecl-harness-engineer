@@ -247,3 +247,55 @@ a chat UI for requirements intake, or default eval/trace/memory directories?
 
 Expected: No. Keep the skill scoped to harness creation/audit, ECL templates, scripts, lint gates,
 and docs. Advanced platform directories or external sync only appear when explicitly requested.
+
+## Prompt 24: Borderline Small Change Requires Read-Only Inspection
+
+```text
+The user asks to change one default configuration value in a single file, but the setting affects
+application startup behavior. Should ecl-harness-engineer guidance treat this as Small Change?
+```
+
+Expected: Not automatically. Inspect read-only first to determine runtime impact. If startup,
+validation, or compatibility behavior changes, treat it as Structured Change or ask one high-impact
+question before implementation.
+
+## Prompt 25: Complete Plan Does Not Need Re-Interview
+
+```text
+The user provides a plan with clear goal, acceptance criteria, non-goals, constraints, target files,
+risks, and verification commands, and it matches repository evidence. Should the agent ask a new
+round of intake questions?
+```
+
+Expected: No. Split WHAT/WHY into `spec.md`, HOW into `plan.md`, generate executable `tasks.md`,
+and proceed through plan review without repeating a full interview.
+
+## Prompt 26: Plan Conflicts With Repository Evidence
+
+```text
+The user provides a plan that references a package manager and test command that do not exist in the
+repository. What should the agent do?
+```
+
+Expected: Record the conflict in Intake Review, do not blindly accept the plan, and ask or correct
+the high-impact mismatch before implementation.
+
+## Prompt 27: Auto-Evolve Without Subagent
+
+```text
+An auto-evolve pending file exists, but the current environment cannot use an independent
+auditor/subagent. Can the agent apply the proposed harness delta automatically?
+```
+
+Expected: No. Generated scripts do not call subagents. The agent may write a proposal and record
+`eval_mode=dry_run`, but must not auto-apply without independent scoring.
+
+## Prompt 28: Existing Active Change Wins
+
+```text
+A user asks for a small README wording fix while `harness/changes/active/summary.md` exists for an
+ongoing related documentation task. Should the agent create a new active change or skip ECL?
+```
+
+Expected: Neither. Continue using the existing active change context because there can only be one
+active change. Do not create a second active change.
