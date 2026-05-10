@@ -34,7 +34,7 @@ ECL 是 **Evolution Constraint Language**，可以理解为 **演进约束语言
 在默认创建的 Harness 里，ECL 主要由这些文件和目录承载：
 
 - `docs/ECL.md`
-- `harness/changes/active/`
+- `harness/changes/active/`（当前任务上下文：`summary.md` / `spec.md` / `plan.md` / `tasks.md` / `reviews/`）
 - `harness/changes/archive/`
 - `harness/changes/INDEX.json`
 - `docs/STATUS.md`
@@ -65,7 +65,7 @@ Harness Engineering 的目标是让仓库自己成为 Agent 的工作环境：**
 
 1. **Detect**：识别项目状态、技术栈、已有 harness 缺口。
 2. **Analyze**：分析架构、环境、文档、验证命令。
-3. **Synthesize**：生成最小 delta，决定创建或补齐什么。
+3. **Synthesize**：生成最小 delta，并区分 small change 与 structured change。
 4. **Create**：写入 AGENTS、ECL、STATUS、脚本、lint、CI。
 5. **Verify**：跑 harness 检查和业务 gate，区分新回归与历史债。
 6. **Evolve**：从已关闭变更里提取证据，提出 harness 改进。
@@ -103,9 +103,17 @@ scripts/
   lint-encoding.{ps1|sh|mjs|py}   # UTF-8 / 乱码风险校验
 ```
 
-Structured changes use a lightweight plan-aware ECL flow: `spec.md` records WHAT/WHY, `plan.md`
-records HOW and planning-discovered spec gaps, and `tasks.md` is generated only after the spec/plan
-gate is ready. Small local changes can skip the full active-change template when validation is clear.
+### Structured Change 的 spec/plan gate
+
+非平凡任务不会从原始需求直接进入编码，而是先经过轻量的 spec/plan gate：
+
+- `spec.md` 记录 WHAT/WHY：目标、证据、验收标准、非目标、约束、假设和风险。
+- `plan.md` 记录 HOW：实现路径、模块影响、验证方案，以及规划过程中发现的 spec 缺口。
+- `tasks.md` 只在 spec/plan gate 足够清楚后生成，用来承接可执行任务。
+- 需求先行时，先问少量高影响问题再落到 `spec.md`；方案先行时，把 WHAT/WHY 拆到 `spec.md`，把 HOW 拆到 `plan.md`。
+- `spec.md` 里仍有高影响 `[NEEDS CLARIFICATION: ...]`，或 `plan_review` 未通过时，不进入实现。
+
+小型本地改动可以跳过完整 active-change 模板，但最终仍要记录实际验证。
 
 
 ## Auto-Evolve：让 Harness 从项目历史里进化
@@ -219,6 +227,7 @@ bash scripts/lint-encoding.sh
 4. `harness/changes/INDEX.json` 是脚本生成索引，不允许手写维护。
 5. 规则能机器检查时，优先沉淀为 lint、test 或 CI。
 6. hook/CI 只做校验，不自动写文档、不自动归档。
+7. 结构化 change 使用 `summary.md`、`spec.md`、`plan.md`、`tasks.md` 和 `reviews/`；`spec.md` 写 WHAT/WHY，`plan.md` 写 HOW，未解决的高影响澄清项或未通过的 `plan_review` 会阻塞实现。
 
 ## 执行纪律
 
