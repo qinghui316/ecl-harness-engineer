@@ -130,10 +130,13 @@ See [Development Setup](docs/DEVELOPMENT.md) for complete reference.
 - Active ECL change constraints are the current task source of truth and override generic project guidance and `docs/STATUS.md` for that task.
 - Do not overwrite active ECL change context; park or close it through the harness script first.
 - Do not hand-edit generated indexes such as `harness/changes/INDEX.json`.
+- This file is not a phase ledger, archive ledger, or harness creation report. Keep historical detail in `harness/changes/archive/` and use `docs/STATUS.md` only as a short handoff pointer.
 
 ---
 
-**Note**: This file is a project navigation map (~100 lines). Details live in linked documents.
+**Note**: This file is a project navigation map. New/simple harnesses usually stay around 80-120
+lines; mature harnesses may reach about 120-180 lines only when the added lines are current project
+navigation or current operating constraints. Details live in linked documents.
 ```
 
 ---
@@ -191,6 +194,10 @@ Use `docs/STATUS.md` as a lightweight handoff file. It should be short enough to
 - Do not load all archive history by default.
 - Start with the selected archived `summary.md`.
 - Read archived spec/plan/tasks/reviews only for explicit resume, debugging, review, or failure analysis.
+- Do not copy closeout narratives, old roadmap phases, or obsolete "current plan" text into this
+  file. Keep them in archive summaries and link to the relevant summary when needed.
+- If a newer active change, archive, or validation result supersedes this file, update this file as
+  a compact derived handoff, not as an append-only log.
 ```
 
 Close-change update rule:
@@ -199,6 +206,8 @@ Close-change update rule:
 - If `harness/evolution/pending.md` was generated and no active work remains, list harness evolution as the next recommended work.
 - Run the harness lint command after the STATUS and INDEX updates.
 - CI/hooks may validate STATUS, but must not auto-write it.
+- When updating STATUS, classify old handoff content as retain, merge, retire, or archive-only.
+  STATUS should remain current-state handoff, not a full history database.
 
 ---
 
