@@ -66,6 +66,10 @@ This is the most important quality requirement. An error message that only says 
 - A temporary regenerated index matches `harness/changes/INDEX.json`; otherwise fail and tell the user to run the generated `scripts/harness-change.* reindex` equivalent.
 - `scripts/harness-evolve.*` and `harness/evolution/state.json` exist for core auto-evolve threshold checking.
 - If `harness/evolution/pending.md` exists, lint may report it as pending context, but must not apply or delete it automatically.
+- Lint may include non-fatal documentation-entropy warnings for oversized AGENTS/STATUS, duplicate
+  archive closeout text, or suspicious stale current-state words such as "current plan", "next
+  phase", "baseline", and "roadmap". These warnings should point to review, not automatically
+  rewrite docs or fail mature projects solely on line count.
 
 ### scripts/lint-encoding.{ps1|sh|mjs|py}
 
@@ -103,6 +107,10 @@ Use templates from `references/linter-templates.md` as starting points, then cus
    or `build` checks to make CI pass. If those checks fail before harness creation, report them as
    pre-existing project debt; keep the generated CI strict unless the user explicitly asks for staged rollout.
 
+8. **Semantic entropy checks stay human-reviewed by default**: line count, repeated current-state
+   text, and stale roadmap language are useful alarms, but they are not sufficient proof of failure.
+   Prefer review-template coverage unless the target project explicitly wants a stricter lint rule.
+
 ## Verification
 
 After creating linters, verify:
@@ -117,6 +125,10 @@ make lint-arch
 # ECL and encoding checks pass
 {ecl_lint_command}
 {encoding_lint_command}
+
+# Optional documentation entropy review
+wc -l AGENTS.md docs/STATUS.md
+grep -RIn "current plan\\|next phase\\|baseline\\|roadmap" AGENTS.md docs/*.md harness/changes/active 2>/dev/null || true
 
 # Count covered packages vs total packages
 # (should be 100%)

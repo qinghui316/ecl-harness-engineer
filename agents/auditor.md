@@ -24,7 +24,7 @@ or metrics.
 | Check | How | Pass Criteria |
 |-------|-----|---------------|
 | AGENTS.md exists | `test -f AGENTS.md` | File exists |
-| AGENTS.md size | `wc -l AGENTS.md` | 80-120 lines |
+| AGENTS.md size and role | `wc -l AGENTS.md` plus manual review | New/simple: about 80-120 lines; mature: about 120-180 lines only with current navigation/constraints; never a phase or archive ledger |
 | AGENTS.md has numbered sections | Count `##` headers | ≥ 5 sections |
 | ARCHITECTURE.md exists | `test -f docs/ARCHITECTURE.md` | File exists |
 | ARCHITECTURE.md has Mermaid diagrams | `grep 'mermaid' docs/ARCHITECTURE.md` | At least 1 |
@@ -36,6 +36,8 @@ or metrics.
 | ECL doc defines lifecycle | Read docs/ECL.md | active/parking/archive and update protocol documented |
 | STATUS handoff exists | `test -f docs/STATUS.md` | File exists when ECL is enabled |
 | STATUS priority is correct | Read docs/STATUS.md and AGENTS.md | Active change overrides STATUS; STATUS is used only when no active exists |
+| Documentation entropy is controlled | Read AGENTS.md, STATUS, ECL, recent archive summaries | No duplicated closeout narrative; stale current-state/roadmap language retired or historicalized |
+| Experience lifecycle is documented | Read docs/ECL.md and review template | Promote/Retain/Merge/Retire/Archive-only decisions are available for auto-evolve and doc cleanup |
 
 ### 2. Linters (Weight: 20%)
 
@@ -110,6 +112,7 @@ or metrics.
 | independent scoring documented | Read docs/ECL.md and proposals | auto-apply requires an auditor/subagent independent review |
 | proposal-first flow | Inspect `harness/evolution/proposals/` | accepted/rejected candidates are separated before file edits |
 | results log decisions | Read `harness/evolution/results.tsv` | status is one of keep/revert/rejected/noop and eval_mode is present |
+| retention scan included | Read proposals/reviews | candidates are classified as Promote, Retain, Merge, Retire, or Archive-only, including noop rationale |
 
 ## Auto-Evolve Independent Review
 
@@ -134,6 +137,8 @@ Hard rejection conditions:
 - Candidate would default-create `harness/eval`, `harness/trace`, `harness/state`,
   `harness/checkpoints`, `harness/memory`, or `harness/metrics`.
 - Candidate would put rejected material into AGENTS.md, ECL, STATUS, lint, or CI.
+- Candidate only appends rules while ignoring duplicated current facts, stale current-state language,
+  or obvious merge/retire/archive-only decisions.
 
 Decision rules:
 

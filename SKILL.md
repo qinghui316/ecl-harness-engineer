@@ -378,6 +378,39 @@ For significant changes:
 
 ---
 
+### 3.4 Documentation Entropy Delta
+
+For existing or mature harnesses, compute documentation entropy before creating more rules. The
+goal is not a smaller file at all costs; the goal is that current docs stay compact, current, and
+useful while archives keep detailed history.
+
+Check:
+
+- `AGENTS.md` size and role: new harnesses should usually stay around 80-120 lines; mature
+  harnesses may grow to about 120-180 lines only when the extra lines are project navigation or
+  current operating constraints. Anything above that needs an explicit retention reason or a
+  compression plan.
+- `docs/STATUS.md` size and role: it is a handoff map, not an archive database or phase ledger.
+- Duplicated current facts: closeout narratives, validation summaries, or "current plan" language
+  repeated across AGENTS, STATUS, ECL, and archived changes.
+- Stale current-state language: old roadmap phases, next-step claims, or baseline descriptions that
+  conflict with newer STATUS, active change files, or archive evidence.
+- Archive-link density: current docs should point to selected archive summaries or INDEX queries,
+  not copy archive contents forward.
+
+Classify each candidate rule or paragraph:
+
+| Decision | Meaning |
+|----------|---------|
+| Promote | Move a repeated archive-proven constraint into ECL, lint, templates, or AGENTS when it is current and reusable |
+| Retain | Keep as-is because it is current, short, and still needed |
+| Merge | Combine duplicate current facts into one authoritative location |
+| Retire | Remove obsolete current-state text that conflicts with newer evidence |
+| Archive-only | Leave detailed history in `harness/changes/archive/` and link to it only when needed |
+
+Do not hard-code product-specific document names, phase names, or roadmap labels from one mature
+project into the generic harness. Extract the general lifecycle rule instead.
+
 ## Phase 4: Creation/Update
 
 **Goal**: Create or update all harness files from the delta.
@@ -463,13 +496,24 @@ make lint-arch || npm run lint:arch
 # 3. Business build/test gates run
 go build ./... || npm run build || python -m compileall .
 
-# 4. AGENTS.md size check
-wc -l AGENTS.md  # Should be 80-120 lines
+# 4. AGENTS.md size and role check
+wc -l AGENTS.md
+# New/simple harness target: about 80-120 lines.
+# Mature harness allowance: about 120-180 lines when the added lines are current navigation,
+# current operating constraints, or project-specific verification guidance.
+# Above that, record an explicit retention reason or compression task.
 
 # 4b. AGENTS.md content gate
 # Confirm it explains project identity, core workflow/domain model, source entrypoints,
-# task-based verification, active-change-before-STATUS loading, and contains no
-# ECL Harness Engineer internal boundary language.
+# task-based verification, active-change-before-STATUS loading, archive-selective loading,
+# and contains no ECL Harness Engineer internal boundary language.
+
+# 4c. Documentation entropy checks
+wc -l docs/STATUS.md
+grep -RIn "current plan\\|next phase\\|baseline\\|roadmap\\|phase [0-9]" AGENTS.md docs/*.md harness/changes/active 2>/dev/null || true
+grep -RIn "harness/changes/archive/.*/.*\\.md" AGENTS.md docs/STATUS.md docs/ECL.md 2>/dev/null || true
+# Review matches manually: old roadmap/current-state claims should be historicalized or linked,
+# not copied forward as current constraints.
 
 # 5. All expected files exist
 test -f AGENTS.md && echo "✓ AGENTS.md"
@@ -502,6 +546,7 @@ AGENTS.md content gate:
 - The core product/system workflow or domain model is visible.
 - Main source entrypoints and task-to-directory mapping are visible.
 - Verification guidance maps to task type.
+- `AGENTS.md` is a map, not a phase ledger, archive ledger, or harness creation report.
 - Context loading reads `docs/ECL.md` first, then active change when present.
 - If no active change exists and `harness/evolution/pending.md` exists, read it before
   `docs/STATUS.md`, mention it as pending maintenance, and ask whether to handle it now unless the
@@ -511,6 +556,9 @@ AGENTS.md content gate:
 - For structured work, `docs/ECL.md` explains Small Change vs Structured Change, bounded Intake
   Review, plan-first input handling, and the spec/plan review gate.
 - Archive history is loaded selectively through `docs/STATUS.md` paths or `harness/changes/INDEX.json`, starting with historical `summary.md` only.
+- Current docs do not duplicate closeout narrative from archived changes.
+- Stale current-state or roadmap language is historicalized, retired, or moved to archive-only
+  references when newer active/STATUS/archive evidence supersedes it.
 - No skill-internal boundary leaks, such as sections or sentences that describe this skill's own scope limits as target-project rules.
 
 ### 5.2 STATUS.md Handoff Update
@@ -560,6 +608,14 @@ record `noop` with `eval_mode=dry_run`, keep the proposal, run `mark-complete`, 
 Machinery repair
 (`harness-evolve`, pending templates, lint) does not complete pending evolution by itself; after
 repair, still evaluate candidate archives or leave the work parked/blocked.
+
+Every pending evolution must include an Experience Retention Scan, even when the final decision is
+`noop`. For each repeated lesson or candidate rule, decide whether to Promote, Retain, Merge,
+Retire, or Archive-only. This prevents auto-evolve from becoming append-only documentation growth.
+Promote only rules that are current, project-relevant, and backed by archive evidence. Merge
+duplicate current-state facts into one authoritative location. Retire stale "current plan",
+"baseline", or roadmap language when newer evidence supersedes it. Keep detailed historical
+narrative in archive summaries rather than copying it into AGENTS, STATUS, or ECL.
 
 Detailed proposal format, scoring weights, status values, and complexity budget live in
 `references/ecl-harness.md`.
@@ -629,7 +685,10 @@ Agents cannot access Slack, Google Docs, or tribal knowledge. If it's not in the
 
 ### 2. AGENTS.md is a Map, Not a Manual
 
-Keep it 80-120 lines. Link to detailed docs, don't embed them.
+New/simple harnesses should usually keep it around 80-120 lines. Mature harnesses may reach about
+120-180 lines only when the extra lines are current navigation, current operating constraints, or
+project-specific verification guidance. Link to detailed docs; do not embed history, phase ledgers,
+archive summaries, or harness creation narrative.
 
 ### 3. Enforce Invariants Mechanically
 
@@ -668,6 +727,31 @@ window; the Candidate Archives in an old pending file are a trigger snapshot, no
 Then finish with proposal + results.tsv + `mark-complete`, or park/block the work.
 Do not turn one-off business bugs into permanent process. Keep only changes that improve the audit
 score and pass validation.
+
+### 8. Current Docs Are Compact Derived Memory
+
+Archives own historical detail. Current docs should contain the smallest current rule that still
+helps the next agent act correctly. When a mature project reveals a useful pattern, extract the
+general constraint; do not copy project-specific phase names, roadmap labels, or one-off document
+names into the generic harness.
+
+### 9. Experience Lifecycle Is Explicit
+
+Harness evolution is not append-only. Each candidate lesson must be classified as Promote, Retain,
+Merge, Retire, or Archive-only. A no-op evolution is valid only after this scan explains why no
+durable current-doc change is warranted.
+
+### 10. Blacklist For Generic Harness Updates
+
+- Do not add long-term memory, state, trace, checkpoint, metric, or eval pipelines to the core
+  harness unless the user explicitly asks for an advanced profile.
+- Do not turn one mature project's internal docs, phase names, product labels, or roadmap history
+  into generic templates.
+- Do not put old "current plan", "next phase", or "baseline" statements in AGENTS or STATUS when
+  newer evidence supersedes them.
+- Do not duplicate closeout narrative across STATUS, ECL, AGENTS, and archive summaries.
+- Do not mark auto-evolve `noop` until repeated evidence has been scanned for promote/retain/merge/
+  retire/archive-only decisions.
 
 ---
 

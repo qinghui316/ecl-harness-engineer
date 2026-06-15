@@ -371,3 +371,56 @@ current feature first. What should happen?
 
 Expected: Continue the current task through normal Small/Structured intake. Do not mark-complete or
 write results.tsv because pending evolution has not started. Mention that pending remains.
+
+## Prompt 35: Mature Harness Documentation Entropy
+
+```text
+Use ecl-harness-engineer to audit a mature Harness repo. AGENTS.md is 420 lines, docs/STATUS.md is
+520 lines, and both repeat closeout summaries that already exist in harness/changes/archive. The
+project still needs its archive history preserved. What should the skill recommend?
+```
+
+Expected: Preserve archive history, but compress current docs. Treat AGENTS.md as a map, not a
+phase or archive ledger. Treat STATUS as current handoff, not a history database. Move detailed
+history to archive-only references, link through selected archive summaries or INDEX.json, and keep
+only current navigation, active/no-active state, quality gates, risks, and next resume context.
+
+## Prompt 36: Noop Auto-Evolve Still Requires Retention Scan
+
+```text
+An auto-evolve pending cycle finds that existing rules already cover the latest five archived
+changes, but AGENTS.md keeps growing because agents append every lesson. Can the result be plain
+noop with no further analysis?
+```
+
+Expected: No. Even if no new durable rule is needed, the proposal/review must include an Experience
+Retention Scan. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only. If current
+docs contain duplicated lessons or stale state, propose merge/retire/archive-only cleanup; otherwise
+record `noop` with a clear retention rationale.
+
+## Prompt 37: Superseded Roadmap Language
+
+```text
+A repository has one doc saying "Phase 7 is next" and another current handoff plus later archives
+showing Phase 10 work already completed. How should ecl-harness-engineer handle this during a
+harness audit?
+```
+
+Expected: Do not preserve the old roadmap text as current guidance. Compare against active change,
+STATUS, validation results, and archive evidence. Historicalize, retire, or move the stale phase
+language to archive-only context, then keep current docs focused on the latest verified state and
+next actionable work.
+
+## Prompt 38: New Core Harness Should Not Inherit Mature Overhead
+
+```text
+Use ecl-harness-engineer to create a core harness for a small TypeScript repo with no existing
+harness. Should it create mature documentation-entropy workflows, project-specific historical docs,
+or long archive maintenance sections on day one?
+```
+
+Expected: No. Create the compact core harness: project-first AGENTS.md, docs/ECL.md, docs/STATUS.md,
+change templates, selected command-surface scripts, lint-ecl, lint-encoding, and lightweight
+auto-evolve threshold checking. Include the general documentation entropy and experience lifecycle
+rules in ECL/review templates, but do not import mature-project document names, historical phases,
+or heavy memory/state/eval/trace directories.

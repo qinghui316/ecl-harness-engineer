@@ -14,7 +14,7 @@ not fail or lose score just because `harness/eval`, `harness/trace`, `harness/me
 | Item | Check | Score |
 |------|-------|-------|
 | AGENTS.md exists | `test -f AGENTS.md` | 0/10 |
-| AGENTS.md is ~100 lines (not monolithic) | `wc -l AGENTS.md` should be 80-120 | 0/10 |
+| AGENTS.md is a concise map | `wc -l AGENTS.md` plus role review; new/simple 80-120, mature 120-180 with retention reason | 0/10 |
 | docs/ARCHITECTURE.md exists | `test -f docs/ARCHITECTURE.md` | 0/10 |
 | Architecture matches reality | Compare layer hierarchy to `go list ./...` | 0/20 |
 | docs/DEVELOPMENT.md exists | `test -f docs/DEVELOPMENT.md` | 0/10 |
@@ -22,8 +22,10 @@ not fail or lose score just because `harness/eval`, `harness/trace`, `harness/me
 | docs/QUALITY.md exists | `test -f docs/QUALITY.md` | 0/10 |
 | Design docs cover major components | Check docs/design-docs/ | 0/10 |
 | Reference docs are complete | Check docs/references/ | 0/10 |
+| Documentation entropy controlled | Check AGENTS/STATUS/ECL for duplicate closeout text and stale current-state language | 0/10 |
+| Experience lifecycle present | Check ECL/review templates for Promote/Retain/Merge/Retire/Archive-only decisions | 0/10 |
 
-**Total: /100 → Scale to 25%**
+**Total: normalize to /100 → Scale to 25%**
 
 ### Linter Audit (20%)
 
@@ -39,7 +41,7 @@ not fail or lose score just because `harness/eval`, `harness/trace`, `harness/me
 
 **Total: /100 → Scale to 20%**
 
-### Observability Audit (15%)
+### Observability Audit (Advanced Profile Only)
 
 | Item | Check | Score |
 |------|-------|-------|
@@ -50,7 +52,7 @@ not fail or lose score just because `harness/eval`, `harness/trace`, `harness/me
 
 **Total: /100 → Scale to 15%**
 
-### Eval Audit (20%)
+### Eval Audit (Advanced Profile Only)
 
 | Item | Check | Score |
 |------|-------|-------|
@@ -67,7 +69,7 @@ not fail or lose score just because `harness/eval`, `harness/trace`, `harness/me
 
 **Total: /100 → Scale to 20%**
 
-### Quality Automation Audit (10%)
+### Quality Automation Audit (Advanced Profile Only)
 
 | Item | Check | Score |
 |------|-------|-------|
@@ -105,7 +107,11 @@ not fail or lose score just because `harness/eval`, `harness/trace`, `harness/me
 ### Calculating Overall Score
 
 ```
-Overall = (Doc × 0.25) + (Linter × 0.20) + (Obs × 0.15) + (Eval × 0.20) + (Quality × 0.10) + (Integration × 0.10)
+Core Overall = (Doc × 0.35) + (Linter × 0.25) + (Environment/ECL × 0.20) + (Integration × 0.20)
+
+Advanced Overall = include Observability, Eval, and Quality Automation only when the user or
+repository explicitly enables those profiles. Do not score missing advanced directories as failures
+for a normal core ECL harness.
 ```
 
 ### Score Interpretation
@@ -162,6 +168,37 @@ go list ./... | grep -v vendor
 
 **Missing from docs:**
 - 300105 NotFoundError (added in PR #123)
+```
+
+### Documentation Entropy Report
+
+```markdown
+## Documentation Entropy Analysis
+
+### AGENTS.md Role And Size
+
+- Lines: [count]
+- Classification: new/simple | mature
+- Decision: pass | compress | split | historicalize
+- Reason:
+
+### STATUS.md Handoff Scope
+
+- Lines: [count]
+- Contains only current handoff: yes/no
+- Archive ledger risk:
+
+### Current-State Claims
+
+| Claim | Location | Evidence | Decision |
+|-------|----------|----------|----------|
+| [current plan / baseline / roadmap text] | `docs/...` | [active/STATUS/archive evidence] | Retain / Merge / Retire / Archive-only |
+
+### Duplicated Closeout Narrative
+
+| Text / Topic | Locations | Decision |
+|--------------|-----------|----------|
+| [summary] | `docs/STATUS.md`, `archive/.../summary.md` | Keep archive, shorten STATUS pointer |
 ```
 
 ### Linter Gap Report
@@ -453,17 +490,17 @@ func auditDocumentation() AuditResult {
 		r.Items = append(r.Items, AuditItem{Name: "docs/references/", Score: 0, Max: 20, Notes: "empty or missing"})
 	}
 
-	// Remaining 20 points for AGENTS.md line count
+	// Remaining 20 points for AGENTS.md line count and role
 	if data, err := os.ReadFile("AGENTS.md"); err == nil {
 		lines := len(strings.Split(string(data), "\n"))
-		if lines >= 80 && lines <= 150 {
+		if lines >= 80 && lines <= 180 {
 			r.Score += 20
 			r.Items = append(r.Items, AuditItem{Name: "AGENTS.md size", Score: 20, Max: 20, Notes: fmt.Sprintf("%d lines", lines)})
 		} else if lines < 80 {
 			r.Items = append(r.Items, AuditItem{Name: "AGENTS.md size", Score: 10, Max: 20, Notes: fmt.Sprintf("%d lines (too short)", lines)})
 			r.Score += 10
 		} else {
-			r.Items = append(r.Items, AuditItem{Name: "AGENTS.md size", Score: 5, Max: 20, Notes: fmt.Sprintf("%d lines (too long, should be map)", lines)})
+			r.Items = append(r.Items, AuditItem{Name: "AGENTS.md size", Score: 5, Max: 20, Notes: fmt.Sprintf("%d lines (too long unless mature retention is justified)", lines)})
 			r.Score += 5
 		}
 	}
