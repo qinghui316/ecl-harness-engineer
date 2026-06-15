@@ -10,12 +10,16 @@
 ![Agent Skill](https://img.shields.io/badge/Agent%20Skill-ecl--harness--engineer-181715)
 ![ECL](https://img.shields.io/badge/ECL-evolution%20constraint%20language-5db8a6)
 ![Auto Evolve](https://img.shields.io/badge/auto--evolve-independent%20review-e8a55a)
+![Awesome Skills](https://img.shields.io/badge/awesome--skills-accepted-2ea44f)
 
 ```bash
 npx skills add qinghui316/ecl-harness-engineer
 ```
 
 GitHub repo: [qinghui316/ecl-harness-engineer](https://github.com/qinghui316/ecl-harness-engineer)
+
+已被 40k+ stars 的 [sickn33/antigravity-awesome-skills](https://github.com/sickn33/antigravity-awesome-skills) 收录：
+[PR #678](https://github.com/sickn33/antigravity-awesome-skills/pull/678)。
 
 ---
 
