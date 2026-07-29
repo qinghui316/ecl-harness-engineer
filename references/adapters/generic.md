@@ -87,7 +87,7 @@ adapter:
 # Generic Adapter (Auto-Discovery Fallback)
 
 This adapter activates when no language-specific adapter matches. Instead of
-assuming a specific language (previous behavior: defaulting to Go), it discovers
+assuming a specific language, it discovers
 commands from project conventions.
 
 ## Discovery Strategy

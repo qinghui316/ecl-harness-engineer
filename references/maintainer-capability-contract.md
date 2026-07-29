@@ -1,0 +1,76 @@
+# Maintainer Capability Contract
+
+## Constraint Policy
+
+Hard gates protect user approval, evidence integrity, identity/path safety, shared-state
+consistency, commit/review binding, and recoverable publication. Do not use fixed byte, line, word,
+item, diagram, or command counts to reject otherwise valid project knowledge. Draft extractors and
+diagnostic reports may sample evidence for navigation, but Agent-reviewed bundles and generated
+L1/L2/L3 must remain able to represent the complete project-level map.
+
+## Gate
+
+Use this contract only when maintaining ECL Harness Engineer. A row is complete when its
+instruction owner is reachable, the observable project Harness behavior exists, and every named
+semantic test passes. File presence alone is not completion evidence.
+
+## Forward Scenarios
+
+| Id | Acceptance | Executable evidence |
+| --- | --- | --- |
+| `FWD-NG-EMPTY` | Empty non-Git project stays single-Lane, records unknowns, and invents no commands, modules, or bridges. | `test_empty_non_git_bootstrap_is_honest_and_project_local` |
+| `FWD-GREENFIELD` | After purpose/stack/type confirmation, the project Harness includes only the selected Go/TypeScript/Python CLI/Web API reference and routes creation through one approved Structured Change. | `test_greenfield_capability_routes_through_structured_change`, `test_greenfield_projects_only_the_selected_detailed_variant`, plus `test-prompts.json#greenfield-python-api` |
+| `FWD-GIT-EXISTING` | Real source, manifests, CI, docs, and tests become evidenced purpose, flows, L1/L2/L3, commands, environment, and checks. L1 scales with project complexity without truncating navigation. | `test_mature_profile_generates_real_l1_l2_l3_without_directory_guessing`, `test_l1_scales_with_project_complexity_without_content_caps`, plus `test-prompts.json#mature-polyglot` |
+| `FWD-WORKTREE` | Worktrees share one physical Skill, Registry, Change INDEX, and isolated per-Lane active Changes. | `test_two_worktrees_share_registry_and_detect_contract_conflicts`, `test_change_lifecycle_and_index_live_only_in_project_skill` |
+| `FWD-LANG` | Go, Java, Python, Rust, TypeScript, and generic adapters are selected from manifests and preserve source-backed commands without confusing target and host runtimes; real polyglot source relationships are extracted before semantic completion. | `test_adapter_detector_uses_manifest_evidence_and_keeps_defaults_out`, `test_multilanguage_profiles_preserve_evidence_backed_commands`, `test_real_polyglot_analysis_extracts_each_language_boundary` |
+| `FWD-REFERENCE` | A user-requested source repository remains isolated from target analysis; relevant target L2/L3 links its cited source map without a reference command, profile, or loading gate. | `test_reference_source_maps_are_isolated_and_linked_from_project_knowledge` |
+| `FWD-MECHANICAL` | Only accepted, evidenced project invariants become executable checks; knowledge inspection is read-only and separates structural errors from entropy warnings. | `test_evidenced_mechanical_check_has_positive_negative_and_actionable_failure`, `test_knowledge_scan_and_check_are_read_only`, `test_knowledge_check_separates_structural_errors_from_entropy_warnings` |
+| `FWD-MIGRATION` | Init and migrate use one renderer; migrate atomically updates the same project Harness and preserves its dynamic state. | `test_fresh_migrate_reports_applied_analysis_bundle`, `test_init_and_migrate_never_create_repository_harness` |
+| `FWD-SAFETY` | IDs, record binding, links, executable artifacts, route collisions, dirty Changes, and evidence gates fail closed. | `test_external_ids_cannot_traverse_registry_and_records_are_id_bound`, `test_generated_helpers_reject_path_traversal_and_linked_content`, `test_new_worktree_connector_rejects_linked_discovery_ancestors`, `test_new_worktree_connector_rolls_back_partial_links`, `test_empty_evidence_and_failed_artifact_validation_do_not_publish` |
+| `FWD-RECOVERY` | I2 and E1 publication use independently identified, candidate-bound reports; failure injection restores or resumes without mixed content, lost state, or terminal locks. | `test_independent_review_identities_are_enforced`, `test_i2_rejects_candidate_changed_after_review`, `test_evolution_publish_failure_rolls_back_content_and_state`, `test_evolution_terminal_crash_retry_releases_writer`, `test_integration_post_merge_record_failure_retains_recovery_owner`, `test_integration_registry_failure_is_idempotent_and_event_is_not_duplicated`, `test_integration_terminal_crash_retry_releases_writer`, and `test-prompts.json#parallel-integration-evolution` |
+| `FWD-BASELINE` | Related canonical events/contracts/drift force refresh and replan; unrelated Lanes continue. | `test_preflight_prioritizes_related_baseline_events_over_periodic_wiki` |
+| `FWD-UPGRADE` | A single-Lane Skill survives Git adoption, rejects unowned predecessors, and repairs existing and future worktree links. | `test_single_lane_git_upgrade_repairs_existing_and_future_worktrees`, `test_single_lane_upgrade_rejects_unowned_predecessor_manifest` |
+
+## Behavioral Baseline
+
+| Capability | Instruction owner | Project Harness behavior | Semantic test | Status |
+| --- | --- | --- | --- | --- |
+| Small versus Structured intake; requirement-first, plan-first, mixed intake; at most three high-impact questions | `references/ecl-harness.md`, `references/workflow-contracts.md`, `agents/creator-docs.md` | `workflows/intake.md`, Change `spec.md` template, rule IDs | `test_skill_capability_contract_is_routed_and_test_bound`, `test_completed_change_requires_mature_semantic_evidence` | Complete |
+| WHAT/WHY spec, HOW plan, spec-gap feedback, plan review gate, AC-to-task traceability | Same owners | `state/changes/*/<id>/spec.md`, `plan.md`, `tasks.md`, `review.md` | `test_completed_change_requires_mature_semantic_evidence` | Complete |
+| active, parking, resume, closing, completed, blocked, abandoned, archive | `references/ecl-harness.md`; deterministic Change helpers | `state/changes/{active,parking,archive}` and Registry records | `test_change_lifecycle_and_index_live_only_in_project_skill` | Complete |
+| Generated Change index and selective archive loading | `references/ecl-harness.md`; CLI indexer | `state/changes/INDEX.json` with module/path/tag/decision/validation metadata; `change search|context|reindex` | `test_change_lifecycle_and_index_live_only_in_project_skill`, `test_doctor_detects_index_and_completed_evidence_tampering` | Complete |
+| Current handoff, risks, validation, next action | `agents/creator-docs.md` | Current Change `summary.md`; global Lane/baseline state in Registry | `test_change_lifecycle_and_index_live_only_in_project_skill`, `test_two_worktrees_share_registry_and_detect_contract_conflicts` | Complete |
+| Validation attribution: introduced, pre-existing, environmental, blocked | `references/ecl-harness.md`, `references/workflow-contracts.md` | verify/close workflows and review/summary templates | `test_completed_change_requires_mature_semantic_evidence` | Complete |
+| Repeated failure and experience retention | `references/evolution.md` | Change summaries, Registry signals, Evolution proposal/results | `test_fifth_change_evolution_stages_candidate_and_preserves_dynamic_registry` | Complete |
+
+## Analysis And Creation
+
+| Capability | Instruction owner | Project Harness behavior | Semantic test | Status |
+| --- | --- | --- | --- | --- |
+| Stack, source root, entrypoint, module, interface, call/data-flow discovery | `agents/analyzer.md` with selected adapters; `scripts/build_analysis_bundle.py` only extracts a partial draft | Agent-reviewed `state/analysis/project-profile.json`, `architecture.json`, L1, evidenced L2/L3 | `test_evidence_extractor_cannot_complete_semantic_initialization`, `test_real_analyzer_auditor_creator_chain_builds_and_installs_bundle` | Complete |
+| Environment, services, variables, readiness, startup order, secret safety | Environment guides, adapters, `agents/creator-config.md` | systems environment/commands/verification and authorized helpers | `test_environment_projection_preserves_readiness_startup_and_rejects_secret_values` | Complete |
+| Command discovery with configured/candidate/executed state | Environment guides and adapters | profile command facts and `systems/commands.md` | `test_mature_profile_generates_real_l1_l2_l3_without_directory_guessing`, `test_adapter_detector_uses_manifest_evidence_and_keeps_defaults_out`, `test_multilanguage_profiles_preserve_evidence_backed_commands`, `test_real_polyglot_analysis_extracts_each_language_boundary` | Complete |
+| Project-first documentation, architecture maps, canonical citations, entropy control | `agents/creator-docs.md`, `references/documentation-templates.md`, `references/architecture-diagrams.md`, core knowledge checks | concise project Harness router, complexity-scaled L1, L2/L3, evidence-backed Mermaid, Wiki index, entropy warnings | `test_mature_profile_generates_real_l1_l2_l3_without_directory_guessing`, `test_l1_scales_with_project_complexity_without_content_caps`, `test_knowledge_check_separates_structural_errors_from_entropy_warnings` | Complete |
+| Dependency, quality, template, encoding, link, citation, and drift checks with actionable errors | `agents/creator-linters.md`, `references/linter-templates.md`, core knowledge checks | `scripts/checks/` when accepted plus built-in Wiki checks | `test_evidenced_mechanical_check_has_positive_negative_and_actionable_failure`, `test_knowledge_scan_and_check_are_read_only`, `test_knowledge_check_separates_structural_errors_from_entropy_warnings`, `test_generated_helpers_reject_path_traversal_and_linked_content` | Complete |
+| Audit weights and evidence-based gap classification | `references/audit-rubric.json`; `agents/auditor.md` owns evidence judgment | validated `state/analysis/audit.json` after authorized publication | `test_complete_bundle_rejects_weak_audit_or_missing_architecture`, `test_audit_rubric_is_the_single_machine_formula_and_is_copied` | Complete |
+| Empty-project evidence handling and six-variant business bootstrap | `references/greenfield-templates.md`, `scripts/render_greenfield.py`, selected adapter | honest generic bootstrap, then one selected detailed reference and Structured Change workflow | `test_greenfield_capability_routes_through_structured_change`, `test_greenfield_projects_only_the_selected_detailed_variant`, `test_greenfield_six_variants_generate_real_projects_and_run_available_gates` | Complete |
+| Self-contained project rescan and E1 bundle creation | project Harness `references/analysis-contract.md`, copied draft extractor, evolve workflow | Agent-reviewed four-file bundle validated by project Harness `audit`, then staged E1 candidate | `test_project_harness_rescans_audits_and_evolves_without_creator_files` | Complete |
+| User-requested reference-project source map | `agents/analyzer.md`, `agents/creator-docs.md`, `agents/auditor.md` | related L1/L2/L3 citations plus `project_wiki/reference_projects/index.md` and `maps/<id>.md`; source stays project-local and isolated | `test_reference_source_maps_are_isolated_and_linked_from_project_knowledge` | Complete |
+
+## Ownership And Coordination
+
+| Capability | Instruction owner | Project Harness behavior | Semantic test | Status |
+| --- | --- | --- | --- | --- |
+| One physical project Harness in primary worktree | project Harness architecture; CLI | `.agents/skills/<id>-harness`, common exclude, project-level links | `test_two_worktrees_share_registry_and_detect_contract_conflicts`, `test_new_worktree_connector_creates_project_level_codex_and_claude_links`, `test_single_lane_git_upgrade_repairs_existing_and_future_worktrees` | Complete |
+| Lane, path, contract, completion, baseline coordination | coordination reference; CLI | atomic per-record `state/registry/` | `test_two_worktrees_share_registry_and_detect_contract_conflicts`, `test_preflight_prioritizes_related_baseline_events_over_periodic_wiki`, `test_external_ids_cannot_traverse_registry_and_records_are_id_bound` | Complete |
+| Local PR-like Integration with exact ranges and I2 | coordination reference; CLI | Integration record/worktree/recovery phases; no Wiki write | `test_independent_review_identities_are_enforced`, `test_i2_rejects_candidate_changed_after_review`, `test_integration_post_merge_record_failure_retains_recovery_owner`, `test_integration_registry_failure_is_idempotent_and_event_is_not_duplicated`, `test_integration_does_not_refresh_project_wiki` | Complete |
+| Five-Change E1-only Evolution | evolution reference; CLI | pending, owner, staging, Judge gate, transactional apply, results plus classified knowledge/audit findings | `test_fifth_change_evolution_stages_candidate_and_preserves_dynamic_registry`, `test_evolution_requires_findings_classification_and_before_after_entropy`, `test_evolution_rejects_tampered_candidate_without_touching_current_skill`, `test_evolution_publish_failure_rolls_back_content_and_state`, `test_evolution_completion_serializes_change_close_without_losing_next_window` | Complete |
+| Progressive reading reachability | ECL Harness Engineer and project Harness entry routes | operation route; workflow -> L2 -> conditional L3/reference map -> stage rules | `test_progressive_loading_routes_every_operational_reference` | Complete |
+| Stable knowledge ownership | knowledge model; analyzer/creators | init, migrate, or accepted E1 Evolution only | `test_knowledge_scan_and_check_are_read_only`, `test_integration_does_not_refresh_project_wiki` | Complete |
+| One init/migrate renderer | analyzer/auditor/creators produce bundle; CLI validates and publishes | profile -> Wiki; delta -> workflows/rules/templates/checks | `test_fresh_migrate_reports_applied_analysis_bundle`, `test_init_and_migrate_never_create_repository_harness` | Complete |
+
+## Architecture Gate
+
+Every active capability projects into the project Harness, its shared state, or its managed
+repository routes and connector. The reference filenames organize reusable engineering knowledge;
+the owner and project Harness behavior columns above define current behavior.

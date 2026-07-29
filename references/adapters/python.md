@@ -176,7 +176,7 @@ adapter:
 
 ## Server Start Command Inference
 
-1. Existing `harness/config/environment.json` startup command, if present
+1. Configured startup command in `project-profile.json`, with project evidence
 2. FastAPI detected → `python -m uvicorn {module}:app --port 8080`
    - Module inferred from main app file location
 3. Flask detected → `python -m flask run --port 8080`

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ECL Harness Engineer"
+  short_description: "Create local multi-agent project Harnesses"
+  default_prompt: "Use $ecl-harness-engineer to initialize or audit a project-bound local Harness for this project."

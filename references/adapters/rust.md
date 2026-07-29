@@ -181,7 +181,7 @@ still be valuable for enforcing higher-level layer boundaries.
 
 ## Server Start Command Inference
 
-1. Existing `harness/config/environment.json` startup command, if present
+1. Configured startup command in `project-profile.json`, with project evidence
 2. `Cargo.toml` has `[[bin]]` section → `cargo run --bin <name>`
 3. Default → `cargo run`
 

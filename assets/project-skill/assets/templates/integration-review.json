@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "integration_id": "<integration-id>",
+  "reviewer_id": "<independent-reviewer-id>",
+  "reviewed_commit": "<exact-candidate-sha>",
+  "verdict": "approved",
+  "validation_commands": ["<aggregate command and outcome>"],
+  "findings": [],
+  "created_at": "<UTC timestamp>"
+}

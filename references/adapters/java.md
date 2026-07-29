@@ -174,7 +174,7 @@ If `mvnw` or `gradlew` wrapper exists, prefer the wrapper over system-installed 
 
 ## Server Start Command Inference
 
-1. Existing `harness/config/environment.json` startup command, if present
+1. Configured startup command in `project-profile.json`, with project evidence
 2. Spring Boot → `./gradlew bootRun` or `mvn spring-boot:run`
 3. Fat JAR exists → `java -jar target/*.jar` or `java -jar build/libs/*.jar`
 4. Main class annotated with `@SpringBootApplication` → infer from pom.xml/build.gradle

@@ -3,6 +3,16 @@
 Every language adapter must follow this schema. Adapters are the single source of truth
 for all language-specific behavior across the harness system.
 
+Adapters describe the **target project**, not the generated Harness host runtime. The portable
+Harness coordination helpers remain Python with host-validated platform launchers, while a new-worktree
+bootstrap may use PowerShell, Node, or Python. Adapter command values are candidates until
+repository manifests, CI, task runners, current docs, or successful execution confirm them.
+
+During project Harness creation, selected adapter observations enrich the
+`project-profile.json`; they do not write a separate project cache. Project evidence determines
+`languages`, `frameworks`, `package_managers`, `source_roots`, `entrypoints`, `modules`, `commands`,
+and `environment`. The CLI then renders those fields and never executes adapter defaults as facts.
+
 ## Design Principles
 
 1. **Discover, don't assume**: Adapters define detection rules, not the core system
@@ -33,9 +43,8 @@ adapter:
     confidence: float
 
   # ─── Commands ───────────────────────────────────────────────
-  # Standard development commands. null = not applicable for this language.
-  # These are defaults; project-level overrides in DEVELOPMENT.md or
-  # harness/config/validate.json always take priority.
+  # Standard development command candidates. null = not applicable for this language.
+  # Configured repository commands and successful observed execution always take priority.
   commands:
     build: string | null         # Compile/transpile: "go build ./...", "npm run build"
     test: string | null          # Run tests: "go test ./...", "npm test"
@@ -158,7 +167,7 @@ adapter:
 
 When the harness system needs language-specific behavior, it follows this resolution chain:
 
-1. **Project-level override** — `harness/config/validate.json`, `DEVELOPMENT.md` commands
+1. **Project evidence** — `project-profile.json` configured commands and cited canonical development docs
 2. **Adapter defaults** — The matching adapter's `commands` section
 3. **Generic fallback** — `generic.md` adapter (discovers from Makefile/README)
 
@@ -169,7 +178,8 @@ To add support for a new language (e.g., Kotlin):
 1. Create `references/adapters/kotlin.md` following this schema
 2. Fill in detection rules, commands, route patterns
 3. Optionally add a linter template section to `linter-templates.md`
-4. No changes to core scripts needed — `detect_adapter.py` auto-discovers adapters
+4. Run `scripts/detect_adapters.py --project-root <path>` for deterministic manifest selection,
+   then let the analyzer merge its evidence with source, CI, and user-confirmed project facts.
 
 ## Adapter File Format
 

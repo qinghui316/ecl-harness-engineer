@@ -1,0 +1,13 @@
+# {{PROJECT_NAME}} Agent Route
+
+This repository uses the local `{{SKILL_NAME}}` Harness Skill. Load that Skill before structured
+development, worktree coordination, Integration, or Harness evolution.
+
+{{CONNECTOR_GUIDANCE}}
+
+- Preserve unrelated changes and follow existing project verification.
+- Current Change artifacts and history live in the shared project Harness.
+- Shared Lane and contract facts come from the project Harness Registry.
+- Business Integration requires explicit user I2 confirmation.
+
+Do not copy the Harness manual into this file.

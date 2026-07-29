@@ -1,426 +1,173 @@
-﻿# Darwin Evaluation Prompts
+# Darwin Evaluation Prompts
 
-Use these dry-run prompts when evaluating ecl-harness-engineer quality with darwin-skill.
-They are evaluation prompts only; do not generate files unless the user explicitly asks.
+Use these prompts only to evaluate ECL Harness Engineer after ordinary validation. A project
+Harness has no Darwin dependency. Score behavior and evidence, not expected wording.
 
-## Prompt 1: Existing TypeScript Project
-
-```text
-Use ecl-harness-engineer to create an ECL-aware Harness for an existing TypeScript project.
-The project already has package.json, src/, and tests/, but no AGENTS.md or harness/.
-Explain the files you would create and the validation commands.
-```
-
-Expected: Detect TypeScript, propose AGENTS.md as a map, docs/ECL.md, docs/STATUS.md,
-architecture/development docs, changes active/parking/archive, generated INDEX.json workflow,
-lint-ecl, lint-encoding, and package script or Makefile verification without writing business code.
-
-## Prompt 2: Audit Partial Harness
+## 1. Empty Non-Git Project
 
 ```text
-Use ecl-harness-engineer to audit a project that already has AGENTS.md and docs/ARCHITECTURE.md,
-but no harness/changes and no lint-ecl. Return the gaps and priorities first.
+Initialize a Harness for an empty non-Git directory with no project brief.
 ```
 
-Expected: Treat as Partial Harness/ECL Missing or Partial, identify missing ECL docs/scripts/templates,
-preserve existing docs where possible, and avoid overwriting without delta review.
+Expected: one project-level single-Lane Skill, explicit unknown purpose/commands, no guessed L2/L3,
+and an unchanged application/Git setup.
 
-## Prompt 3: Personal Change Tracking
+## 2. Mature Project Analysis
 
 ```text
-Use ecl-harness-engineer to add personal-development change tracking to a small project:
-single active task, parking/archive, and automatic INDEX.json generation.
+Analyze a mature multi-module project with manifests, CI, source, tests, architecture docs, and an
+environment example, then describe the project Harness result.
 ```
 
-Expected: Recommend the summary/spec/plan/tasks/reviews change template, single-active rule, docs/STATUS.md handoff,
-script-generated INDEX.json, explicit park/close/resume transitions, and hook/CI validation
-without automatic doc mutation.
+Expected: evidenced profile, L1 purpose/flows, boundary-based L2, only proven L3, command statuses,
+environment/readiness facts, canonical citations, and accepted checks. Top-level directories alone
+must not become modules.
 
-## Prompt 4: Resume Recent Work
+## 3. Repository Integration Footprint
 
 ```text
-Use ecl-harness-engineer to explain how an agent should resume recent work in a project with
-docs/STATUS.md, no active change, and several archived changes in harness/changes/archive.
-Which files should be loaded first, and should the full archive be read?
+Initialize and then migrate a project Harness. Which business-repository files may be created?
 ```
 
-Expected: Load AGENTS.md and docs/ECL.md first, then docs/STATUS.md because no active change
-exists. Use the STATUS archive path or INDEX.json to select history, start with archived
-summary.md only, and do not load the full archive by default.
+Expected: bounded AGENTS/Claude routes, one tracked host-native connector, and common exclude only.
+Init and migrate use one project Harness renderer and leave project build/CI ownership unchanged.
 
-## Prompt 5: Active Change Overrides STATUS
+## 4. Mature Change Parity
 
 ```text
-Use ecl-harness-engineer to define context loading for a project that has both docs/STATUS.md and
-harness/changes/active/summary.md. Which source controls the current task?
+A Structured task starts from a partial plan, exposes a spec gap during planning, later fails one
+environmental validation, parks, resumes, and completes. What evidence and gates apply?
 ```
 
-Expected: Active change controls the current task. Read active summary/spec/plan/tasks/reviews before
-task-specific docs. STATUS is not authoritative while active exists.
+Expected: intake classification, at most three high-impact questions, WHAT/WHY spec, HOW plan,
+spec-gap feedback, plan review, AC-task-validation traceability, environmental failure attribution,
+park/resume, review, summary, exact completion binding, and generated INDEX. Evidence stays in
+project Harness `state/changes`, not business Git.
 
-## Prompt 6: Core Harness Must Not Create Advanced Empty Directories
+## 5. Selective History
 
 ```text
-Use ecl-harness-engineer to create a harness for a normal existing TypeScript project. The user wants
-agent onboarding, ECL change tracking, lint checks, and CI only. List the directories you would
-create under harness/.
+The project Harness has hundreds of archived Changes. What enters default context when resuming one?
 ```
 
-Expected: Choose the core harness profile. Create `harness/config`, `harness/changes`, and
-`harness/templates/change`. Do not create `harness/eval`, `harness/trace`, `harness/state`,
-`harness/checkpoints`, `harness/memory`, or `harness/metrics`.
+Expected: INDEX plus selected summaries first; full spec/plan/tasks/review only for relevant
+recovery, review, Integration, or Evolution. Never preload all archive bodies.
 
-## Prompt 7: Explicit Advanced Eval Profile
+## 6. Two Worktrees
 
 ```text
-Use ecl-harness-engineer to add an agent evaluation framework to a project that already has the core
-ECL harness. The user wants reusable eval prompts and benchmark datasets for testing agent
-behavior over time.
+Two long-lived worktrees each start a Change and touch different modules. How do they coordinate?
 ```
 
-Expected: Treat this as an advanced harness request. Load eval guidance, propose `harness/eval`
-and datasets or prompt fixtures, define how evals are run and scored, and avoid touching unrelated
-core ECL files except to link the eval workflow if needed.
+Expected: one physical project Harness, distinct Lanes and active Change directories, shared INDEX
+and per-record Registry, stage preflight, and no direct Worker edits to stable Wiki/rules.
 
-## Prompt 8: Explicit Observability And Memory Profile
+## 7. Contract Conflict
 
 ```text
-Use ecl-harness-engineer to add trace logging and long-term agent memory to a project. The user wants
-to debug long-running agent sessions and inspect recurring failures.
+Lane A changes an event schema. Lane B depends on that subject from an older baseline.
 ```
 
-Expected: Treat this as an advanced harness request. Load observability and durability guidance,
-define read/write protocols for `harness/trace` and `harness/memory`, include validation or
-retention rules, and do not present these directories as normal day-one harness defaults.
+Expected: machine-readable contract and affected paths; B receives refresh-needed/replan while
+unrelated Lanes continue. Current facts outrank periodic L1/L2/L3.
 
-## Prompt 9: Ordinary Business Feature Must Not Trigger Harness Creation
+## 8. New Worktree Discovery
 
 ```text
-Add a login button to this React app and wire it to the existing auth route.
+A new worktree has no Skill links yet. How can its first Agent attach?
 ```
 
-Expected: Do not use ecl-harness-engineer. This is ordinary application feature implementation, not
-harness creation or audit work.
+Expected: managed route invokes the tracked host-native connector; Git common identity locates the
+primary physical Skill; Codex and Claude project-level links resolve to the same target.
 
-## Prompt 10: Auto-Evolve Threshold Check Is Core
+## 9. Exact Integration And I2
 
 ```text
-Use ecl-harness-engineer to create a normal ECL harness. The project has no eval or memory request.
-Should auto-evolve be included, and which files or scripts are part of it?
+A long-lived Lane contains two Changes but only the second is selected for Integration.
 ```
 
-Expected: Include lightweight `harness/evolution/state.json`, `results.tsv`, `proposals/`, and
-`scripts/harness-evolve.*` as core threshold-check infrastructure. Do not create `harness/eval`,
-`harness/trace`, `harness/state`, `harness/checkpoints`, `harness/memory`, or `harness/metrics`.
+Expected: apply the selected Change's exact recorded range, not Lane tip; allow Integrator conflict
+and compatibility work; aggregate tests and independent review bind to one candidate SHA before I2;
+canonical landing accepts only that reviewed commit after I2. Integration updates
+baseline/Registry/signals, never Wiki, and is not a Change.
 
-## Prompt 11: Close Triggers Pending Evolution
+## 10. Integration Recovery
 
 ```text
-A project has 10 archived ECL changes and harness/evolution/state.json says the last evolution
-processed 5 archives with threshold 5. What should the generated harness-change close command do after
-moving the active change to archive?
+Canonical landing succeeds, then a Registry write fails.
 ```
 
-Expected: Rebuild `INDEX.json`, run `harness-evolve check`, and generate
-`harness/evolution/pending.md` if no pending file exists. The script must not directly edit
-AGENTS.md, docs/ECL.md, STATUS, lint rules, or CI.
+Expected: recoverable landing phase and retained writer ownership; retry completes remaining
+Registry/cleanup work idempotently. Do not abort or repeat the canonical merge.
 
-## Prompt 12: Pending Does Not Override Active Work
+## 11. Fifth-Change Evolution
 
 ```text
-The repository has both harness/changes/active/summary.md and harness/evolution/pending.md.
-Which context should Codex handle first?
+Five unique validated evidence-complete Changes finish across several Lanes.
 ```
 
-Expected: Active change remains authoritative. Read active summary/spec/plan/tasks/reviews first and
-defer auto-evolve until the active change is closed or parked.
+Expected: one pending window, E1, unique owner, current evidence reanalysis, proposal with
+Promote/Retain/Merge/Retire/Archive-only, independent score >= 80, no hard issue, validation, then
+automatic apply. There is no E2. Changes 1-4 start no maintenance Agent.
 
-## Prompt 13: Darwin Ratchet For Harness Evolution
+## 12. Evolution Failure
 
 ```text
-Auto-evolve proposes a harness delta based on recent archives, but the new audit score is lower
-and lint-ecl fails. What should happen?
+The judge is unavailable, or the staged candidate changes after scoring.
 ```
 
-Expected: Revert the auto-evolve delta, record `revert` in `harness/evolution/results.tsv`, keep
-the proposal for audit, and run `harness-evolve mark-complete` so the same pending cycle does not
-repeat indefinitely.
+Expected: unavailable judge is noop; tamper is rejected before publication; current Skill and
+dynamic state remain unchanged.
 
-## Prompt 14: No Independent Scorer Means Proposal Only
+## 13. Evolution Concurrency
 
 ```text
-Auto-evolve found a possible harness improvement, but this run has no available independent
-auditor/subagent. Can Codex apply the delta automatically?
+Changes 6 and 7 close while the first evolution candidate is staged and published.
 ```
 
-Expected: No. User approval to handle pending implies permission to request an independent
-auditor/subagent when available. If the environment still requires explicit authorization, ask once.
-If scoring remains unavailable, generate and keep the proposal, record `status=noop` with
-`eval_mode=dry_run`, run `harness-evolve mark-complete`, and do not auto-apply the delta.
-Auto-apply requires independent scoring.
+Expected: the frozen first window completes, newer Changes queue, and publication preserves current
+Registry, full Change archive, INDEX, integrations, contracts, baseline, and evolution state.
 
-## Prompt 15: Independent Score Below Threshold
+## 14. Documentation Entropy
 
 ```text
-The main auto-evolve flow rates a proposal at 84, but the independent auditor scores it 79 because
-the evidence is weak. What should happen?
+The generated entry, L1, a workflow, and archived summaries repeat the same current-state history.
 ```
 
-Expected: Reject the proposal before apply, record `rejected` in `results.tsv`, and leave harness
-files unchanged.
+Expected: keep the entry as route, L1 as periodic map, workflow as procedure, Registry/current
+summary as live state, and archive as history. Merge/retire duplicates without deleting history.
 
-## Prompt 16: Project-Irrelevant Candidate
+## 15. Audit Integrity
 
 ```text
-Auto-evolve proposes adding a broad prompt-engineering rule from an article, but no archived change
-shows this project had that failure. The proposal otherwise looks reasonable.
+Audit a project Harness that has many files but guessed modules, unexecuted commands marked
+verified, and no negative tests for checks.
 ```
 
-Expected: Reject the candidate as project-irrelevant. It may stay in rejected candidates inside the
-proposal, but must not enter AGENTS.md, ECL, STATUS, lint, or CI.
+Expected: low semantic scores despite file presence. `agents/auditor.md` alone owns the weighting;
+findings name evidence, owner, project Harness effect, and validation.
 
-## Prompt 17: Accepted Candidate Requires Evidence And Target Files
+## 16. Evidence Extractor Boundary
 
 ```text
-An auto-evolve proposal accepts a candidate but lists no archive summary and no target project files
-or commands. Is it valid?
+Run the bundled project scanner on a mature repository, then initialize its project Harness directly
+from that output without an Analyzer, Auditor, or Creator review.
 ```
 
-Expected: No. Accepted candidates require archived evidence and project relevance. Independent
-review must return `rejected` or `noop`.
+Expected: the scanner returns only `partial` or `bootstrap_only` evidence. It may identify files,
+manifests, imports, tests, CI, and command candidates, but it does not certify purpose, module
+responsibilities, flows, audit scores, or publication artifacts. Semantic initialization requires
+the Agent-reviewed four-file bundle.
 
-## Prompt 18: Small Change Skips Full ECL
+## 17. Reference Source Navigation
 
 ```text
-Use ecl-harness-engineer guidance for a project where the user asks: "Fix one typo in README.md."
-Should the harness require a full active change with spec/plan/tasks?
+A target module adapts a scheduler mechanism from a user-provided reference checkout. How does a
+future Agent discover and inspect that relationship from a different worktree?
 ```
 
-Expected: Treat as Small Change. Do not require a full active change. The agent should make the
-local fix, preserve unrelated files, and report the verification used.
-
-## Prompt 19: Vague Requirement Needs Bounded Intake
-
-```text
-Use ecl-harness-engineer guidance for a user request: "Add a permissions module."
-What should the agent do before generating implementation tasks?
-```
-
-Expected: Treat as Structured Change. Extract a draft `spec.md` and ask at most three high-impact
-questions about users/scenarios, acceptance criteria, permissions/data boundaries, or compatibility.
-Do not generate implementation tasks from the first vague requirement.
-
-## Prompt 20: User Already Provided A Plan
-
-```text
-The user provides a detailed implementation plan for adding role-based access control, including
-files to change and test commands. How should ecl-harness-engineer guidance handle this?
-```
-
-Expected: Treat the user plan as a draft input, not as final truth. Split WHAT/WHY into `spec.md`
-and HOW into `plan.md`. If target users, acceptance criteria, non-goals, and verification are clear,
-do not re-interview from scratch. If any high-impact gaps remain, ask only those questions.
-
-## Prompt 21: Plan Missing Acceptance Criteria
-
-```text
-The user gives a plan with implementation steps for a search feature but no success metrics,
-non-goals, or validation scenario. Can the agent proceed to implementation?
-```
-
-Expected: No. Record the missing acceptance and boundary information in `spec.md` as
-`[NEEDS CLARIFICATION: ...]`, ask bounded high-impact questions, and block implementation until the
-spec/plan gate is satisfied.
-
-## Prompt 22: Planning Exposes A Spec Gap
-
-```text
-During draft planning, the agent realizes a proposed API change may require data migration and
-backward compatibility decisions that were not in the spec. Where should this be recorded?
-```
-
-Expected: Record it in `plan.md` under `Spec Gaps Found From Planning`, add or update the related
-open question in `spec.md`, and keep `plan_review` pending until resolved.
-
-## Prompt 23: Boundary Check For Platform Scope
-
-```text
-Use ecl-harness-engineer to improve AI coding workflow. Should it create a Jira/Confluence sync,
-a chat UI for requirements intake, or default eval/trace/memory directories?
-```
-
-Expected: No. Keep the skill scoped to harness creation/audit, ECL templates, scripts, lint gates,
-and docs. Advanced platform directories or external sync only appear when explicitly requested.
-
-## Prompt 24: Borderline Small Change Requires Read-Only Inspection
-
-```text
-The user asks to change one default configuration value in a single file, but the setting affects
-application startup behavior. Should ecl-harness-engineer guidance treat this as Small Change?
-```
-
-Expected: Not automatically. Inspect read-only first to determine runtime impact. If startup,
-validation, or compatibility behavior changes, treat it as Structured Change or ask one high-impact
-question before implementation.
-
-## Prompt 25: Complete Plan Does Not Need Re-Interview
-
-```text
-The user provides a plan with clear goal, acceptance criteria, non-goals, constraints, target files,
-risks, and verification commands, and it matches repository evidence. Should the agent ask a new
-round of intake questions?
-```
-
-Expected: No. Split WHAT/WHY into `spec.md`, HOW into `plan.md`, generate executable `tasks.md`,
-and proceed through plan review without repeating a full interview.
-
-## Prompt 26: Plan Conflicts With Repository Evidence
-
-```text
-The user provides a plan that references a package manager and test command that do not exist in the
-repository. What should the agent do?
-```
-
-Expected: Record the conflict in Intake Review, do not blindly accept the plan, and ask or correct
-the high-impact mismatch before implementation.
-
-## Prompt 27: Auto-Evolve Without Subagent
-
-```text
-An auto-evolve pending file exists, but the current environment cannot use an independent
-auditor/subagent. Can the agent apply the proposed harness delta automatically?
-```
-
-Expected: No. Generated scripts do not call subagents. If independent review is supported but not
-authorized, the agent asks the user for authorization first. If scoring is unavailable, declined,
-or still unauthorized after asking, it writes a proposal, records `status=noop` with
-`eval_mode=dry_run`, runs `harness-evolve mark-complete`, and must not auto-apply without
-independent scoring.
-
-## Prompt 28: Existing Active Change Wins
-
-```text
-A user asks for a small README wording fix while `harness/changes/active/summary.md` exists for an
-ongoing related documentation task. Should the agent create a new active change or skip ECL?
-```
-
-Expected: Neither. Continue using the existing active change context because there can only be one
-active change. Do not create a second active change.
-
-## Prompt 29: Pending Read Is Not A Blocker
-
-```text
-No active change exists and harness/evolution/pending.md exists. The user asks for a small README
-wording fix and does not ask to handle auto-evolve. Must the agent complete auto-evolve first?
-```
-
-Expected: No. Read or mention pending as maintenance context and ask whether the user wants to
-handle it now unless the user has already prioritized the README fix. Reading or asking does not
-start pending evolution and must not block ordinary user work.
-
-## Prompt 30: Partial Auto-Evolve Cannot Close Completed
-
-```text
-An agent starts auto-evolve, fixes a bug in scripts/harness-evolve.ps1, writes a keep result for
-that machinery repair, but does not evaluate the pending candidate archives or run
-harness-evolve mark-complete. Can it close the auto-evolve change as completed?
-```
-
-Expected: No. Machinery repair does not complete pending evolution. The agent must continue to
-evaluate candidate archives and finish with proposal + results.tsv + mark-complete, or park/close
-blocked.
-
-## Prompt 31: Auto-Evolve Archives Are Not Evidence
-
-```text
-The archive contains four normal changes and one auto-evolve-harness-* change tagged auto-evolve.
-Threshold is 5. Should harness-evolve check generate a new pending file?
-```
-
-Expected: No. The threshold counts only eligible archives. Auto-evolve archives remain available
-for audit but are excluded from threshold counts and Candidate Archives.
-
-## Prompt 32: User Approval Implies Independent Review Request
-
-```text
-No active change exists and pending auto-evolve exists. Codex asks whether to handle it now, and the
-user says yes. The user does not separately say "use a subagent." Should Codex request an
-independent auditor/subagent if the environment supports it?
-```
-
-Expected: Yes. User approval to handle pending implies permission to request independent review
-when available. If the environment still requires explicit authorization, ask once. Without a scorer,
-record `noop + dry_run + mark-complete` and do not auto-apply.
-
-## Prompt 33: Fresh Evidence Beats Stale Pending Snapshot
-
-```text
-pending.md was generated at five archived changes. Before the user approves handling it, three more
-ordinary changes are archived. Which archives should Codex evaluate?
-```
-
-Expected: Rebuild `harness/changes/INDEX.json` and use the current eligible archive window. The
-Candidate Archives listed in pending.md are a trigger snapshot, not the only evidence source.
-
-## Prompt 34: User Declines Pending Maintenance
-
-```text
-Codex notices pending maintenance and asks whether to handle it now. The user says no, finish the
-current feature first. What should happen?
-```
-
-Expected: Continue the current task through normal Small/Structured intake. Do not mark-complete or
-write results.tsv because pending evolution has not started. Mention that pending remains.
-
-## Prompt 35: Mature Harness Documentation Entropy
-
-```text
-Use ecl-harness-engineer to audit a mature Harness repo. AGENTS.md is 420 lines, docs/STATUS.md is
-520 lines, and both repeat closeout summaries that already exist in harness/changes/archive. The
-project still needs its archive history preserved. What should the skill recommend?
-```
-
-Expected: Preserve archive history, but compress current docs. Treat AGENTS.md as a map, not a
-phase or archive ledger. Treat STATUS as current handoff, not a history database. Move detailed
-history to archive-only references, link through selected archive summaries or INDEX.json, and keep
-only current navigation, active/no-active state, quality gates, risks, and next resume context.
-
-## Prompt 36: Noop Auto-Evolve Still Requires Retention Scan
-
-```text
-An auto-evolve pending cycle finds that existing rules already cover the latest five archived
-changes, but AGENTS.md keeps growing because agents append every lesson. Can the result be plain
-noop with no further analysis?
-```
-
-Expected: No. Even if no new durable rule is needed, the proposal/review must include an Experience
-Retention Scan. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only. If current
-docs contain duplicated lessons or stale state, propose merge/retire/archive-only cleanup; otherwise
-record `noop` with a clear retention rationale.
-
-## Prompt 37: Superseded Roadmap Language
-
-```text
-A repository has one doc saying "Phase 7 is next" and another current handoff plus later archives
-showing Phase 10 work already completed. How should ecl-harness-engineer handle this during a
-harness audit?
-```
-
-Expected: Do not preserve the old roadmap text as current guidance. Compare against active change,
-STATUS, validation results, and archive evidence. Historicalize, retire, or move the stale phase
-language to archive-only context, then keep current docs focused on the latest verified state and
-next actionable work.
-
-## Prompt 38: New Core Harness Should Not Inherit Mature Overhead
-
-```text
-Use ecl-harness-engineer to create a core harness for a small TypeScript repo with no existing
-harness. Should it create mature documentation-entropy workflows, project-specific historical docs,
-or long archive maintenance sections on day one?
-```
-
-Expected: No. Create the compact core harness: project-first AGENTS.md, docs/ECL.md, docs/STATUS.md,
-change templates, selected command-surface scripts, lint-ecl, lint-encoding, and lightweight
-auto-evolve threshold checking. Include the general documentation entropy and experience lifecycle
-rules in ECL/review templates, but do not import mature-project document names, historical phases,
-or heavy memory/state/eval/trace directories.
+Expected: target analysis excludes reference source from target modules and commands. The target
+L2/L3 pages link an evidence-backed reference map, which records inspected commit, files, source
+structure, adaptation, boundaries, tests, and citations. The map points to the primary-worktree
+checkout; a secondary worktree follows the same project Harness links and detects source drift without
+a reference command, profile, or runtime loading state.

@@ -1,343 +1,96 @@
-﻿# Config & Environment Creation Agent
+# Config And Environment Creation Agent
 
-You are creating or updating harness configuration and environment files.
+Turn project evidence into the project Harness command, environment, readiness, host-runtime,
+and helper contract. Do not create a repository-owned Harness configuration.
 
-## Input
+## Inputs
 
-You will receive:
-- Environment analysis (from `harness/.analysis/environment.json`)
-- Architecture data (from `harness/.analysis/architecture.json`)
-- Existing state (from `harness/.analysis/audit.json`)
-- Delta list of files to create/update
+- Validated profile command/environment records.
+- Selected language adapters and detailed architecture/environment analysis.
+- `audit.json` and shared `creation-delta.json`.
+- Existing project Harness when updating through migrate or E1 Evolution.
 
-## Files You Create/Update
+## Runtime Separation
 
-### harness/config/environment.json
+The target project determines application build, test, lint, typecheck, start, migration, seed,
+service, and readiness behavior. The generated Harness uses bundled dependency-free deterministic
+helpers behind host-validated launchers. A Go, Java, Rust, Python, or TypeScript target does not
+select the Harness helper implementation language.
 
-The runtime ecosystem contract. Describes what the application needs to run.
+The tracked new-worktree connector must run before Skill discovery. Prefer PowerShell on Windows,
+Node on other supported hosts, and Python only as an available fallback. Project Harness launchers
+pin the interpreter that successfully initialized the local Harness.
 
-**REQUIRED FIELDS** (functional verification depends on these):
-- `runtime.dev_command` — How to start the server in dev mode
-- `runtime.build_command` — How to build the project
-- `test_environment.env_vars` — Environment variables for test mode
-- `functional_scenarios[]` — List of verification scenarios
+## Output Boundary
 
-```json
-{
-  "runtime": {
-    "language": "go",
-    "version": "1.22",
-    "build_command": "go build ./...",
-    "dev_command": "go run main.go server -c config/server.toml",
-    "test_command": "go test ./...",
-    "binary_path": "./qts"
-  },
-  "databases": [
-    {
-      "type": "postgresql",
-      "env_vars": {"DATABASE_URL": "postgres://..."},
-      "docker": {"image": "postgres:16", "port": 5432},
-      "test_alternative": "SQLite in-memory"
-    }
-  ],
-  "services": [
-    {"type": "redis", "env_vars": {"REDIS_URL": "redis://localhost:6379"}}
-  ],
-  "secrets": [
-    {"name": "JWT_SECRET", "description": "JWT signing key", "test_value": "test-secret-do-not-use-in-prod"}
-  ],
-  "test_environment": {
-    "env_vars": {
-      "GIN_MODE": "release",
-      "ENV_TAG": "test",
-      "LOG_LEVEL": "error"
-    }
-  },
-  "functional_scenarios": [
-    {
-      "name": "health_check",
-      "description": "Verify server starts and health endpoint responds correctly",
-      "prerequisites": ["postgresql", "redis"],
-      "steps": [
-        "Start server with runtime.dev_command",
-        "Wait for server to be ready (GET /healthz returns 200)",
-        "Verify health response contains status: up"
-      ],
-      "expected_outcome": "Server is healthy and all dependencies connected"
-    },
-    {
-      "name": "basic_crud_flow",
-      "description": "Create, read, update, delete a resource via API",
-      "prerequisites": ["postgresql"],
-      "steps": [
-        "POST /api/v1/resources with valid payload -> 201",
-        "GET /api/v1/resources/:id -> 200 with matching data",
-        "PUT /api/v1/resources/:id -> 200",
-        "DELETE /api/v1/resources/:id -> 204"
-      ],
-      "expected_outcome": "CRUD operations work correctly"
-    }
-  ],
-  "scripts": {
-    "setup": "harness/scripts/setup-env.sh",
-    "start": "harness/scripts/start-server.sh",
-    "teardown": "harness/scripts/teardown-env.sh"
-  }
-}
+Create or enrich only:
+
+```text
+references/project_wiki/systems/environment.md
+references/project_wiki/systems/commands.md
+references/project_wiki/systems/verification.md
+scripts/checks/
+scripts/helpers/<evidence-backed-helper>
+assets/templates/
 ```
 
-Follow `references/environment-detection-guide.md` for detection strategies.
+The machine-readable environment contract remains in
+`state/analysis/project-profile.json.environment`; do not create a second environment state file.
 
-### harness/scripts/setup-env.sh
+Repository Makefiles, package scripts, CI files, application startup scripts, and environment files
+are not Harness-init outputs. When durable repository enforcement would help, report it as an audit
+recommendation for a separate accepted business Change.
 
-Start external dependencies (DB, Redis, etc.):
+## Evidence And Command Status
 
-```bash
-#!/bin/bash
-set -euo pipefail
+Discover commands in this order:
 
-# Start PostgreSQL
-docker run -d --name harness-postgres \
-  -p 5432:5432 \
-  -e POSTGRES_PASSWORD=testpass \
-  postgres:16
+1. Current CI and repository task runners.
+2. Manifest/workspace scripts and build configuration.
+3. Current development documentation consistent with manifests.
+4. Adapter-derived candidates.
 
-# Wait for ready
-until docker exec harness-postgres pg_isready; do sleep 1; done
+Every command records purpose, category, command, working directory, evidence, status, and last
+observed result. Allowed status is `configured`, `candidate`, or `executed`. Never present an
+adapter default as configured.
 
-echo "✓ Environment ready"
-```
+## Environment Detection
 
-If `docker-compose.yml` already exists, create a thin wrapper instead.
+Use this four-step process:
 
-### harness/scripts/start-server.sh
+1. Detect project type, languages, frameworks, and runtime modes.
+2. Detect startup/build/test commands and working directories.
+3. Detect services from Compose/Kubernetes, manifests, imports, configuration reads, and docs.
+4. Detect environment variable names from examples and code access without reading secret values.
 
-Start the application with test environment:
+Record services, startup order, migrations/seeding, cleanup, and readiness. Supported readiness
+types are HTTP, TCP, log pattern, process, and none. Ports, endpoints, patterns, and timeouts require
+project evidence or remain unknown.
 
-```bash
-#!/bin/bash
-set -euo pipefail
+## Security
 
-export PORT=8081
-export ENV=test
-export DATABASE_URL="postgres://postgres:testpass@localhost:5432/testdb?sslmode=disable"
+- Never store passwords, keys, tokens, credential-bearing connection strings, or real `.env`
+  contents.
+- Mark sensitive variable names as requiring user input.
+- Use references such as `${VAR_NAME}` only when rendering an evidenced helper.
+- Do not invent safe-looking credentials that might be valid.
+- Keep local absolute host paths in manifest/state only, never repository routes or AI-facing Wiki.
 
-# Start server
-go run cmd/api/main.go &
-SERVER_PID=$!
+## Helpers And Checks
 
-# Wait for ready
-for i in $(seq 1 30); do
-  if curl -s http://localhost:$PORT/health > /dev/null 2>&1; then
-    echo "✓ Server ready (PID: $SERVER_PID)"
-    exit 0
-  fi
-  sleep 1
-done
+Generate setup/start/teardown/readiness helpers only when profile evidence proves the capability and
+the delta explicitly accepts it. Helpers must be idempotent, bounded to accepted dependencies,
+fail with actionable messages, clean up only owned processes/resources, and have a declared
+validation. Executable artifacts require explicit installation authorization.
 
-echo "✗ Server failed to start"
-exit 1
-```
+## When User Input Is Unavailable
 
-### harness/scripts/teardown-env.sh
+When native user questioning is unavailable, collect all discoverable evidence, preserve unknowns,
+record assumptions, and stop semantic completion when a missing prerequisite materially affects
+safety or validation. Do not guess critical configuration.
 
-Stop and cleanup:
+## Exit
 
-```bash
-#!/bin/bash
-docker stop harness-postgres 2>/dev/null || true
-docker rm harness-postgres 2>/dev/null || true
-echo "✓ Cleaned up"
-```
-
-### Makefile Targets
-
-Ensure these targets exist:
-
-```makefile
-.PHONY: lint-arch lint-ecl lint-encoding verify-harness build test setup-env start-server teardown-env
-
-lint-arch:
-	./scripts/lint-deps
-	./scripts/lint-quality
-
-lint-ecl:
-	{ecl_lint_command}
-
-lint-encoding:
-	{encoding_lint_command}
-
-verify-harness: lint-ecl lint-encoding lint-arch
-
-build:
-	{appropriate build command}
-
-test:
-	{appropriate test command}
-
-setup-env:
-	./harness/scripts/setup-env.sh
-
-start-server:
-	./harness/scripts/start-server.sh
-
-teardown-env:
-	./harness/scripts/teardown-env.sh
-```
-
-### .github/workflows/ci.yml
-
-Basic CI that runs build, lint, and test:
-
-```yaml
-name: CI
-on: [push, pull_request]
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-{lang}@v5
-        with:
-          {lang}-version: '{version}'
-      - run: make build
-      - run: make lint-arch
-      - run: make test
-```
-
-CI must be strict by default. Include the project's normal business gates (`lint`,
-`typecheck`, `test`, `build`, and nested package builds when detected) plus harness checks.
-Do not remove or skip business gates because the baseline is already red; instead report those
-failures as pre-existing project debt in the final handoff. Generate staged or relaxed CI only
-when the user explicitly requests that tradeoff.
-
-For TypeScript/Node.js projects, prefer package-manager scripts and Node setup over Makefile-only
-CI. Use the adapter in `references/adapters/typescript.md` to detect npm/pnpm/yarn/bun and generate
-commands such as `npm run lint:harness`, `npm run lint:arch`, `npm run typecheck`, `npm test`,
-`npm run build`, and nested package build steps when present.
-
-### Harness Directory Structure
-
-Create the default core harness directory tree:
-
-```
-harness/
-├── config/
-│   └── environment.json
-├── changes/
-│   ├── active/
-│   ├── parking/
-│   ├── archive/
-│   └── INDEX.json
-├── evolution/
-│   ├── state.json
-│   ├── results.tsv
-│   └── proposals/
-├── templates/
-│   └── change/
-│       ├── summary.md
-│       ├── spec.md
-│       ├── plan.md
-│       ├── tasks.md
-│       └── reviews/
-│           └── review.md
-├── scripts/
-│   ├── setup-env.sh
-│   ├── start-server.sh
-│   └── teardown-env.sh
-```
-
-Initialize `harness/evolution/state.json`:
-
-```json
-{
-  "enabled": true,
-  "threshold": 5,
-  "window": 10,
-  "last_evolved_archive_count": 0,
-  "last_evolved_change_id": null,
-  "last_score": null,
-  "last_run_at": null,
-  "pending": false
-}
-```
-
-Initialize `harness/evolution/results.tsv` with this header:
-
-```tsv
-timestamp	change_id	old_score	new_score	status	dimension	note	eval_mode
-```
-
-Allowed status values are `keep`, `revert`, `rejected`, and `noop`. Allowed eval modes are
-`independent_review`, `dry_run`, and `full_test`. Use `dry_run` when no independent auditor/subagent
-is available; do not auto-apply harness deltas in that mode.
-
-Do not create empty advanced directories by default.
-
-Create optional advanced directories only when the confirmed scope or user request explicitly
-requires that capability:
-
-```
-harness/
-├── eval/          # Agent evaluation datasets and runner inputs
-├── trace/         # Agent execution traces
-├── state/         # Runtime state for external executors
-├── checkpoints/   # Resumable execution checkpoints
-├── memory/        # Long-term agent memory experiments
-│   ├── episodes/
-│   ├── knowledge/
-│   └── procedures/
-└── metrics/       # Execution, quality, and cost metrics
-```
-
-Advanced directories must come with a read/write protocol and validation command. If no protocol is
-defined, leave the capability out of the generated harness.
-
-## Scripts Must Be
-
-- `chmod +x` — executable
-- Self-contained — no external dependencies beyond Docker
-- Idempotent — safe to run multiple times
-- With error handling — `set -euo pipefail`
-
-## ECL Change Management Scripts
-
-Create ECL scripts for the selected command surface from `references/ecl-harness.md`.
-PowerShell, Bash, Node, and Python are equivalent profiles only if they implement the same commands
-and invariants. If the project rejects `.ps1`, do not generate PowerShell as the only entrypoint.
-For Windows projects using Bash, document Git Bash, WSL, MSYS2, or CI Linux shell as a prerequisite.
-Select the profile automatically from project evidence; ask the user only when evidence conflicts or
-no supported command surface is inferable.
-
-- `scripts/harness-change.{ps1|sh|mjs|py}`: implements `new`, `status`, `validate`, `park`, `resume`, `close`, `search`, `context`, and `reindex`.
-- `scripts/harness-evolve.{ps1|sh|mjs|py}`: implements `check`, `collect`, and `mark-complete` for default auto-evolve threshold checks.
-- `scripts/lint-ecl.{ps1|sh|mjs|py}`: validates active change structure, `docs/STATUS.md` presence, `plan.md`, completed validation, pending task consistency, spec clarification gates, plan review gates, task id formatting, and generated index freshness.
-- `scripts/lint-encoding.{ps1|sh|mjs|py}`: scans source/docs for mojibake markers and UTF-8 risks.
-
-Rules:
-- `INDEX.json` is derived from `parking/*/summary.md` and `archive/*/summary.md`; agents must not hand-edit it.
-- `park`, `close`, `resume`, and `reindex` must rebuild `INDEX.json`.
-- `close` and `reindex` must run `harness-evolve check`; the evolution script may create
-  `harness/evolution/pending.md`, but it must not rewrite docs, scripts, STATUS, or change files.
-- Hook/CI integration may run validation, but must not automatically write docs, update `docs/STATUS.md`, or move changes.
-- `harness-change context` should list active change files when present; if no active change
-  exists, it should list `harness/evolution/pending.md` before `docs/STATUS.md` when pending
-  evolution exists. It must not print or load all archive files.
-- Auto-evolve is core lightweight infrastructure. It must not create `harness/eval`,
-  `harness/trace`, `harness/state`, `harness/checkpoints`, `harness/memory`, or
-  `harness/metrics` unless the user explicitly requested those advanced capabilities.
-- Wire Makefile/package scripts/CI to the selected entrypoint, for example
-  `bash scripts/lint-ecl.sh` for Bash or `{pkg_manager} run lint:harness` for package scripts.
-- If the PowerShell profile is selected, detect whether `pwsh` exists before documenting or wiring
-  commands. If `pwsh` is unavailable, use `powershell -NoProfile -ExecutionPolicy Bypass`.
-- Keep PowerShell profile scripts compatible with Windows PowerShell 5.1. Avoid ambiguous overloads such as
-  `TrimStart(".\")`; use typed arguments such as `[char[]]@(".", "\")`.
-- Avoid non-ASCII mojibake marker literals in PowerShell templates. Use Unicode codepoints or another
-  PowerShell 5.1-safe representation so the script still parses on legacy Windows code pages.
-
-## Verification Config Rule
-
-`harness/config/environment.json` is the static runtime contract created by ecl-harness-engineer.
-Do not create `harness/config/verify.json` or `harness/config/validate.json`; task-specific
-verification plans are generated later by the executor/runtime from `environment.json` plus
-the active change context.
+Exit when a fresh Agent can distinguish configured commands from candidates, understand required
+services and readiness, identify unresolved user inputs, and invoke the generated Harness on the
+current host without assuming the target project's language runtime.

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "greenfield-python-api",
+    "prompt": "Initialize a project Harness for this empty non-Git directory. I want a Python 3.12 Web API for submitting jobs, with no database or authentication in the first release. After initialization, explain the first Structured Change needed to create the application.",
+    "expected": "Creates or proposes one honest bootstrap-only, single-Lane project Harness without inventing modules, commands, ports, or services; then routes the confirmed Python Web API source, tests, project commands, documentation, and optional CI through bootstrap-project spec/plan/tasks/review rather than writing business code as an init side effect."
+  },
+  {
+    "id": "mature-polyglot",
+    "prompt": "Analyze this existing Git project, which contains a Go worker, a TypeScript web app, manifests, CI, architecture docs, and tests, then initialize its project Harness. Show the evidence used for purpose, flows, modules, commands, environment, architecture, and any L3 bridges.",
+    "expected": "Analyzer, environment/adapters, auditor, and creators produce a complete four-file bundle; adapter selection and configured commands come from manifests/CI; L2 follows evidenced boundaries rather than top-level directories; L3 contains only cited semantic bridges; CLI validates and atomically installs the projection without becoming the semantic analyzer."
+  },
+  {
+    "id": "parallel-integration-evolution",
+    "prompt": "Two worktrees have independent completed Changes that touch a shared API contract. Preflight them, integrate the compatible exact completion commits after independent review and I2, then describe what happens when the fifth qualified Change triggers Harness evolution.",
+    "expected": "Both worktrees resolve one project Harness and separate Lane/Change records; related contract or baseline drift pauses only affected work; Integration uses exact ranges and a candidate-SHA-bound reviewer report from a different identity before I2; it does not update Wiki or count as a Change; E1 claims one Evolution owner and a candidate-fingerprint-bound independent Judge gates transactional publication with no E2 and no dynamic-state loss."
+  },
+  {
+    "id": "reference-source-map",
+    "prompt": "Use this scheduler repository as a source reference for the current project's orchestration module. Build the reference source map and show how future Agents discover the relevant files without mixing the reference repository into the target project's modules or commands.",
+    "expected": "Keeps the checkout in project-local reference source space; analyzes its inspected commit, modules, interfaces, call paths, tests, and citations separately; writes the actual relationship into the target L2/L3 and a reference map; follows ordinary document links rather than adding a reference command, profile, loading gate, or automatic updater."
+  }
+]

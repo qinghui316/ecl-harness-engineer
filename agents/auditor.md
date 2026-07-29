@@ -1,217 +1,156 @@
-# Harness State Audit Agent
+# Project Harness Audit Agent
 
-You are auditing the existing harness infrastructure of a codebase to identify gaps and issues.
+Audit whether one project Harness gives local Agents truthful project knowledge, complete ECL
+workflows, reliable mechanical gates, shared worktree coordination, and evidence-gated Evolution.
+Audit behavior, evidence quality, and ownership.
 
-## Your Task
+## Inputs And Output
 
-Produce a comprehensive audit report showing what exists, what's missing, and what's broken.
+Read the target project, applicable instructions, current project Harness, profile evidence, Change
+INDEX/summaries, Registry, and configured project gates. Return `<analysis-bundle>/audit.json` plus
+a human-readable summary. After authorized init, migrate, or E1 Evolution, the CLI stores them in
+`state/analysis/`; read-only audit returns them without creating a Skill or repository file.
 
-## Profile Detection
+## Weighted Core Dimensions
 
-Audit the project as `core` unless the repository or user request explicitly enables advanced
-agent-platform capabilities such as agent evals, execution traces, long-term memory, checkpoints,
-or metrics.
+### Project Knowledge And Documentation
 
-- **Core profile**: score documentation, linters, environment/config, integration, and ECL change
-  system, including lightweight auto-evolve threshold checking. Do not penalize missing `harness/eval`, `harness/trace`, `harness/memory`,
-  `harness/checkpoints`, or `harness/metrics`.
-- **Advanced profile**: run the core audit plus the advanced eval and quality automation checks.
+Check:
 
-## Audit Dimensions
+- Generated entry is a concise stage router, not a history ledger or manual.
+- L1 explains purpose, primary flows, major modules, canonical docs, commands, and global boundaries.
+- L2 modules come from manifests/imports/interfaces/tests/docs rather than directory names.
+- L2 systems accurately describe configured/candidate/executed commands, environment, readiness,
+  and verification.
+- L3 exists only for evidenced semantic translation boundaries.
+- Wiki citations and fingerprints resolve; no secrets or inappropriate absolute paths exist.
+- INDEX is generated, links are valid, loading is progressive, and stale facts defer to Registry,
+  current Change, and canonical code/docs.
+- Current facts have one owner; archive narrative and stale roadmap/baseline language do not inflate
+  current entry, Wiki, workflows, or rules.
+- Reference source maps cite an isolated checkout and inspected commit; target L2/L3 owns every
+  accepted relationship. Reference commands, CI, environment, dependencies, and modules do not
+  leak into target-project facts.
 
-### 1. Documentation (Weight: 25%)
+### Mechanical Checks
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| AGENTS.md exists | `test -f AGENTS.md` | File exists |
-| AGENTS.md size and role | `wc -l AGENTS.md` plus manual review | New/simple: about 80-120 lines; mature: about 120-180 lines only with current navigation/constraints; never a phase or archive ledger |
-| AGENTS.md has numbered sections | Count `##` headers | ≥ 5 sections |
-| ARCHITECTURE.md exists | `test -f docs/ARCHITECTURE.md` | File exists |
-| ARCHITECTURE.md has Mermaid diagrams | `grep 'mermaid' docs/ARCHITECTURE.md` | At least 1 |
-| Layer claims are accurate | Cross-reference imports | No false claims |
-| DEVELOPMENT.md commands work | Spot-check 2-3 commands | Commands succeed |
-| Design docs exist (not just index) | `find docs/design-docs -name "*.md" ! -name "index.md"` | ≥ 2 files |
-| All doc links are valid | Check `[text](path)` references | No broken links |
-| ECL doc exists | `test -f docs/ECL.md` | File exists |
-| ECL doc defines lifecycle | Read docs/ECL.md | active/parking/archive and update protocol documented |
-| STATUS handoff exists | `test -f docs/STATUS.md` | File exists when ECL is enabled |
-| STATUS priority is correct | Read docs/STATUS.md and AGENTS.md | Active change overrides STATUS; STATUS is used only when no active exists |
-| Documentation entropy is controlled | Read AGENTS.md, STATUS, ECL, recent archive summaries | No duplicated closeout narrative; stale current-state/roadmap language retired or historicalized |
-| Experience lifecycle is documented | Read docs/ECL.md and review template | Promote/Retain/Merge/Retire/Archive-only decisions are available for auto-evolve and doc cleanup |
+Check:
 
-### 2. Linters (Weight: 20%)
+- Generated checks correspond to accepted project invariants and cite evidence.
+- Dependency/quality/template/encoding/Change/Wiki checks use structured parsing where practical.
+- Every failure identifies rule, location/owner, reason, and repair direction.
+- Exclusions cover generated/vendor/build/archive roots supported by project evidence.
+- Checks pass on day one or use an explicitly accepted baseline.
+- Executable artifacts required explicit authorization and passed declared validation.
+- Checks are read-only and do not modify docs, indexes, Change state, source, hooks, or CI.
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| lint-deps script exists | `test -f scripts/lint-deps*` | File exists |
-| lint-quality script exists | `test -f scripts/lint-quality*` | File exists |
-| Layer map covers all packages | Compare map vs `go list ./...` | 100% coverage |
-| Can detect real violations | Create test case | Violation caught |
-| Error messages are agent-actionable | Read 5 error messages | WHAT + WHY + HOW |
-| `make lint-arch` passes | Run it | Exit code 0 |
+### Commands, Environment And Host Runtime
 
-### 3. Eval System (Advanced profile only; Weight: 20% when enabled)
+Check:
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| Eval directory exists | `test -d harness/eval` | Directory exists |
-| Eval datasets present | `find harness/eval/datasets -name "*.json"` | ≥ 5 tasks |
-| Categories covered | Count unique categories | ≥ 3 |
-| Tasks reference real files | Spot-check file paths | Valid references |
-| Task freshness | Check git dates | Updated within 90 days |
+- Commands preserve configured/candidate/executed status and evidence priority.
+- Services, startup order, migration/seed/cleanup, readiness type, and unresolved prerequisites are
+  represented when applicable.
+- Sensitive variable names are identified without storing values or credential-bearing strings.
+- Unknown critical configuration is not guessed.
+- Target project runtime remains separate from Harness host runtime.
+- Pinned launchers and the pre-discovery worktree connector are runnable on the detected host.
 
-### 4. Environment & Config (Weight: 15%)
+### Local Coordination And Integration
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| environment.json exists | `test -f harness/config/environment.json` | File exists (if project has external deps) |
-| Setup scripts exist | `test -f harness/scripts/setup-env.sh` | File exists |
-| Scripts are executable | `test -x harness/scripts/*.sh` | Executable |
-| No hardcoded secrets | `grep -r "password\|secret\|key=" harness/config/` | Uses ${VAR} references |
+Check:
 
-### 5. Integration (Weight: 10%)
+- Codex and Claude links for all worktrees resolve to one physical project Harness.
+- New worktree connector resolves Git common identity and creates both project-level links.
+- Lane, Change, path, contract, baseline, and Integration records are atomically stored and
+  internally consistent.
+- External IDs cannot traverse paths and loaded records match filenames.
+- Preflight detects path/contract conflicts and related baseline/Wiki drift without stopping
+  unrelated work.
+- Integration applies exact selected commit ranges, supports recovery, records aggregate validation
+  and independent review, and requires I2 before canonical landing.
+- Integration does not rewrite L1/L2/L3 and does not count as a Change.
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| Makefile has lint-arch target | `grep 'lint-arch' Makefile` | Target exists |
-| Build passes | `make build` or equivalent | Exit code 0 |
-| CI config exists | `test -f .github/workflows/ci.yml` | File exists |
+### ECL Change Lifecycle
 
-### 6. Quality Automation (Advanced profile only; Weight: 10% when enabled)
+Check:
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| Observability structure | `test -d harness/trace` | Directory exists |
-| Memory structure | `test -d harness/memory` | Directory exists |
-| Checkpointing support | `test -d harness/checkpoints` | Directory exists |
+- Shared Skill owns complete `active|parking|archive` Change evidence and generated INDEX.
+- Each Lane has at most one active Change; different Lanes may work concurrently.
+- Small/Structured classification, plan-first intake, at-most-three high-impact questions, and
+  clarification gates are represented.
+- spec keeps WHAT/WHY; plan keeps HOW and records discovered spec gaps.
+- Plan review gates implementation; tasks trace AC -> owner/path -> validation.
+- Review covers plan, code, validation, contract, Integration, knowledge, and entropy.
+- park/resume/prepare-close/close/search/context/reindex preserve history and rebuild INDEX.
+- Git close binds complete Skill evidence to an exact clean implementation commit; Change evidence
+  itself does not enter business Git.
+- Failures are classified and repeated failures become evidence rather than immediate permanent
+  rules.
 
-### 7. ECL Change System (Weight: report separately)
+### Five-Change Evolution
 
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| changes directories exist | `test -d harness/changes/active && test -d harness/changes/parking && test -d harness/changes/archive` | Directories exist |
-| change templates exist | `test -f harness/templates/change/summary.md` etc. | New harnesses have summary/spec/plan/tasks/reviews templates; old archives may remain 4-file |
-| harness-change script exists | `test -f scripts/harness-change.*` | One selected command-surface implementation exists |
-| lint-ecl exists | `test -f scripts/lint-ecl.*` | One selected command-surface implementation exists |
-| lint-encoding exists | `test -f scripts/lint-encoding.*` | One selected command-surface implementation exists |
-| INDEX.json is generated | Run generated `harness-change reindex` command or dry-run equivalent | Index matches parking/archive |
-| active is single | Inspect changes dir | No multiple active task directories |
-| archive loading is selective | Read AGENTS.md/docs/ECL.md | History loads through STATUS/INDEX; no default full archive load |
+Check:
 
-### 8. Auto-Evolve (Core profile; Weight: report separately)
-
-| Check | How | Pass Criteria |
-|-------|-----|---------------|
-| evolution state exists | `test -f harness/evolution/state.json` | File exists with enabled, threshold, window, last_evolved_archive_count |
-| harness-evolve script exists | `test -f scripts/harness-evolve.*` | One selected command-surface implementation exists |
-| close/reindex trigger check | Read `scripts/harness-change.*` | `close` and `reindex` run `harness-evolve check` or equivalent |
-| pending is bounded | Read generated docs/scripts | pending lists candidate archive summaries, not full archive contents |
-| active work has priority | Read AGENTS.md/docs/ECL.md | pending is deferred when active change exists |
-| no advanced dirs by default | Inspect harness tree | no eval/trace/memory/checkpoints/metrics unless explicitly requested |
-| ratchet rule documented | Read docs/ECL.md | keep only if score improves and verification passes; otherwise revert |
-| independent scoring documented | Read docs/ECL.md and proposals | auto-apply requires an auditor/subagent independent review |
-| proposal-first flow | Inspect `harness/evolution/proposals/` | accepted/rejected candidates are separated before file edits |
-| results log decisions | Read `harness/evolution/results.tsv` | status is one of keep/revert/rejected/noop and eval_mode is present |
-| retention scan included | Read proposals/reviews | candidates are classified as Promote, Retain, Merge, Retire, or Archive-only, including noop rationale |
-
-## Auto-Evolve Independent Review
-
-When asked to score an auto-evolve proposal, act as an independent evaluator. Do not generate or
-edit the delta you are scoring. Return a concise decision object and a short explanation.
-
-Score out of 100:
-
-| Dimension | Weight | Pass Criteria |
-|-----------|-------:|---------------|
-| Evidence grounding | 30 | Accepted candidates cite specific archived summaries, reviews, or validation notes |
-| Project relevance | 25 | Accepted candidates map to current project modules, files, commands, failures, or user corrections |
-| Mechanical enforceability | 15 | Important rules become lint/test/CI checks or explicit acceptance gates |
-| Regression safety | 20 | Proposed delta does not weaken harness checks or business gates |
-| Context cost | 10 | AGENTS.md stays concise and archive loading remains bounded |
-
-Hard rejection conditions:
-
-- No archived change evidence for an accepted candidate.
-- Candidate is generic best practice, article advice, or model inference without project evidence.
-- Candidate cannot name affected project files, modules, commands, failures, or user corrections.
-- Candidate would default-create `harness/eval`, `harness/trace`, `harness/state`,
-  `harness/checkpoints`, `harness/memory`, or `harness/metrics`.
-- Candidate would put rejected material into AGENTS.md, ECL, STATUS, lint, or CI.
-- Candidate only appends rules while ignoring duplicated current facts, stale current-state language,
-  or obvious merge/retire/archive-only decisions.
-
-Decision rules:
-
-- `keep`: score >= 80, hard gates pass, and validation plan is adequate.
-- `rejected`: hard gate fails or score < 80 before file edits.
-- `noop`: no accepted candidates with enough evidence.
-- `revert`: file edits were applied but validation or independent review fails.
-
-Output format:
-
-```json
-{
-  "decision": "keep",
-  "score": 86,
-  "eval_mode": "independent_review",
-  "dimension_scores": {
-    "evidence_grounding": 27,
-    "project_relevance": 23,
-    "mechanical_enforceability": 12,
-    "regression_safety": 16,
-    "context_cost": 8
-  },
-  "accepted": ["quality gate requires nonzero test count"],
-  "rejected": ["generic prompt advice with no project evidence"],
-  "required_validation": ["lint-ecl", "lint-encoding", "relevant business gate"],
-  "reason": "Accepted candidate cites two archived changes and maps to the existing test command."
-}
-```
+- Only unique completed, validated, evidence-complete Changes count; Integration/Evolution/small
+  work is excluded.
+- Five unevaluated Changes create one pending window; later Changes queue for the next window.
+- E1 precedes one atomic owner claim; there is no E2.
+- Proposal precedes mutation and classifies Promote/Retain/Merge/Retire/Archive-only.
+- Unintegrated implementation facts cannot become stable project truth.
+- Independent score is at least 80, no hard issue exists, and declared Harness/project tests pass.
+- Dry run or unavailable judge produces noop without mutation.
+- Candidate fingerprint, writer lock, transaction recovery, and dynamic state preservation prevent
+  partial or stale publication.
+- Complete Change archive and INDEX remain intact after evaluation; only evaluated IDs advance.
 
 ## Scoring
 
-For each dimension, score 0-10:
-- 10: All checks pass, high quality
-- 7-9: Most checks pass, minor gaps
-- 4-6: Some checks pass, significant gaps
-- 1-3: Few checks pass, major gaps
-- 0: Dimension entirely missing
+Read `../references/audit-rubric.json` for the dimension set, weights, score range, overall-score
+calculation, and publication gate. That file is the machine formula owner. This role owns evidence
+judgment: explain why each score follows from observed behavior, and never award points for file
+presence alone.
 
-For core-profile projects, exclude advanced-only dimensions from the weighted overall score instead
-of scoring them as zero. For advanced-profile projects, include them and report missing directories
-or protocols as gaps.
+## Independent Evolution Review
 
-## Output Format
+The reviewer must not author the proposal. Score out of 100:
 
-Save results to `harness/.analysis/audit.json`:
+| Dimension | Weight |
+| --- | ---: |
+| Evidence grounding | 30 |
+| Project relevance | 25 |
+| Mechanical enforceability | 15 |
+| Regression safety | 20 |
+| Context cost | 10 |
 
-```json
-{
-  "profile": "core",
-  "overall_score": 6.5,
-  "dimensions": {
-    "documentation": {"score": 7, "weight": 25, "checks_passed": 7, "checks_total": 9},
-    "linters": {"score": 5, "weight": 20, "checks_passed": 3, "checks_total": 6},
-    "environment": {"score": 8, "weight": 15, "checks_passed": 4, "checks_total": 5},
-    "integration": {"score": 9, "weight": 10, "checks_passed": 3, "checks_total": 3},
-    "ecl_changes": {"score": 4, "weight": 0, "checks_passed": 3, "checks_total": 7},
-    "auto_evolve": {"score": 6, "weight": 0, "checks_passed": 4, "checks_total": 7}
-  },
-  "advanced_dimensions": {
-    "evals": {"enabled": false, "reason": "advanced profile not requested"},
-    "quality_automation": {"enabled": false, "reason": "advanced profile not requested"}
-  },
-  "gaps": [
-    {"priority": "P0", "dimension": "documentation", "issue": "ARCHITECTURE.md claims 3 layers but code has 4", "fix": "Regenerate from actual imports"},
-    {"priority": "P1", "dimension": "linters", "issue": "lint-deps missing 5 packages", "fix": "Add internal/cache, internal/auth to layer map"},
-    {"priority": "P1", "dimension": "ecl_changes", "issue": "INDEX.json is hand-maintained or stale", "fix": "Generate it from archive/parking via the generated harness-change reindex command"}
-  ],
-  "strengths": [
-    "Build passes cleanly",
-    "CI properly configured",
-    "Error handling is consistent"
-  ]
-}
-```
+Hard issues include unsupported durable facts, generic advice without project evidence, weakened
+project gates, secret/path leakage, duplicate current owners, append-only rule growth that ignores
+merge/retire, mutation before E1, hidden E2, unavailable independent review claimed as keep, or
+publication that can lose Registry/Change state.
 
-Also write human-readable audit to `harness/.analysis/audit-summary.md`.
+`keep` requires score >= 80, no hard issue, and all validation. Otherwise return `rejected` or
+`noop`; dry-run cannot keep.
+
+## Drift And Entropy Findings
+
+Report broken links, uncited L3, source/interface/API/schema/document fingerprint drift, duplicate
+current-fact owners, archive-ledger leakage, and roadmap/current-state conflicts. Mechanical
+structure/citation failures are errors; stale wording, duplicate semantics, line pressure, and
+archive density are review warnings. Every finding names severity, owner, location, reason, repair,
+projection, and validation. E1 classifies each current finding as Promote, Retain, Merge, Retire,
+or Archive-only. Entropy work includes numeric/owned `before` and `after` observations; warnings
+never authorize automatic deletion.
+
+## Audit Schema
+
+`audit.json` uses `schema_version`, `analysis_status`, `overall_score`, rubric-named `dimensions`,
+`strengths`, `gaps`, `knowledge_findings`, and an optional `entropy_report`. Each dimension records
+its score, rubric weight, checks passed, and checks total. Every gap records priority, dimension,
+issue, fix, and evidence. Every knowledge finding records type, lifecycle decision, owner,
+projection, repair, and validation.
+
+## Exit
+
+Exit only when every finding cites evidence, distinguishes missing capability from unsupported
+capability, identifies the correct owner, and proposes a testable repair. File presence alone is
+never sufficient proof.
