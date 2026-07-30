@@ -48,14 +48,15 @@ because the project has no source yet.
 
 Use an evidence funnel so large repositories remain analyzable:
 
-1. Read top-level names, manifests, lockfiles, README, existing project routes, and current docs.
+1. Read top-level names, manifests, lockfiles, existing project routes, and repository prose as
+   candidate context rather than durable evidence.
 2. Select candidate source roots and one or more adapters from concrete evidence.
 3. Use repository search to locate entrypoints, imports, schemas, routes, configuration reads,
    tests, and CI commands. Search results narrow the next read; they are not architecture claims.
 4. Read only relevant source slices to trace ownership, interfaces, critical flows, and dependency
    direction.
-5. Confirm each durable claim against a source file, configured command, accepted contract, or
-   explicit user statement.
+5. Confirm each durable claim against source code, a manifest/configuration file, a test, a
+   configured command, an accepted contract, or an explicit user statement.
 
 Do not preload full archive bodies, generated dependency trees, vendored code, build output, or
 every source file. In a mature Harness, start with generated indexes, current route documents,
@@ -81,7 +82,7 @@ adapters enrich profile commands/environment fields. The auditor owns `audit.jso
 
 `scripts/build_analysis_bundle.py` is only a deterministic evidence extractor. It always emits a
 `partial` or `bootstrap_only` draft with no audit score or authorized artifact. Analyzer, Auditor,
-and Creators must review canonical evidence and write the final semantic bundle before using
+and Creators must review implementation evidence and write the final semantic bundle before using
 `analysis_status: complete`.
 
 Use this `project-profile.json` shape. Objects in evidence-backed arrays include an `evidence`
@@ -93,7 +94,7 @@ array of project-relative paths, canonical URLs, `user:` statements, or accepted
   "schema_version": "1.0",
   "analysis_status": "complete",
   "project_name": "example",
-  "purpose": {"summary": "What the project does", "confidence": "high", "evidence": ["README.md"]},
+  "purpose": {"summary": "What the project does", "confidence": "high", "evidence": ["src/app.ts", "tests/app.test.ts"]},
   "primary_flows": [{"name": "Main flow", "description": "...", "evidence": ["src/main.ts"]}],
   "languages": [{"name": "TypeScript", "confidence": "high", "evidence": ["package.json"]}],
   "frameworks": [],
@@ -125,13 +126,12 @@ array of project-relative paths, canonical URLs, `user:` statements, or accepted
     "evidence": ["package.json"]
   }],
   "environment": {"services": [], "variables": [], "modes": [], "evidence": []},
-  "documents": [{"name": "README", "path": "README.md", "evidence": ["README.md"]}],
   "ci": [],
   "bridges": [{
     "id": "terminology-to-code",
     "title": "Terminology To Code",
     "purpose": "Translate a proven domain term to its implementation owner.",
-    "mappings": [{"from": "place order", "to": "src/orders/service.ts::place", "evidence": ["README.md", "src/orders/service.ts"]}]
+    "mappings": [{"from": "place order", "to": "src/orders/service.ts::place", "evidence": ["src/orders/service.ts", "tests/orders.test.ts"]}]
   }],
   "reference_projects": [],
   "global_boundaries": [
@@ -141,7 +141,7 @@ array of project-relative paths, canonical URLs, `user:` statements, or accepted
     }
   ],
   "unknowns": [],
-  "evidence": ["README.md", "package.json"]
+  "evidence": ["package.json", "src/app.ts", "tests/app.test.ts"]
 }
 ```
 
@@ -169,9 +169,9 @@ the existing detailed audit dimensions where applicable. `creation-delta.json` u
   "schema_version": "1.0",
   "mode": "init",
   "decisions": [{
-    "source": "README.md",
+    "source": "src/app.ts",
     "action": "retain",
-    "owner": "canonical repository",
+    "owner": "project Harness knowledge",
     "projection": "L1 purpose citation",
     "validation": "source exists"
   }],
@@ -192,7 +192,7 @@ Each artifact requires evidence, an owner, an allowed target path, validation, a
 authorization when executable. There is no capability-profile switch.
 L1/L2/L3 are rendered only from the profile and architecture bundle. Unknown is a valid
 result; invented certainty is not. A complete profile requires evidenced purpose, language,
-implementation structure, and at least one flow/command/canonical-document/CI/boundary fact.
+implementation structure, and at least one flow/command/CI/boundary fact.
 Without this complete bundle, `project init` is only a `bootstrap_only` installation and must not
 be reported as semantic project initialization.
 
@@ -236,7 +236,7 @@ Run the detailed procedure in `../agents/analyzer.md` and the selected adapter. 
 
 1. Identify real source roots and generated/vendor exclusions.
 2. Map modules from manifests, package/workspace boundaries, imports, entrypoints, tests, and
-   current architecture documents. A directory name alone is insufficient evidence.
+   current interfaces, imports, configuration, and tests. A directory name alone is insufficient evidence.
 3. Trace dependency direction and report cycles without prematurely turning observations into
    permanent rules.
 4. Extract key interfaces, implementations, API/schema/event/config ownership, critical request or
@@ -285,7 +285,7 @@ retired, or archive-only artifact before publication.
 1. Use `scripts/harness_cli.py` for project identity, transactional scaffold creation, one physical
    local project Harness, runtime links, Registry layout, and generated indexes.
 2. Use the creator roles for semantic content:
-   - `../agents/creator-docs.md` for repository routes, canonical project docs, and project Harness
+   - `../agents/creator-docs.md` for repository routes, complete project knowledge, and project Harness
      knowledge ownership;
    - `../agents/creator-config.md` for command/environment contracts and runtime helpers;
    - `../agents/creator-linters.md` for accepted deterministic checks with actionable errors.
@@ -294,8 +294,9 @@ retired, or archive-only artifact before publication.
    placeholder catalogs.
 4. Keep detailed Harness rules, workflows, AI-facing knowledge, shared Registry, and Evolution
    state in the local project Harness.
-5. Keep canonical business code and business documents in the repository. Add or update them only
-   when the approved delta requires project documentation, commands, or checks.
+5. Keep business code and optional human-facing documents in the repository. Add or update them
+   only when the approved delta requires project documentation, commands, or checks; keep complete
+   AI-facing knowledge in the project Harness.
 6. Keep repository routes compact. Existing `AGENTS.md` or `CLAUDE.md` content is preserved and
    merged deliberately; it is never overwritten just to install a route.
 

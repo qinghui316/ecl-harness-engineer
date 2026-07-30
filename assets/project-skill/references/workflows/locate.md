@@ -3,9 +3,9 @@
 ## Inputs
 
 - Accepted scope and current Change.
-- L1 overview, candidate L2 module/system maps, relevant L3 bridges, and reference maps linked by
-  those project documents.
-- Canonical source tree, configured search tools, and current contracts.
+- L1 overview, candidate L2 module/system maps, relevant L3 bridges, and their linked reference maps.
+- Source tree, configured search tools, and current contracts. Use repository prose only as a lead;
+  verify relevant facts against implementation evidence.
 
 ## Agent Judgment
 

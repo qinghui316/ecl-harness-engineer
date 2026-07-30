@@ -35,7 +35,8 @@ selected adapters as routing evidence and its package scripts as configured fact
 commands remain candidates until supported by the target project.
 
 Use `scripts/build_analysis_bundle.py --project-root <path> --output <bundle>` to extract an initial
-four-file draft. It always remains `partial` or `bootstrap_only`. Review canonical evidence, replace
+four-file draft. It always remains `partial` or `bootstrap_only`; repository prose appears only as
+`document_candidates`. Review implementation evidence, remove candidate-only document fields, replace
 candidate responsibilities and flows with justified conclusions, and write the final semantic
 profile and architecture before using `analysis_status: complete`. Deterministic extraction is not
 a substitute for Analyzer judgment.
@@ -133,7 +134,7 @@ Identify:
 Produce `<analysis-bundle>/project-profile.json` using the exact contract in
 `references/project-analysis-and-creation.md`. This is the analyzer's primary handoff and must
 contain purpose, flows, languages, frameworks, package managers, source roots, entrypoints,
-evidence-backed modules, commands, environment, documents, CI, proven bridges, isolated reference
+evidence-backed modules, commands, environment, CI, proven bridges, isolated reference
 projects, global boundaries, unknowns, and evidence.
 
 Environment guides and selected adapters contribute command/environment records to this same
@@ -143,7 +144,7 @@ never sufficient L3 evidence.
 
 Use `analysis_status: complete` only when evidence supports purpose, at least one language, an
 implementation structure fact (source root, entrypoint, or module), and a project-use fact (flow,
-command, canonical document, CI, or boundary). Otherwise record `partial` or `bootstrap_only` plus
+command, CI, or boundary). Otherwise record `partial` or `bootstrap_only` plus
 unknowns. Exit only when the profile validates against real project paths. The creator CLI consumes
 this file; it does not infer omitted semantics.
 
@@ -192,4 +193,4 @@ The CLI validates it with the other bundle files and publishes it to
 Do not write L1/L2/L3 directly during the read-only analysis stage. The approved profile is the
 single input from which init, migrate, or Evolution renders project Wiki content. Keep detailed
 structure in `architecture.json`; do not introduce a second architecture-summary owner or duplicate
-canonical architecture documentation from the business repository.
+repository prose as a durable architecture dependency.

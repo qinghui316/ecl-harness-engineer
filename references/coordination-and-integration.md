@@ -14,7 +14,9 @@ locks/evolution-owner/
 ```
 
 Use one file per owner and atomic replace. Do not require a daemon, heartbeat loop, or shared chat.
-`project doctor` derives staleness from worktree existence, branch, commit, and record timestamps.
+`project doctor` maps recorded branches to the current `git worktree list` and uses branch, commit,
+and record timestamps for diagnostics. Worktree locations are current-machine facts, not Registry
+fields.
 
 Store complete Change documents in the same physical Skill under
 `state/changes/active|parking|archive/<change-id>/`. Rebuild `state/changes/INDEX.json` from Change
@@ -24,8 +26,10 @@ Integration, or Evolution without entering business Git.
 
 ## Lane Record
 
-A Lane record contains `lane_id`, `worktree`, `branch`, `head_commit`, `active_change_id`, `status`,
-and `updated_at`. One long-lived Lane may complete Changes sequentially.
+A Lane record contains `lane_id`, `branch`, `head_commit`, `active_change_id`, `status`, and
+`updated_at`. One long-lived Lane may complete Changes sequentially. A parked Change may transfer to
+another clean Lane through resume; preserve its existing Git base, or bind the current HEAD when a
+non-Git Change first enters Git.
 
 ## Change Record
 
@@ -116,6 +120,7 @@ All Lanes see shared knowledge and Registry updates immediately. At preflight:
 - Rebase or merge when required by project policy.
 - Pause and re-plan when an API, schema, permission, safety rule, or required dependency changed.
 - Return `knowledge.status=refresh-needed` for an affected scope. Current-fact priority is Registry
-  contracts/events, shared current Change evidence, canonical code/documents, then periodic L1/L2/L3.
+  contracts/events, shared current Change evidence, repository code/manifests/configuration/tests/interfaces,
+  then periodic L1/L2/L3.
 
 Do not maintain separate Harness versions per Lane.

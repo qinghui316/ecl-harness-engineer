@@ -8,10 +8,8 @@ import json
 import os
 import re
 import secrets
-import shlex
 import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 import time
@@ -117,7 +115,6 @@ def copy_runtime(destination: Path) -> list[str]:
         shutil.copy2(rubric_source, rubric_target)
     domains = ("project", "change", "integrate", "evolve", "knowledge")
     launchers = [*runtime_names, *(f"harness_runtime/{path.name}" for path in package_files)]
-    python_command = str(Path(sys.executable).resolve())
     windows_shell = (
         "powershell" if shutil.which("powershell")
         else "pwsh" if shutil.which("pwsh")
@@ -126,17 +123,40 @@ def copy_runtime(destination: Path) -> list[str]:
     for domain in domains:
         if os.name == "nt" and windows_shell:
             name = f"harness-{domain}.ps1"
-            escaped_python = python_command.replace("'", "''")
             content = (
                 "$ErrorActionPreference = 'Stop'\n"
-                f"& '{escaped_python}' (Join-Path $PSScriptRoot 'harness_cli.py') {domain} @args\n"
+                "$cli = Join-Path $PSScriptRoot 'harness_cli.py'\n"
+                "if ($env:ECL_HARNESS_PYTHON) {\n"
+                f"    & $env:ECL_HARNESS_PYTHON $cli {domain} @args\n"
+                "} elseif (Get-Command python -ErrorAction SilentlyContinue) {\n"
+                f"    & python $cli {domain} @args\n"
+                "} elseif (Get-Command py -ErrorAction SilentlyContinue) {\n"
+                f"    & py -3 $cli {domain} @args\n"
+                "} else {\n"
+                "    Write-Error 'Python 3 is required. Install it or set ECL_HARNESS_PYTHON for this host.'\n"
+                "    exit 2\n"
+                "}\n"
                 "exit $LASTEXITCODE\n"
             )
         elif os.name == "nt":
             name = f"harness-{domain}.cmd"
             content = (
                 "@echo off\n"
-                f'"{python_command}" "%~dp0harness_cli.py" {domain} %*\n'
+                "if defined ECL_HARNESS_PYTHON goto harness_python_override\n"
+                "where python >nul 2>nul\n"
+                "if %errorlevel% equ 0 goto harness_python\n"
+                "where py >nul 2>nul\n"
+                "if %errorlevel% equ 0 goto harness_py\n"
+                "echo Python 3 is required. Install it or set ECL_HARNESS_PYTHON for this host. 1>&2\n"
+                "exit /b 2\n"
+                ":harness_python_override\n"
+                f'"%ECL_HARNESS_PYTHON%" "%~dp0harness_cli.py" {domain} %*\n'
+                "exit /b %errorlevel%\n"
+                ":harness_python\n"
+                f'python "%~dp0harness_cli.py" {domain} %*\n'
+                "exit /b %errorlevel%\n"
+                ":harness_py\n"
+                f'py -3 "%~dp0harness_cli.py" {domain} %*\n'
                 "exit /b %errorlevel%\n"
             )
         else:
@@ -145,7 +165,16 @@ def copy_runtime(destination: Path) -> list[str]:
                 "#!/usr/bin/env sh\n"
                 "set -eu\n"
                 "SCRIPT_DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n"
-                f"exec {shlex.quote(python_command)} \"$SCRIPT_DIR/harness_cli.py\" {domain} \"$@\"\n"
+                "if [ -n \"${ECL_HARNESS_PYTHON:-}\" ]; then\n"
+                f"  exec \"$ECL_HARNESS_PYTHON\" \"$SCRIPT_DIR/harness_cli.py\" {domain} \"$@\"\n"
+                "elif command -v python3 >/dev/null 2>&1; then\n"
+                f"  exec python3 \"$SCRIPT_DIR/harness_cli.py\" {domain} \"$@\"\n"
+                "elif command -v python >/dev/null 2>&1; then\n"
+                f"  exec python \"$SCRIPT_DIR/harness_cli.py\" {domain} \"$@\"\n"
+                "else\n"
+                "  echo 'Python 3 is required. Install it or set ECL_HARNESS_PYTHON for this host.' >&2\n"
+                "  exit 2\n"
+                "fi\n"
             )
         path = scripts / name
         atomic_write_text(path, content)

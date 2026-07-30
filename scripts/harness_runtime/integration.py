@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .changes import change_record_path, contract_record_path, load_change_record, load_contract_record
-from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_value, is_within, read_json, stable_hash, utc_now
+from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_value, is_within, read_json, safe_relative, stable_hash, utc_now
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
 from .reviews import validate_integration_review
@@ -78,7 +78,6 @@ def refresh_baseline_from_canonical(
         if git(context["project_root"], "merge-base", "--is-ancestor", previous, current, check=False).returncode != 0:
             raise HarnessError("Canonical branch diverged from the Registry baseline; audit it before Integration.")
         baseline["canonical_commit"] = current
-        baseline["canonical_root"] = str(context["project_root"])
         baseline["updated_at"] = utc_now()
         atomic_write_json(path, baseline)
     return baseline
@@ -134,8 +133,9 @@ def order_changes_for_integration(skill_root: Path, selected: list[dict[str, Any
     return ordered
 
 def validated_integration_worktree(skill_root: Path, record: dict[str, Any]) -> Path:
-    worktree = Path(record.get("worktree", "")).resolve()
     allowed_root = (skill_root / "state" / "integrations").resolve()
+    relative = safe_relative(str(record.get("worktree", "")), "Integration worktree")
+    worktree = (skill_root / relative).resolve()
     if not is_within(worktree, allowed_root):
         raise HarnessError("Integration Record points outside the managed Integration root.")
     integration_id = canonical_id(record.get("integration_id", ""), "Integration id")
@@ -195,7 +195,7 @@ def integrate_start(args: argparse.Namespace) -> dict[str, Any]:
         "change_commit_ranges": ranges,
         "applied_commits": [],
         "remaining_commits": flattened,
-        "worktree": str(worktree),
+        "worktree": worktree.relative_to(skill_root).as_posix(),
         "branch": branch,
         "integrator_id": lane_id(context),
         "conflicts": [],
@@ -242,7 +242,7 @@ def integrate_start(args: argparse.Namespace) -> dict[str, Any]:
     finally:
         record["updated_at"] = utc_now()
         atomic_write_json(record_path, record)
-    return record
+    return {**record, "worktree": str(worktree)}
 
 def resume_integration(skill_root: Path, record: dict[str, Any]) -> dict[str, Any]:
     if record.get("status") != "conflict":
@@ -283,7 +283,7 @@ def resume_integration(skill_root: Path, record: dict[str, Any]) -> dict[str, An
         record["candidate_commit"] = git_value(worktree, "rev-parse", "HEAD")
     record["updated_at"] = utc_now()
     atomic_write_json(integration_record_path(skill_root, record["integration_id"]), record)
-    return record
+    return {**record, "worktree": str(worktree)}
 
 @guard_project_skill
 def integrate_status(args: argparse.Namespace) -> dict[str, Any]:
@@ -360,7 +360,6 @@ def commit_integration_registry(
     baseline_path = registry_root(skill_root) / "baseline.json"
     baseline = read_json(baseline_path, {})
     baseline["canonical_commit"] = landing
-    baseline["canonical_root"] = str(context["project_root"])
     baseline["updated_at"] = utc_now()
     atomic_write_json(baseline_path, baseline)
     return {

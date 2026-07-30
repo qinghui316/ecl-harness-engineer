@@ -37,7 +37,7 @@ enter profile, Wiki, scripts, Registry, or logs.
   "environment": {
     "project_type": "service",
     "modes": [
-      {"name": "development", "description": "Local API development", "evidence": ["README.md"]}
+      {"name": "development", "description": "Local API development", "evidence": [".env.example"]}
     ],
     "services": [
       {

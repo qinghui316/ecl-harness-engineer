@@ -49,9 +49,10 @@ flowchart LR
 <primary-worktree>/.agents/skills/<project-id>-harness/
 ```
 
-这个目录通过 Git common dir 绑定项目身份，并写入 common `info/exclude`，因此不会进入业务
-Git。主工作树的 Codex 直接读取该物理目录；Claude Code 和其他 worktree 使用项目级链接，
-不复制两套规则：
+这个目录由仓库中的 project marker 和稳定 project ID 定位，并写入当前 Git common
+`info/exclude`，因此不会进入业务 Git。Git common dir、worktree 地址和解释器路径只在当前
+进程中发现，不写入项目 Harness。主工作树的 Codex 直接读取该物理目录；Claude Code 和
+其他 worktree 使用项目级链接，不复制两套规则：
 
 | Runtime | 每个 worktree 的项目级发现目录 |
 | --- | --- |
@@ -124,7 +125,8 @@ Git、快照、回滚服务或守护进程。
 
 - L1 `overview.md`：默认读取的项目地图，按项目复杂度扩展，不设固定字节或行数上限；实现
   细节通过 L2/L3 分流，但默认发现所需的项目级导航必须完整保留。
-- L2 `modules/`：只有代码结构、模块 README、manifest 或正式文档能够证明时才创建。
+- L2 `modules/`：只有代码结构、manifest、配置、接口或测试能够证明时才创建；仓库 prose
+  只用于发现候选，不成为项目知识的持久依赖。
 - L3 `bridges/`：产品词到代码名、API/schema/event/config、设计 Token 等真实语义桥；没有
   引用就不生成。
 - `reference_projects/`：用户明确引入的参考源码地图。相关 L2/L3 直接写明参考机制、适配
@@ -152,7 +154,8 @@ API、schema、event、config、权限或模块边界变化必须发布机器可
 L1/L2/L3 是每五个合格 Change 由 Evolution 刷新的周期性索引，最多可能滞后四个已集成
 Change。preflight 会读取 Change base 之后的 baseline events、完整 contract 快照、affected
 paths 和相关知识来源漂移：命中当前 scope 时返回 `refresh-needed + replan`。最新事实优先级
-固定为 Registry event/contract、当前分支 Change、canonical 代码/正式文档、最后才是 Wiki；
+固定为 Registry event/contract、当前分支 Change、canonical 代码、manifest、配置、测试和
+已接受接口，最后才是 Wiki；
 无关 baseline 前进不会阻塞 Lane。
 
 ## Change 与精确完成提交

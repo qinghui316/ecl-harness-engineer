@@ -1,5 +1,7 @@
 # {{PROJECT_NAME}} Agent Route
 
+<!-- ECL-HARNESS-PROJECT-ID: {{PROJECT_ID}} -->
+
 This repository uses the local `{{SKILL_NAME}}` Harness Skill. Load that Skill before structured
 development, worktree coordination, Integration, or Harness evolution.
 

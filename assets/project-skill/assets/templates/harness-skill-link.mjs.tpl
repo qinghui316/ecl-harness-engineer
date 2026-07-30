@@ -69,9 +69,7 @@ if (fs.lstatSync(canonical).isSymbolicLink()) {
 const manifest = JSON.parse(fs.readFileSync(path.join(canonical, "state", "manifest.json"), "utf8"));
 if (
   manifest.project_id !== projectId
-  || manifest.mode !== "multi_lane"
-  || path.resolve(manifest.project_root ?? "") !== primary
-  || path.resolve(manifest.git_common_dir ?? "") !== common
+  || manifest.skill_name !== skillName
 ) {
   throw new Error("canonical project Harness manifest does not match this Git project");
 }

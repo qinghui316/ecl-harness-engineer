@@ -1,135 +1,114 @@
 # Project Harness Architecture
 
-## Purpose
+## Ownership
 
-Create one local project Harness per project. All local worktrees and supported coding runtimes read
-the same physical directory. The business repository remains responsible for accepted code and
-business documents. The shared project Harness owns current and historical Change evidence.
+Create one project Harness per project. It owns complete AI-facing project knowledge, rules,
+workflows, Change history, contracts, Integration results, and Evolution experience. Accepted code
+and optional human-facing business documents remain in the project repository, but repository prose
+is not a runtime knowledge dependency.
 
-## Identity
+All local worktrees and supported coding runtimes read one physical Harness. Machine facts such as
+absolute paths, Git common dir, interpreter, links, and temporary processes exist only while a
+command runs.
 
-For a Git project, derive identity from:
+## Stable Identity
 
-1. Absolute normalized Git common dir.
-2. Repository top-level name.
-3. A stable twelve-character SHA-256 prefix of the normalized common-dir path.
+Create `project_id` once as `<project-slug>-<random-id>`. Treat it as opaque and preserve it across
+directory moves, clones, non-Git-to-Git transitions, and migrations. Never derive or validate it
+from an absolute project path or Git common dir.
 
-Use `<repo-slug>-<hash>-harness` as the local project Harness directory name. All linked worktrees resolve to
-the same common dir and therefore the same project id.
+Write the project id marker in the bounded AGENTS/Claude route. Discover an existing Harness from
+that marker and verify both manifest id and Skill directory name. A same-named checkout without a
+matching marker cannot claim the Harness.
 
-For a non-Git project, hash the normalized project root and set `mode` to `single_lane`.
+## Physical Layout And Links
 
-Do not write the absolute identity path into repository-tracked files. It is local manifest state.
-
-## Canonical Project-Level Layout
-
-Resolve the Git primary worktree from the Git common dir. Create the one physical project Harness at:
+Place the physical Harness at:
 
 ```text
 <primary-worktree>/.agents/skills/<project-id>-harness/
 ```
 
-For a non-Git project, the project root is the primary worktree equivalent. Keep `state/` in the
-same physical project Harness so every local runtime observes one Registry and one Evolution window.
+For a non-Git project, use the project root as the primary-worktree equivalent. Expose the same
+physical directory in every current worktree at:
 
-This project-bound Harness is not installed in a global Skill directory. In Git mode, add the
-exact Codex and Claude Harness paths to the Git common dir's `info/exclude`; do not change
-the repository `.gitignore` solely for this machine-local asset.
+- Codex: `<worktree>/.agents/skills/<project-id>-harness`
+- Claude Code: `<worktree>/.claude/skills/<project-id>-harness`
 
-## Runtime Discovery Links
+Use a directory junction on Windows and a relative symlink when practical on POSIX. Add exact local
+Skill paths to Git common `info/exclude`; do not alter `.gitignore` only for local Harness storage.
 
-For every linked worktree, expose the same physical project Harness at:
+The tracked connector discovers the current Git primary worktree, reads the project marker, finds
+the matching physical Harness, and creates only the current worktree links. It rejects path escape,
+identity mismatch, and existing-content collision. `project doctor --repair-links` diagnoses all
+current worktrees and repairs local links without storing a link inventory.
 
-- Codex: `<worktree>/.agents/skills/<project-id>-harness`.
-- Claude Code: `<worktree>/.claude/skills/<project-id>-harness`.
+## Portable Manifest
 
-The primary worktree's Codex path is the physical directory. Every other path is a link named
-exactly like that Harness. On Windows, use a directory junction. On POSIX, use a relative symlink
-when possible.
-
-Future worktrees cannot inherit untracked links from a branch. Therefore the repository route
-includes one small tracked host-native connector: PowerShell on Windows when available, Node on
-other supported hosts when available, and Python as a fallback. A fresh Agent reads the managed
-AGENTS/Claude route, runs the connector when the project Harness is absent, then reloads it. It runs
-preflight before planning or editing repository changes. The connector resolves the Git common dir/primary worktree and creates only the
-current worktree's two project-level links. `project doctor --repair-links` repairs all detected
-worktrees.
-
-Before replacing a path:
-
-- If it already resolves to the canonical project Harness, keep it.
-- If it is an unrelated directory or link, stop and report the collision.
-- Never merge two physical project Harness copies.
-
-## Host Runtime
-
-Keep the target application runtime separate from Harness execution. The Harness runtime's Python
-helpers are the deterministic coordination implementation. During initialization, PowerShell or
-POSIX launchers pin the actual interpreter used for that run in local-only Harness state; Windows
-falls back to a `.cmd` launcher with the same pinned interpreter when PowerShell is unavailable. Generated
-`SKILL.md` routes through those launchers instead of assuming the target project uses Python.
-
-The tracked new-worktree connector must be runnable before the project Harness is discoverable.
-Select PowerShell on Windows, Node when available on other hosts, and Python only as a supported
-fallback. Never hardcode a Python-only bootstrap into `AGENTS.md` for a host that has a native
-PowerShell or Node route.
-
-## Manifest
-
-Store `state/manifest.json` with this minimum schema:
+`state/manifest.json` uses schema `2.0`:
 
 ```json
 {
-  "schema_version": "1.0",
-  "project_id": "repo-slug-0123456789ab",
-  "project_name": "repo-slug",
-  "project_root": "local-only absolute path",
-  "git_common_dir": "local-only absolute path or null",
-  "mode": "multi_lane",
+  "schema_version": "2.0",
+  "project_id": "repo-a1b2c3d4e5f6",
+  "project_name": "repo",
+  "skill_name": "repo-a1b2c3d4e5f6-harness",
   "skill_revision": 1,
-  "host_runtime": "python",
-  "host_command": "local-only interpreter path",
+  "analysis_status": "complete",
+  "launchers": [],
   "created_at": "RFC3339 timestamp",
-  "updated_at": "RFC3339 timestamp",
-  "runtime_links": []
+  "updated_at": "RFC3339 timestamp"
 }
 ```
 
-Allowed modes are `multi_lane` and `single_lane`. Never infer cross-machine coordination from
-`multi_lane`; it means local linked worktrees only.
+Do not persist project roots, Git common dirs, worktree addresses, interpreter commands, runtime
+links, or canonical-root paths in manifest, Registry, INDEX, knowledge index, or generated history.
+Project, Skill, Change, contract, and Integration paths are project-relative or Skill-relative.
+
+Resolve the current interpreter when a launcher executes. PowerShell, Node, and Python connectors
+remain independent pre-discovery host entries, not separate coordination implementations.
+
+## Lane Discovery
+
+Use `lane-single` outside Git. In Git, use `lane-<hash(project_id + branch_ref)>`. Resolve current
+worktree locations through Git and do not persist them. Detached HEAD may read knowledge and history
+but cannot create Structured Changes because it has no stable branch Lane.
+
+On a new machine, place the matching project Harness beside the project, retain the marker and
+project id, and rediscover current worktrees and links. Same-machine worktrees share Registry and
+writer locks; no cross-machine live coordination is implied.
+
+## Knowledge Independence
+
+Analyzer may read README, docs, and ADRs as temporary leads. Verify claims against code, manifests,
+interfaces, configuration, tests, accepted contracts, or explicit user evidence, then write the
+result completely into L1/L2/L3 and Architecture. Final analysis state and knowledge indexes do not
+persist repository prose paths. Unknown claims remain unknown instead of being replaced by links.
+
+Reference-source maps are different: they identify an inspected source checkout and commit, cite
+reference-relative source files, and connect those facts to target L2/L3 maps. Default checkouts use
+`.agents/reference-projects/<id>`; external checkout paths are analysis-time facts only.
 
 ## Repository Touchpoints
 
-Keep repository integration small:
+Keep repository integration bounded:
 
-- `AGENTS.md`: preserve existing content and maintain one bounded Harness route block.
-- `CLAUDE.md` or existing Claude route: preserve existing content and maintain the same bounded
-  route without duplicating the manual.
-- `scripts/harness-skill-link.{ps1,mjs,py}`: one selected connector that bootstraps links in a new
-  worktree; an unmanaged path collision is fatal.
-- Project Harness `state/changes/`: active, parked, and archived task evidence plus INDEX.
-- Existing business/project docs: authoritative sources indexed by project knowledge.
+- managed route blocks in `AGENTS.md` and `CLAUDE.md`;
+- one selected `scripts/harness-skill-link.*` connector;
+- local Git common exclude entries;
+- normal business code, tests, CI, and documents created only through accepted Changes.
 
-Keep existing product, architecture, API, and design documents in their canonical owners. Create
-AI-facing maps with source citations instead.
+Do not create repository Harness state as an initialization side effect.
 
-## Non-Git Fallback
+## Failure And Migration
 
-In `single_lane` mode:
+Initialization and migration publish through the existing content transaction. Preserve all
+pre-existing routes and collisions. Remove only links created by the failed operation.
 
-- Keep one current Change at a time.
-- Disable worktree registration, completion-commit landing, contract conflict checks, and
-  Integration commands.
-- Keep knowledge, Change artifacts, validation, and five-Change evolution.
-- `project migrate` may upgrade to `multi_lane` after Git exists; never run `git init` automatically.
+Migration from manifest `1.0` keeps the opaque project id, removes machine fields, normalizes Lane
+owners and Integration paths, and preserves Change/INDEX/Registry/Evolution state. A complete old
+Harness with repository-prose knowledge dependencies requires a new complete self-contained bundle;
+otherwise return `semantic_refresh_required` without partial publication.
 
-## Initialization Failure
-
-Initialization is transactional for creator-owned outputs. If a later link or route write fails,
-remove only links that resolve to the newly created project Harness and route files created in that run, then
-remove the incomplete project Harness. Preserve every pre-existing route, directory, and collision.
-
-Existing project Harness migration first builds and validates a full candidate. Artifact `merge` means the
-bundle supplies the complete merged candidate content, not an append operation. Execute bounded
-Python/Node/PowerShell validation declarations against the candidate before a recoverable root
-publication; a failure leaves current content, analysis, routes, and manifest unchanged.
+Non-Git-to-Git transition never runs `git init`. Once Git exists, migrate Lane ownership to the
+current named branch and refresh mechanical source fingerprints without changing semantic content.

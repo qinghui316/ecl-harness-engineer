@@ -152,7 +152,10 @@ def content_publication_guard(skill_root: Path, *, timeout_seconds: float = 30.0
 def guard_project_skill(function: Any) -> Any:
     def guarded(args: argparse.Namespace) -> dict[str, Any]:
         context = project_context(Path(args.project_root))
-        root = skill_root_for(context, args)
+        try:
+            root = skill_root_for(context, args)
+        except HarnessError:
+            return function(args)
         if not (root / "state" / "manifest.json").exists() and not content_transaction_store(root).exists():
             return function(args)
         with content_publication_guard(root):
@@ -178,7 +181,10 @@ def project_skill_read_guard(skill_root: Path):
 def guard_project_skill_read_only(function: Any) -> Any:
     def guarded(args: argparse.Namespace) -> dict[str, Any]:
         context = project_context(Path(args.project_root))
-        root = skill_root_for(context, args)
+        try:
+            root = skill_root_for(context, args)
+        except HarnessError:
+            return function(args)
         with project_skill_read_guard(root):
             return function(args)
 

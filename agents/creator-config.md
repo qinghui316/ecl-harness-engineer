@@ -19,7 +19,8 @@ select the Harness helper implementation language.
 
 The tracked new-worktree connector must run before Skill discovery. Prefer PowerShell on Windows,
 Node on other supported hosts, and Python only as an available fallback. Project Harness launchers
-pin the interpreter that successfully initialized the local Harness.
+resolve Python 3 on each host when invoked. They may honor a host-local `ECL_HARNESS_PYTHON`
+override, but do not persist the creating machine's interpreter path.
 
 ## Output Boundary
 

@@ -58,7 +58,7 @@ Apply each selected linear base_commit..completion_commit range; never merge a l
 
 ## HR-17: Ground Semantic Bridges
 
-L3 mappings require source, canonical document, integrated contract, or explicit user evidence; search inference only locates candidates.
+L3 mappings require source code, manifest/configuration, tests, an integrated contract, or explicit user evidence; repository prose and search inference only locate candidates.
 
 **On violation:** Remove the unsupported mapping or mark it unresolved.
 
@@ -76,7 +76,7 @@ Knowledge scan and check only report drift. Stable Wiki application is restricte
 
 ## HR-22: Prioritize Current Facts Over Periodic Wiki
 
-When baseline events or source drift affect the current scope, Registry contracts and events, shared current Change evidence, and canonical code/documents override periodic L1/L2/L3; stop and replan with refresh-needed.
+When baseline events or source drift affect the current scope, Registry contracts and events, shared current Change evidence, and repository code/manifests/configuration/tests/interfaces override periodic L1/L2/L3; stop and replan with refresh-needed.
 
 **On violation:** Discard the stale Wiki assumption, reload higher-priority current evidence, and revise the Change plan before continuing.
 

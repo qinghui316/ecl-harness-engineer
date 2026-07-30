@@ -5,7 +5,7 @@ project Harness. Apply the complete ECL behavior through its current owners and 
 
 ## Inputs
 
-- Validated `project-profile.json` with purpose, flows, modules, commands, environment, documents,
+- Validated `project-profile.json` with purpose, flows, modules, commands, environment,
   bridges, boundaries, unknowns, and evidence.
 - `audit.json` with semantic gaps, drift, duplication, and enforcement findings.
 - Shared `creation-delta.json` plus its artifact directory.
@@ -27,9 +27,9 @@ The CLI owns deterministic Wiki rendering from the profile, generated indexes, r
 Registry state, and atomic publication. Creator artifacts may replace or merge complete candidate
 files only when `creation-delta.json` names their owner, evidence, action, and validation.
 
-The business repository remains the canonical owner of product code and formal product,
-architecture, API, security, and design documents. Cite those documents; do not copy their bodies
-or create a second Harness manual in the repository. Repository writes are limited to the bounded
+The business repository owns product code and optional human-facing documents. Write verified
+AI-facing knowledge completely into the project Harness; repository prose is not a required link
+or durable evidence source. Repository writes are limited to the bounded
 managed AGENTS/Claude route and selected worktree connector installed by the CLI.
 
 ## Project Harness Entry
@@ -54,10 +54,9 @@ without a fixed byte or line limit, and include:
 
 1. Project purpose and primary user/system flows.
 2. Major modules with one-sentence responsibilities and L2 links.
-3. Canonical business/project documents as citations.
-4. Configured command and verification entrypoints.
-5. Global boundaries that affect most work.
-6. Explicit unknowns that materially limit planning.
+3. Configured command and verification entrypoints.
+4. Global boundaries that affect most work.
+5. Explicit unknowns that materially limit planning.
 
 Exclude Lane status, active Changes, archive ledgers, full directory trees, and historical
 narrative. Preserve every project-level navigation link an Agent needs by default; move module
@@ -65,8 +64,8 @@ detail to L2/L3 instead of truncating the map. L1 is a periodic map, not the new
 
 ## L2 Modules And Systems
 
-Create module pages only when manifests, imports, entrypoints, tests, canonical documents, or
-interfaces prove a coherent owner. Each page includes responsibility, roots, entrypoints,
+Create module pages only when manifests, imports, entrypoints, tests, interfaces, or contracts
+prove a coherent owner. Each page includes responsibility, roots, entrypoints,
 interfaces/data owners, dependencies, tests, commands, boundaries, citations, and source
 fingerprints. A top-level directory name alone is never enough.
 
@@ -84,7 +83,7 @@ Create a bridge only for a proven translation boundary:
 - provider/runtime adapter to boundary;
 - design token to project API.
 
-Every mapping cites source code, canonical documentation, an integrated contract, or an explicit
+Every mapping cites source code, manifest/configuration, tests, an integrated contract, or an explicit
 user statement. Search synonyms may locate candidates but never establish durable truth.
 
 ## Reference Project Source Maps

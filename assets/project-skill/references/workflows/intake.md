@@ -23,7 +23,7 @@ unless repository evidence conflicts with it.
 1. Restate the intended outcome and evidence-backed constraints.
 2. Identify API, schema, event, config, permission, module, release, or multi-step validation impact.
 3. For repository-mutating work, run preflight. If it reports `refresh-needed`, reload related
-   Registry events/contracts and canonical evidence before relying on periodic L1/L2/L3 assertions.
+   Registry events/contracts and current implementation evidence before relying on periodic L1/L2/L3 assertions.
 4. Record assumptions; ask at most three high-impact questions in one round, and only when their
    answers materially change implementation or safety.
 5. Create or reuse one Change for structured work and publish its initial scope.

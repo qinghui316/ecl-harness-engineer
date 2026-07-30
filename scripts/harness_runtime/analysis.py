@@ -26,6 +26,53 @@ from .project import primary_worktree_root
 
 DISPLAY_TEXT_FIELDS = ("name", "summary", "rule", "title", "path", "id")
 
+
+def is_repository_prose_path(value: str) -> bool:
+    if value.strip().lower().startswith(("http://", "https://", "user:", "contract:", "registry:")):
+        return False
+    normalized = value.strip().replace("\\", "/").lstrip("./")
+    name = Path(normalized).name.lower()
+    suffix = Path(name).suffix.lower()
+    prose_suffixes = {".md", ".markdown", ".rst", ".adoc", ".asciidoc"}
+    prose_text_names = re.compile(
+        r"^(?:readme|status|current(?:[-_ ]?(?:state|plan|status))?|roadmap|contributing|"
+        r"changelog|architecture|design|decisions?)(?:[.-][^/]+)*\.txt$"
+    )
+    return (
+        name == "readme"
+        or suffix in prose_suffixes
+        or bool(prose_text_names.fullmatch(name))
+    )
+
+
+def reject_repository_prose_references(
+    value: Any,
+    label: str,
+    additional_fields: Iterable[str] = (),
+) -> None:
+    reference_fields = {
+        "evidence", "target_evidence", "reference_evidence", "path", "location", "source",
+        "source_roots", "roots", "entrypoints", "interfaces", "call_paths", "tests",
+        "packages", "implementations", "flow",
+    } | set(additional_fields)
+
+    def walk(item: Any, field: str | None = None) -> Iterable[str]:
+        if isinstance(item, dict):
+            for key, nested in item.items():
+                yield from walk(nested, key)
+        elif isinstance(item, list):
+            for nested in item:
+                yield from walk(nested, field)
+        elif isinstance(item, str) and field in reference_fields:
+            yield item
+
+    prohibited = sorted({item for item in walk(value) if is_repository_prose_path(item)})
+    if prohibited:
+        raise HarnessError(
+            f"{label} must be self-contained and cannot persist repository prose-document references: "
+            + ", ".join(prohibited)
+        )
+
 def semantic_display_text(item: Any, fields: tuple[str, ...] = DISPLAY_TEXT_FIELDS) -> str:
     if isinstance(item, str):
         return item.strip()
@@ -116,7 +163,6 @@ def bootstrap_profile(context: dict[str, Any]) -> dict[str, Any]:
             "services": [], "variables": [], "modes": [], "startup_order": [],
             "helpers": [], "unknowns": [], "evidence": [],
         },
-        "documents": [],
         "ci": [],
         "bridges": [],
         "reference_projects": [],
@@ -142,7 +188,7 @@ def validate_profile(profile: dict[str, Any], context: dict[str, Any]) -> dict[s
         raise HarnessError(str(exc)) from exc
     for key in (
         "primary_flows", "languages", "frameworks", "package_managers", "source_roots",
-        "entrypoints", "modules", "commands", "documents", "ci", "bridges", "reference_projects",
+        "entrypoints", "modules", "commands", "ci", "bridges", "reference_projects",
         "global_boundaries", "unknowns", "evidence",
     ):
         if not isinstance(profile.setdefault(key, []), list):
@@ -159,31 +205,35 @@ def validate_profile(profile: dict[str, Any], context: dict[str, Any]) -> dict[s
             raise HarnessError("Project purpose must contain a summary and evidence.")
         validate_project_evidence(root, evidence_values(purpose), "purpose")
     if profile.get("analysis_status") == "complete":
+        if "documents" in profile or "document_candidates" in profile:
+            raise HarnessError(
+                "A complete project profile must express project knowledge directly and must not contain documents or document_candidates."
+            )
+        reject_repository_prose_references(profile, "Complete project profile")
         if purpose is None:
             raise HarnessError(
                 "A complete project profile requires an evidence-backed purpose; use bootstrap_only when project semantics are unknown."
             )
         validate_project_evidence(root, evidence_values(profile), "profile")
         implementation_fields = ("source_roots", "entrypoints", "modules")
-        project_use_fields = ("primary_flows", "commands", "documents", "ci", "global_boundaries")
+        project_use_fields = ("primary_flows", "commands", "ci", "global_boundaries")
         if not profile["languages"] or not any(profile[field] for field in implementation_fields):
             raise HarnessError(
                 "A complete project profile requires evidence-backed language and implementation structure."
             )
         if not any(profile[field] for field in project_use_fields):
             raise HarnessError(
-                "A complete project profile requires evidence-backed workflow, command, document, CI, or boundary facts."
+                "A complete project profile requires evidence-backed workflow, command, CI, or boundary facts."
             )
         for field in (
             "primary_flows", "languages", "frameworks", "package_managers", "source_roots",
-            "entrypoints", "documents", "ci", "global_boundaries",
+            "entrypoints", "ci", "global_boundaries",
         ):
             for item in profile[field]:
                 if not isinstance(item, dict):
                     raise HarnessError(f"Complete profile field {field} must contain evidence-backed objects.")
                 display_fields = {
                     "primary_flows": ("name", "summary", "title", "id"),
-                    "documents": ("name", "title", "path", "id"),
                     "ci": ("name", "title", "path", "id"),
                     "global_boundaries": ("rule", "name", "summary"),
                 }
@@ -435,6 +485,12 @@ def load_analysis_bundle(
     except ValueError as exc:
         raise HarnessError(str(exc)) from exc
     if profile.get("analysis_status") == "complete":
+        reject_repository_prose_references(audit, "Complete audit")
+        reject_repository_prose_references(
+            architecture,
+            "Complete architecture analysis",
+            ("from", "to", "pkg_a", "pkg_b"),
+        )
         if audit.get("analysis_status") != "complete":
             raise HarnessError("A complete project profile requires a complete audit.")
         if architecture.get("analysis_status") != "complete":
@@ -447,6 +503,15 @@ def load_analysis_bundle(
         raise HarnessError(
             "Creation delta capability_profiles is obsolete. Declare evidence-backed project Harness artifacts directly."
         )
+    if profile.get("analysis_status") == "complete":
+        delta_references = {
+            "decisions": delta["decisions"],
+            "artifact_evidence": [
+                {"evidence": artifact.get("evidence", [])}
+                for artifact in delta["artifacts"] if isinstance(artifact, dict)
+            ],
+        }
+        reject_repository_prose_references(delta_references, "Complete creation delta")
     for decision in delta["decisions"]:
         if not isinstance(decision, dict):
             raise HarnessError("Each creation-delta decision must be an object.")

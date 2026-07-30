@@ -92,12 +92,7 @@ if ($canonicalItem.LinkType) {
     throw "canonical project Harness must be physical: $canonical"
 }
 $manifest = Get-Content -Raw -Encoding UTF8 (Join-Path $canonical "state/manifest.json") | ConvertFrom-Json
-$manifestRoot = [System.IO.Path]::GetFullPath([string]$manifest.project_root).TrimEnd('\', '/')
-$manifestCommon = [System.IO.Path]::GetFullPath([string]$manifest.git_common_dir).TrimEnd('\', '/')
-$expectedRoot = [System.IO.Path]::GetFullPath($primary).TrimEnd('\', '/')
-$expectedCommon = [System.IO.Path]::GetFullPath($common).TrimEnd('\', '/')
-if ($manifest.project_id -ne $ProjectId -or $manifest.mode -ne "multi_lane" -or
-    $manifestRoot -ine $expectedRoot -or $manifestCommon -ine $expectedCommon) {
+if ($manifest.project_id -ne $ProjectId -or $manifest.skill_name -ne $SkillName) {
     throw "canonical project Harness manifest does not match this Git project"
 }
 

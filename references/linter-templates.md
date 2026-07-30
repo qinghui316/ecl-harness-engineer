@@ -20,7 +20,7 @@ are read-only and never rewrite source, documentation, Change state, indexes, ho
 
 ## Dependency Direction
 
-Use when manifests, imports, architecture evidence, or canonical documentation proves layers or
+Use when manifests, imports, interfaces, tests, or architecture evidence proves layers or
 forbidden edges.
 
 1. Select the language-native parser or dependency graph when available.

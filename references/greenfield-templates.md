@@ -171,7 +171,8 @@ Create only project-owned documents justified by project complexity:
 | Security | Trust boundaries, secret-variable names, validation, dependency policy |
 | Product | Target user, priorities, non-goals, vocabulary supplied by the user |
 
-Project knowledge cites these documents and code without copying their full content.
+Project knowledge expresses verified facts directly and cites implementation evidence. Human-facing
+documents remain independent Change outputs rather than required Harness dependencies.
 
 ## Environment And Readiness
 
@@ -192,7 +193,7 @@ Change.
 Before business source exists, the profile is `bootstrap_only` with empty modules, commands,
 services, bridges, and evidence-backed facts. Unknowns name the unconfirmed purpose, stack,
 application type, and first acceptance. After the bootstrap Change lands, migrate or a later E1
-Evolution can build a complete profile from canonical evidence.
+Evolution can build a complete profile from current implementation evidence.
 
 ## Verification
 

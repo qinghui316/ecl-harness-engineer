@@ -2,25 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import os
-import re
-import secrets
-import shlex
-import shutil
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from .core import HarnessError, canonical_id, normalize_path, read_json, stable_hash
+from .core import HarnessError, canonical_id, read_json, stable_hash
 
 def registry_root(skill_root: Path) -> Path:
     return skill_root / "state" / "registry"
@@ -50,4 +35,12 @@ def bound_records(path: Path, id_field: str, label: str) -> list[dict[str, Any]]
     return result
 
 def lane_id(context: dict[str, Any]) -> str:
-    return f"lane-{stable_hash(normalize_path(context['project_root']), 10)}"
+    if context.get("mode") == "single_lane":
+        return "lane-single"
+    branch = context.get("branch")
+    if not branch:
+        raise HarnessError("Structured Change work requires a named Git branch; detached HEAD has no stable Lane identity.")
+    project_id = context.get("project_id")
+    if not project_id:
+        raise HarnessError("Project identity is required before resolving a Lane.")
+    return f"lane-{stable_hash(f'{project_id}:{branch}', 10)}"

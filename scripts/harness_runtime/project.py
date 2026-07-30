@@ -3,24 +3,55 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import os
 import re
 import secrets
-import shlex
-import shutil
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from .core import EVOLUTION_THRESHOLD, HarnessError, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git, git_value, is_link_like, normalize_path, read_json, reject_linked_ancestors, slugify, stable_hash, utc_now
+from .core import EVOLUTION_THRESHOLD, HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, canonical_id, git, git_value, is_link_like, read_json, reject_linked_ancestors, slugify, utc_now
+
+
+PROJECT_ID_MARKER = re.compile(r"<!-- ECL-HARNESS-PROJECT-ID:\s*([a-z0-9-]+)\s*-->")
+
+
+def assign_project_identity(context: dict[str, Any], project_id: str | None = None) -> dict[str, Any]:
+    identifier = canonical_id(
+        project_id or f"{context['project_name']}-{secrets.token_hex(6)}",
+        "Project id",
+    )
+    context["project_id"] = identifier
+    context["skill_name"] = f"{identifier}-harness"
+    return context
+
+
+def route_project_ids(context: dict[str, Any]) -> set[str]:
+    roots = [context["project_root"]]
+    primary = primary_worktree_root(context)
+    if primary not in roots:
+        roots.append(primary)
+    identifiers: set[str] = set()
+    for root in roots:
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            path = root / name
+            if not path.is_file():
+                continue
+            content = path.read_text(encoding="utf-8", errors="replace")
+            marked = PROJECT_ID_MARKER.findall(content)
+            identifiers.update(marked)
+            if not marked:
+                for skill_name in re.findall(r"`([a-z0-9-]+-harness)`", content):
+                    identifiers.add(skill_name.removesuffix("-harness"))
+    return identifiers
+
+
+def discover_project_identity(context: dict[str, Any]) -> dict[str, Any]:
+    identifiers = route_project_ids(context)
+    if len(identifiers) > 1:
+        raise HarnessError(f"Project routes contain conflicting Harness project ids: {sorted(identifiers)}")
+    if identifiers:
+        assign_project_identity(context, next(iter(identifiers)))
+    return context
 
 def project_context(project_root: Path) -> dict[str, Any]:
     lexical_request = Path(os.path.abspath(project_root))
@@ -38,14 +69,12 @@ def project_context(project_root: Path) -> dict[str, Any]:
         common = Path(common_raw)
         if not common.is_absolute():
             common = (root / common).resolve()
-        identity_source = normalize_path(common)
         mode = "multi_lane"
         branch = git_value(root, "branch", "--show-current")
         head = git_value(root, "rev-parse", "HEAD")
     else:
         root = requested
         common = None
-        identity_source = normalize_path(root)
         mode = "single_lane"
         branch = None
         head = None
@@ -54,17 +83,17 @@ def project_context(project_root: Path) -> dict[str, Any]:
     else:
         repository_name = root.name
     name = slugify(repository_name)
-    project_id = f"{name}-{stable_hash(identity_source)}"
-    return {
+    context = {
         "project_root": root,
         "project_name": name,
-        "project_id": project_id,
-        "skill_name": f"{project_id}-harness",
+        "project_id": None,
+        "skill_name": None,
         "git_common_dir": common,
         "mode": mode,
         "branch": branch,
         "head": head,
     }
+    return discover_project_identity(context)
 
 def canonical_branch_and_commit(context: dict[str, Any], requested: str | None = None) -> tuple[str | None, str | None]:
     if context["mode"] == "single_lane":
@@ -116,6 +145,10 @@ def local_root(context: dict[str, Any], args: argparse.Namespace) -> Path:
     return root
 
 def skill_root_for(context: dict[str, Any], args: argparse.Namespace) -> Path:
+    if not context.get("skill_name"):
+        discover_project_identity(context)
+    if not context.get("skill_name"):
+        raise HarnessError("No project Harness identity marker was found. Run project init first.")
     return local_root(context, args) / context["skill_name"]
 
 def require_skill(context: dict[str, Any], args: argparse.Namespace) -> Path:
@@ -129,20 +162,12 @@ def require_skill(context: dict[str, Any], args: argparse.Namespace) -> Path:
         )
     if manifest.get("project_id") != context["project_id"]:
         raise HarnessError("Project id does not match the local Harness manifest.")
-    if manifest.get("schema_version") != SCHEMA_VERSION:
+    if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
         raise HarnessError("Project Harness manifest schema does not match this runtime.")
-    if manifest.get("mode") != context["mode"]:
-        raise HarnessError("Project mode does not match the local Harness manifest.")
     if root.name != context["skill_name"]:
         raise HarnessError("Project Harness directory name does not match project identity.")
-    if normalize_path(Path(manifest.get("project_root", "."))) != normalize_path(primary_worktree_root(context)):
-        raise HarnessError("Project root does not match the local Harness manifest.")
-    expected_common = context.get("git_common_dir")
-    recorded_common = manifest.get("git_common_dir")
-    if bool(expected_common) != bool(recorded_common) or (
-        expected_common and normalize_path(Path(recorded_common)) != normalize_path(expected_common)
-    ):
-        raise HarnessError("Git common dir does not match the local Harness manifest.")
+    if manifest.get("skill_name") != context["skill_name"]:
+        raise HarnessError("Project Harness manifest skill name does not match the project route.")
     return root
 
 def initial_manifest(
@@ -150,21 +175,17 @@ def initial_manifest(
     links: list[dict[str, str]],
     launchers: list[str],
 ) -> dict[str, Any]:
+    del links
     now = utc_now()
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": MANIFEST_SCHEMA_VERSION,
         "project_id": context["project_id"],
         "project_name": context["project_name"],
-        "project_root": str(primary_worktree_root(context)),
-        "git_common_dir": str(context["git_common_dir"]) if context["git_common_dir"] else None,
-        "mode": context["mode"],
+        "skill_name": context["skill_name"],
         "skill_revision": 1,
-        "host_runtime": "python",
-        "host_command": str(Path(sys.executable).resolve()),
         "launchers": launchers,
         "created_at": now,
         "updated_at": now,
-        "runtime_links": links,
     }
 
 def ensure_state(skill_root: Path, context: dict[str, Any], canonical_branch: str | None = None) -> None:
@@ -178,7 +199,6 @@ def ensure_state(skill_root: Path, context: dict[str, Any], canonical_branch: st
     branch, commit = canonical_branch_and_commit(context, canonical_branch)
     baseline = {
         "schema_version": SCHEMA_VERSION,
-        "canonical_root": str(primary_worktree_root(context)),
         "canonical_branch": branch,
         "canonical_commit": commit,
         "updated_at": utc_now(),

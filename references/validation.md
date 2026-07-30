@@ -5,7 +5,8 @@
 - ECL Harness Engineer and project Harness frontmatter is valid.
 - One physical project Harness exists under the primary worktree project-level Skill space.
 - Every Codex/Claude worktree link resolves to that same directory.
-- Manifest, Change INDEX, Registry, Integration, and Evolution records match schemas and identities.
+- Manifest, Change INDEX, Registry, Integration, and Evolution records match schemas and identities;
+  none persist machine-specific absolute paths.
 - L1 contains complete project-level navigation without duplicated detail or a fixed size cap; no
   empty/speculative L2/L3; citations and fingerprints resolve.
 - Rule IDs are unique and generated Markdown exactly matches `red_lines.yaml`.
@@ -20,9 +21,9 @@
 1. Empty non-Git project initializes single-Lane without `git init`, fabricated modules/bridges,
    or invented commands/environment.
 2. Existing project profile renders real purpose, flows, L2 modules/systems, L3 bridge, commands,
-   environment, documents, boundaries, and accepted checks.
-3. Go/Java/Python/Rust/TypeScript/generic evidence remains target-specific while Harness host is
-   independently pinned.
+   environment, boundaries, and accepted checks without repository-prose dependencies.
+3. Go/Java/Python/Rust/TypeScript/generic evidence remains target-specific while each host resolves
+   its current Harness Python interpreter independently.
 4. Shared Skill owns `active|parking|archive` Change evidence and generated INDEX; repository does
    not receive Change files.
 5. park/resume/prepare-close/close/search/context/reindex preserve complete mature ECL behavior.
@@ -39,8 +40,8 @@
     Change archive/INDEX/Registry, and atomically keeps/rejects/noops.
 13. Related baseline/knowledge drift returns refresh-needed/replan with Registry/current
     Change/canonical facts above periodic Wiki.
-14. Non-Git to Git upgrade preserves state, attaches existing worktrees, and leaves a future
-    worktree connector.
+14. Non-Git to Git transition preserves project identity and state, rebinds Lane ownership to the
+    named branch, attaches current worktrees, and leaves a future-worktree connector.
 15. Init and migrate use one renderer and produce the same project Harness ownership model.
 
 ## Adversarial And Recovery Scenarios

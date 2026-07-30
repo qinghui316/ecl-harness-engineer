@@ -1,4 +1,4 @@
-"""Project init, audit, migrate, doctor, and single-Lane upgrade orchestration."""
+"""Project init, audit, portable migration, and doctor orchestration."""
 
 from __future__ import annotations
 
@@ -21,19 +21,22 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .analysis import load_analysis_bundle
-from .changes import ecl_integrity_findings
-from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, canonical_id, file_fingerprint, is_link_like, is_within, normalize_lexical_path, normalize_path, read_json, reject_tree_links, run, safe_relative, utc_now
+from .changes import contract_record_path, ecl_integrity_findings
+from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git_value, is_within, read_json, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
-from .knowledge import knowledge_check_internal
+from .knowledge import context_source_fingerprints, knowledge_check_internal
 from .links import connector_route, copy_runtime, copy_scaffold, ensure_all_project_routes, ensure_runtime_links, generated_command_routes, remove_directory_link, restore_route_snapshots, same_target, worktree_route_findings
-from .project import canonical_branch_and_commit, ensure_state, initial_manifest, local_root, primary_worktree_root, project_context, require_skill, skill_root_for
+from .project import assign_project_identity, ensure_state, initial_manifest, project_context, require_skill, skill_root_for, worktree_roots
 from .registry import records, registry_root
 from .rendering import install_analysis_bundle
 from .transactions import acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, content_transaction_store, guard_project_skill, guard_project_skill_read_only, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, writer_lock_path
 
 def project_init(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
+    if context.get("project_id"):
+        raise HarnessError("Project routes already declare a Harness identity. Run project migrate or doctor instead.")
+    assign_project_identity(context)
     skill_root = skill_root_for(context, args)
     if (skill_root / "state" / "manifest.json").exists():
         raise HarnessError(f"Project Harness Skill already exists: {skill_root}")
@@ -87,6 +90,29 @@ def project_init(args: argparse.Namespace) -> dict[str, Any]:
 @guard_project_skill_read_only
 def project_audit(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
+    had_identity = bool(context.get("project_id"))
+    semantic = None
+    if getattr(args, "analysis_bundle", None):
+        if not context.get("project_id"):
+            assign_project_identity(context)
+        profile, audit, delta, architecture, _ = load_analysis_bundle(args, context)
+        semantic = {
+            "analysis_status": profile.get("analysis_status"),
+            "purpose": profile.get("purpose"),
+            "architecture": architecture,
+            "modules": [item.get("id") for item in profile.get("modules", [])],
+            "bridges": [item.get("id") for item in profile.get("bridges", [])],
+            "commands": len(profile.get("commands", [])),
+            "gaps": audit.get("gaps", []),
+            "decisions": delta.get("decisions", []),
+        }
+    if not had_identity:
+        return {
+            "project_id": None, "mode": context["mode"], "skill_root": None,
+            "initialized": False, "findings": ["project_skill_missing"], "doctor": None,
+            "knowledge": None, "ecl": {"healthy": False, "findings": []},
+            "rules": None, "semantic": semantic,
+        }
     root = skill_root_for(context, args)
     initialized = (root / "state" / "manifest.json").exists()
     findings = []
@@ -104,19 +130,6 @@ def project_audit(args: argparse.Namespace) -> dict[str, Any]:
         findings.append("project_change_evidence_drift")
     if rules and not rules["healthy"]:
         findings.append("project_rule_view_drift")
-    semantic = None
-    if getattr(args, "analysis_bundle", None):
-        profile, audit, delta, architecture, _ = load_analysis_bundle(args, context)
-        semantic = {
-            "analysis_status": profile.get("analysis_status"),
-            "purpose": profile.get("purpose"),
-            "architecture": architecture,
-            "modules": [item.get("id") for item in profile.get("modules", [])],
-            "bridges": [item.get("id") for item in profile.get("bridges", [])],
-            "commands": len(profile.get("commands", [])),
-            "gaps": audit.get("gaps", []),
-            "decisions": delta.get("decisions", []),
-        }
     return {
         "project_id": context["project_id"], "mode": context["mode"], "skill_root": str(root),
         "initialized": initialized, "findings": findings, "doctor": doctor,
@@ -126,168 +139,129 @@ def project_audit(args: argparse.Namespace) -> dict[str, Any]:
         "semantic": semantic,
     }
 
-def validate_single_lane_predecessor(
-    candidate: Path,
-    manifest: dict[str, Any],
-    project_path: str,
-) -> tuple[str, list[dict[str, Any]]]:
-    if is_link_like(candidate):
-        raise HarnessError(f"Single-Lane predecessor must be a physical directory: {candidate}")
-    if manifest.get("schema_version") != SCHEMA_VERSION:
-        raise HarnessError("Single-Lane predecessor manifest schema is invalid.")
-    raw_id = manifest.get("project_id")
-    old_id = canonical_id(raw_id, "Single-Lane predecessor project id")
-    if raw_id != old_id or candidate.name != f"{old_id}-harness":
-        raise HarnessError("Single-Lane predecessor project id does not match its directory.")
-    if manifest.get("mode") != "single_lane":
-        raise HarnessError("Single-Lane predecessor manifest mode is invalid.")
-    if manifest.get("git_common_dir") not in (None, ""):
-        raise HarnessError("Single-Lane predecessor unexpectedly records a Git common dir.")
-    if normalize_path(Path(manifest.get("project_root", "."))) != project_path:
-        raise HarnessError("Single-Lane predecessor project root does not match this project.")
-    runtime_links = manifest.get("runtime_links")
-    if not isinstance(runtime_links, list):
-        raise HarnessError("Single-Lane predecessor runtime links are invalid.")
-    allowed_paths = {
-        "codex": normalize_lexical_path(
-            Path(manifest["project_root"]) / ".agents" / "skills" / candidate.name,
-        ),
-        "claude": normalize_lexical_path(
-            Path(manifest["project_root"]) / ".claude" / "skills" / candidate.name,
-        ),
-    }
-    seen_runtimes: set[str] = set()
-    for item in runtime_links:
-        if not isinstance(item, dict) or not item.get("path"):
-            raise HarnessError("Single-Lane predecessor runtime link record is invalid.")
-        runtime = item.get("runtime")
-        if runtime not in allowed_paths or runtime in seen_runtimes:
-            raise HarnessError("Single-Lane predecessor runtime link owner is invalid.")
-        if normalize_lexical_path(Path(item["path"])) != allowed_paths[runtime]:
-            raise HarnessError("Single-Lane predecessor runtime link is outside project ownership.")
-        seen_runtimes.add(runtime)
-    if seen_runtimes != set(allowed_paths):
-        raise HarnessError("Single-Lane predecessor runtime links are incomplete.")
-    return old_id, runtime_links
-
-def find_single_lane_predecessor(context: dict[str, Any], args: argparse.Namespace) -> Path | None:
-    if context["mode"] != "multi_lane":
-        return None
-    root = local_root(context, args)
-    if not root.exists():
-        return None
-    project_path = normalize_path(context["project_root"])
-    for candidate in root.glob("*-harness"):
-        if is_link_like(candidate):
-            raise HarnessError(f"Project Harness discovery found a linked candidate: {candidate}")
-        manifest = read_json(candidate / "state" / "manifest.json", {})
-        if (
-            manifest.get("mode") == "single_lane"
-            and manifest.get("project_root")
-            and normalize_path(Path(manifest["project_root"])) == project_path
-        ):
-            validate_single_lane_predecessor(candidate, manifest, project_path)
-            return candidate
-    return None
-
-def upgrade_single_lane_skill(
-    predecessor: Path,
-    destination: Path,
-    context: dict[str, Any],
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    if destination.exists():
-        raise HarnessError(f"Cannot upgrade over an existing project Harness: {destination}")
-    manifest = read_json(predecessor / "state" / "manifest.json", {})
-    old_id, old_links = validate_single_lane_predecessor(
-        predecessor, manifest, normalize_path(context["project_root"]),
-    )
-    old_skill_name = predecessor.name
-    created_links: list[Path] = []
-    route_snapshots: dict[Path, bytes | None] = {}
-    reject_tree_links(predecessor, "Single-Lane project Harness")
-    shutil.copytree(predecessor, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    try:
-        for path in destination.rglob("*"):
-            if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
-                continue
-            if "state" in path.relative_to(destination).parts:
-                continue
-            content = path.read_text(encoding="utf-8")
-            updated = content.replace(old_skill_name, context["skill_name"]).replace(old_id, context["project_id"])
-            if updated != content:
-                atomic_write_text(path, updated)
-        links, created_links = ensure_runtime_links(context, args, destination)
-        routes, route_snapshots = ensure_all_project_routes(context, destination)
-        branch, commit = canonical_branch_and_commit(context)
-        manifest_path = destination / "state" / "manifest.json"
-        manifest = read_json(manifest_path, {})
-        manifest.update({
-            "project_id": context["project_id"],
-            "project_name": context["project_name"],
-            "project_root": str(primary_worktree_root(context)),
-            "git_common_dir": str(context["git_common_dir"]),
-            "mode": "multi_lane",
-            "runtime_links": links,
-            "updated_at": utc_now(),
-        })
-        atomic_write_json(manifest_path, manifest)
-        atomic_write_json(
-            registry_root(destination) / "baseline.json",
-            {
-                "schema_version": SCHEMA_VERSION,
-                "canonical_root": str(primary_worktree_root(context)),
-                "canonical_branch": branch,
-                "canonical_commit": commit,
-                "updated_at": utc_now(),
-            },
-        )
-        if file_fingerprint(
-            [path for path in (predecessor / "state" / "changes").rglob("*") if path.is_file()],
-            predecessor / "state" / "changes",
-        ) != file_fingerprint(
-            [path for path in (destination / "state" / "changes").rglob("*") if path.is_file()],
-            destination / "state" / "changes",
-        ):
-            raise HarnessError("Single-Lane upgrade changed Change evidence or INDEX bytes.")
-        predecessor_results = predecessor / "state" / "evolution" / "results.tsv"
-        destination_results = destination / "state" / "evolution" / "results.tsv"
-        if predecessor_results.read_bytes() != destination_results.read_bytes():
-            raise HarnessError("Single-Lane upgrade changed Evolution results bytes.")
-    except Exception:
-        restore_route_snapshots(route_snapshots)
-        for link in reversed(created_links):
-            remove_directory_link(link, destination)
-        shutil.rmtree(destination, ignore_errors=True)
-        raise
-    for item in old_links:
-        remove_directory_link(Path(item["path"]), predecessor)
-    shutil.rmtree(predecessor)
+def portable_manifest(manifest: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    now = utc_now()
     return {
-        "status": "upgraded_single_lane",
-        "from": str(predecessor),
-        "skill_root": str(destination),
-        "runtime_links": links,
-        "routes": routes,
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "project_id": context["project_id"],
+        "project_name": manifest.get("project_name") or context["project_name"],
+        "skill_name": context["skill_name"],
+        "skill_revision": int(manifest.get("skill_revision", 1)),
+        "analysis_status": manifest.get("analysis_status", "bootstrap_only"),
+        "launchers": manifest.get("launchers", []),
+        "created_at": manifest.get("created_at") or now,
+        "updated_at": now,
     }
+
+
+def portable_lane_id(project_id: str, branch: str | None) -> str:
+    return "lane-single" if not branch else f"lane-{stable_hash(f'{project_id}:{branch}', 10)}"
+
+
+def normalize_portable_state(root: Path, context: dict[str, Any]) -> None:
+    manifest_path = root / "state" / "manifest.json"
+    manifest = read_json(manifest_path, {})
+    atomic_write_json(manifest_path, portable_manifest(manifest, context))
+
+    baseline_path = registry_root(root) / "baseline.json"
+    baseline = read_json(baseline_path, {})
+    baseline.pop("canonical_root", None)
+    if context.get("mode") == "multi_lane" and not baseline.get("canonical_branch"):
+        baseline["canonical_branch"] = context.get("branch")
+        baseline["canonical_commit"] = context.get("head")
+        baseline["updated_at"] = utc_now()
+    atomic_write_json(baseline_path, baseline)
+
+    lane_map: dict[str, str] = {}
+    lanes_dir = registry_root(root) / "lanes"
+    for lane_path in sorted(lanes_dir.glob("*.json")):
+        lane = read_json(lane_path, {})
+        branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
+        identifier = portable_lane_id(context["project_id"], branch)
+        lane_map[str(lane.get("lane_id"))] = identifier
+        lane.pop("worktree", None)
+        lane["lane_id"] = identifier
+        lane["branch"] = branch
+        target = lanes_dir / f"{identifier}.json"
+        atomic_write_json(target, lane)
+        if target != lane_path:
+            lane_path.unlink()
+
+    for path in sorted((registry_root(root) / "changes").glob("*.json")):
+        change = read_json(path, {})
+        changed = False
+        if change.get("status") not in {"completed", "blocked", "abandoned"}:
+            change["lane_id"] = lane_map.get(str(change.get("lane_id")), change.get("lane_id"))
+            if context.get("mode") == "multi_lane" and not change.get("base_commit"):
+                change["base_commit"] = baseline.get("canonical_commit") or context.get("head")
+            changed = True
+        if change.get("contract_path"):
+            contract_path = contract_record_path(root, str(change.get("change_id", "")))
+            if not contract_path.is_file():
+                raise HarnessError(
+                    f"Change {change.get('change_id')!r} names a contract but its Registry contract record is missing."
+                )
+            change["contract_path"] = contract_path.relative_to(root).as_posix()
+            changed = True
+        if changed:
+            atomic_write_json(path, change)
+
+    for path in sorted((registry_root(root) / "integrations").glob("*.json")):
+        record = read_json(path, {})
+        integration_id = record.get("integration_id") or path.stem
+        record["worktree"] = f"state/integrations/{integration_id}"
+        atomic_write_json(path, record)
 
 @guard_project_skill
 def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
+    if not context.get("project_id"):
+        init_result = project_init(args)
+        return {
+            "status": "migration_applied",
+            "init": init_result,
+            "applied": {
+                "via": "project_init",
+                "knowledge": init_result.get("knowledge"),
+                "artifacts": init_result.get("artifacts"),
+                "rules": init_result.get("rules"),
+            },
+            "routes": init_result.get("routes", {}),
+        }
     root = skill_root_for(context, args)
     profile = audit = delta = architecture = bundle = None
     if getattr(args, "analysis_bundle", None):
         profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
     if not (root / "state" / "manifest.json").exists():
-        predecessor = find_single_lane_predecessor(context, args)
-        init_result = (
-            upgrade_single_lane_skill(predecessor, root, context, args)
-            if predecessor
-            else project_init(args)
+        raise HarnessError(
+            "Project routes identify a Harness that is not present on this machine. Place the matching project Harness at the marked Skill path before migrating."
         )
     else:
         init_result = None
-    root = require_skill(context, args)
+    existing_manifest = read_json(root / "state" / "manifest.json", {})
+    if existing_manifest.get("project_id") != context["project_id"]:
+        raise HarnessError("Project id does not match the local Harness manifest.")
+    if root.name != context["skill_name"]:
+        raise HarnessError("Project Harness directory name does not match project identity.")
+    existing_schema = existing_manifest.get("schema_version")
+    if existing_schema not in {SCHEMA_VERSION, MANIFEST_SCHEMA_VERSION}:
+        raise HarnessError(f"Unsupported project Harness manifest schema: {existing_schema!r}")
+    portable_upgrade = existing_schema != MANIFEST_SCHEMA_VERSION
+    state_rebind = any(
+        lane.get("lane_id") != portable_lane_id(
+            context["project_id"],
+            lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None),
+        )
+        or "worktree" in lane
+        for lane in records(registry_root(root) / "lanes")
+    )
+    if portable_upgrade and existing_manifest.get("analysis_status") == "complete":
+        if profile is None or profile.get("analysis_status") != "complete":
+            raise HarnessError(
+                "semantic_refresh_required: this complete project Harness must be migrated with a new complete self-contained analysis bundle."
+            )
+    if not portable_upgrade:
+        root = require_skill(context, args)
     routes: dict[str, dict[str, str]] = {}
     route_snapshots: dict[Path, bytes | None] = {}
     created_links: list[Path] = []
@@ -299,17 +273,17 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             "artifacts": init_result.get("artifacts"),
             "rules": init_result.get("rules"),
         }
-    if (
-        profile is not None
-        and audit is not None
-        and delta is not None
-        and architecture is not None
-        and (init_result is None or init_result.get("status") == "upgraded_single_lane")
-    ):
+    if profile is not None or portable_upgrade or state_rebind:
         acquire_writer(root, "migration", context["project_id"])
         transaction: dict[str, Any] | None = None
         manifest_path = root / "state" / "manifest.json"
-        manifest_snapshot = capture_file_snapshots((manifest_path,))
+        snapshot_paths = [manifest_path, *sorted(registry_root(root).rglob("*.json"))]
+        for lane in records(registry_root(root) / "lanes"):
+            branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
+            snapshot_paths.append(
+                registry_root(root) / "lanes" / f"{portable_lane_id(context['project_id'], branch)}.json"
+            )
+        state_snapshots = capture_file_snapshots(dict.fromkeys(snapshot_paths))
         candidate = root / "state" / "migration" / "staging" / context["project_id"]
         try:
             recover_content_transactions(root, "migration", context["project_id"])
@@ -318,18 +292,32 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             candidate.parent.mkdir(parents=True, exist_ok=True)
             copy_non_state_skill(root, candidate)
             (candidate / "state").mkdir(parents=True, exist_ok=True)
-            atomic_write_json(candidate / "state" / "manifest.json", read_json(manifest_path, {}))
-            launchers = copy_runtime(candidate)
-            applied = install_analysis_bundle(
-                candidate,
-                context,
-                profile,
-                audit,
-                delta,
-                architecture,
-                bundle,
-                bool(getattr(args, "allow_executable_artifacts", False)),
+            atomic_write_json(
+                candidate / "state" / "manifest.json",
+                portable_manifest(read_json(manifest_path, {}), context),
             )
+            launchers = copy_runtime(candidate)
+            if profile is not None and audit is not None and delta is not None and architecture is not None:
+                applied = install_analysis_bundle(
+                    candidate,
+                    context,
+                    profile,
+                    audit,
+                    delta,
+                    architecture,
+                    bundle,
+                    bool(getattr(args, "allow_executable_artifacts", False)),
+                )
+            else:
+                applied = {"portable_state_upgrade": portable_upgrade, "lane_rebound": state_rebind}
+                if state_rebind:
+                    index_path = candidate / "references" / "project_wiki" / "index.json"
+                    index = read_json(index_path, {})
+                    for item in index.get("items", []):
+                        sources = item.get("sources", [])
+                        if isinstance(sources, list):
+                            item["source_fingerprints"] = context_source_fingerprints(context, sources)
+                    atomic_write_json(index_path, index)
             candidate_check = knowledge_check_internal(candidate, context)
             if not candidate_check["healthy"]:
                 raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
@@ -338,18 +326,17 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                 candidate,
                 "migration",
                 context["project_id"],
-                state_snapshot_paths=(manifest_path,),
+                state_snapshot_paths=state_snapshots,
             )
             links, new_links = ensure_runtime_links(context, args, root)
             created_links.extend(new_links)
             routes, route_snapshots = ensure_all_project_routes(context, root)
+            normalize_portable_state(root, context)
             manifest = read_json(manifest_path, {})
-            manifest["analysis_status"] = profile.get("analysis_status")
+            if profile is not None:
+                manifest["analysis_status"] = profile.get("analysis_status")
             manifest["skill_revision"] = int(manifest.get("skill_revision", 1)) + 1
-            manifest["host_runtime"] = "python"
-            manifest["host_command"] = str(Path(sys.executable).resolve())
             manifest["launchers"] = launchers
-            manifest["runtime_links"] = links
             manifest["updated_at"] = utc_now()
             atomic_write_json(manifest_path, manifest)
             commit_content_transaction(transaction)
@@ -360,7 +347,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                 remove_directory_link(link, root)
             if transaction is not None:
                 rollback_content_transaction(transaction)
-            restore_file_snapshots(manifest_snapshot)
+            restore_file_snapshots(state_snapshots)
             if candidate.exists():
                 shutil.rmtree(candidate, ignore_errors=True)
             raise
@@ -369,11 +356,6 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
     else:
         links, _ = ensure_runtime_links(context, args, root)
         routes, _ = ensure_all_project_routes(context, root)
-        manifest_path = root / "state" / "manifest.json"
-        manifest = read_json(manifest_path, {})
-        manifest["runtime_links"] = links
-        manifest["updated_at"] = utc_now()
-        atomic_write_json(manifest_path, manifest)
     return {
         "status": "migration_applied" if applied else "migration_checked",
         "init": init_result, "applied": applied,
@@ -419,9 +401,8 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
     findings = []
     repaired_routes = None
     if getattr(args, "repair_links", False):
-        links, _ = ensure_runtime_links(context, args, root)
+        ensure_runtime_links(context, args, root)
         repaired_routes, _ = ensure_all_project_routes(context, root)
-        manifest["runtime_links"] = links
         manifest["updated_at"] = utc_now()
         atomic_write_json(root / "state" / "manifest.json", manifest)
     launchers = manifest.get("launchers", [])
@@ -442,15 +423,14 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
             findings.append({"type": "runtime_inventory_escape", "path": value})
         elif not runtime_path.is_file():
             findings.append({"type": "missing_runtime_file", "path": value})
-    for link in manifest.get("runtime_links", []):
-        path = Path(link["path"])
-        if not path.exists() or not same_target(path, root):
-            findings.append({"type": "broken_runtime_link", "runtime": link.get("runtime"), "path": str(path)})
     findings.extend(worktree_route_findings(context))
+    live_branches = {
+        git_value(worktree, "branch", "--show-current")
+        for worktree in worktree_roots(context)
+    }
     for lane in records(registry_root(root) / "lanes"):
-        worktree = Path(lane.get("worktree", ""))
-        if lane.get("status") != "retired" and not worktree.exists():
-            findings.append({"type": "stale_lane", "lane_id": lane.get("lane_id"), "worktree": str(worktree)})
+        if lane.get("status") != "retired" and lane.get("branch") not in live_branches:
+            findings.append({"type": "stale_lane", "lane_id": lane.get("lane_id"), "branch": lane.get("branch")})
         try:
             updated = datetime.fromisoformat(str(lane.get("updated_at", "")).replace("Z", "+00:00"))
             stale_after_hours = int(getattr(args, "stale_after_hours", 168))
@@ -511,7 +491,7 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "healthy": not findings,
         "findings": findings,
-        "runtime_links": manifest.get("runtime_links", []),
+        "runtime_links": [],
         "repaired_routes": repaired_routes,
     }
 

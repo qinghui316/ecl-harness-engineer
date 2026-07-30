@@ -2,9 +2,9 @@
 
 ## Principle
 
-Keep current AI-facing knowledge compact, source-backed, and progressively loaded. Raw repository
-documents and Change history remain evidence. The project Harness stores the current projection that
-helps the next agent act.
+Keep current AI-facing knowledge self-contained, source-backed, and progressively read. Repository
+prose may help analysis locate claims, but it is not a durable knowledge dependency. The project
+Harness stores enough verified knowledge for the next agent to act without reopening those files.
 
 ## Layers
 
@@ -15,7 +15,7 @@ there is no fixed byte or line limit. Include:
 
 - Project purpose and primary user/system workflow.
 - Major modules with one-sentence responsibilities.
-- Canonical source documents and verification entrypoints.
+- Commands, environment, verification entrypoints, and major system maps.
 - Current architectural boundaries that affect most Changes.
 - Links to L2 modules, not their full contents.
 
@@ -33,7 +33,7 @@ Create one document per evidence-backed module. Include:
 - Cross-module dependencies that affect planning.
 - Source evidence paths and last scanned content identity.
 
-Create L2 only when source structure or existing documentation proves the module. Do not generate
+Create L2 only when source structure, interfaces, tests, or accepted contracts prove the module. Do not generate
 placeholder modules from directory names alone.
 
 ### L3 Semantic Bridges
@@ -53,16 +53,16 @@ source citations, accepted contracts, or user statements.
 `references/project_wiki/index.json` is generated and contains document id, layer, source paths,
 source fingerprints, and update time. Never hand-edit it.
 
-Use relative project paths in knowledge documents. Local absolute paths belong only in manifest or
-Registry state.
+Use relative project paths in knowledge documents and indexes. Resolve local absolute paths only in
+the running process; never persist them in manifest, Registry, INDEX, or knowledge state.
 
 ## Refresh Rules
 
 - Worker Changes publish provisional path and contract facts to the Registry, not stable knowledge.
-- Integration lands canonical code/documents and records baseline, Registry, and evolution signals;
+- Integration lands accepted code and optional business documents and records baseline, Registry, and evolution signals;
   it does not rewrite L1/L2/L3.
 - Initialization and migration may install a complete evidence-backed analysis bundle.
-- After five qualified Changes and E1, Evolution rescans canonical evidence and may update, merge,
+- After five qualified Changes and E1, Evolution rescans current implementation evidence and may update, merge,
   retire, or promote L1/L2/L3 together with the rest of the project Harness.
 - `harness-knowledge scan` and `check` are read-only. They report missing sources, fingerprint
   drift, broken links, duplicate ownership, misplaced detail, and uncited L3 claims; they never apply a
@@ -74,7 +74,7 @@ Registry state.
   reads baseline events and related source drift. When the current Change touches an affected path,
   module, or contract, return `refresh-needed/replan` rather than silently trusting stale Wiki text.
 - Resolve current facts in this order: Registry contracts/baseline events, shared current Change
-  evidence, canonical repository code/documents, then L1/L2/L3. An unrelated baseline advancement
+  evidence, repository code/manifests/configuration/tests/interfaces, then L1/L2/L3. An unrelated baseline advancement
   does not force a Lane to stop.
 
 ## Progressive Reading

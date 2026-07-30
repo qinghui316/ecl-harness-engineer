@@ -2,62 +2,59 @@
 
 ## Purpose
 
-`project migrate` updates an existing project Harness with the same profile/audit/delta
-renderer used by init. Its scope is the project Harness plus its managed routes, connector,
-and local exclusion entry.
-
-Use migrate when:
-
-- an existing project Harness needs a fresh complete semantic bundle;
-- the project changed enough to revise L1/L2/L3, workflows, rules, templates, or checks outside the
-  normal five-Change Evolution cadence by explicit user request;
-- a non-Git single-Lane project became Git-backed and must attach existing/future worktrees;
-- the project Harness schema or runtime assets need an atomic supported update.
+Use `project migrate` to refresh semantic content, install a supported runtime/schema revision, or
+rebind a non-Git Harness after the project becomes Git-backed. Init and migrate use one bundle
+validator and renderer.
 
 ## Inputs
 
-- Current project identity and Git common-dir/worktree facts.
-- Complete evidence-backed `project-profile.json`, `architecture.json`, `audit.json`, and
-  `creation-delta.json`.
-- Current project Harness manifest/content and dynamic state.
-- Explicit executable-artifact authorization when the delta contains executable files.
+- Project identity marker plus currently discovered Git/worktree facts.
+- Current project Harness manifest, content, and dynamic state.
+- A complete self-contained four-file bundle for semantic refresh:
+  `project-profile.json`, `architecture.json`, `audit.json`, and `creation-delta.json`.
+- Explicit authorization for executable creation-delta artifacts.
+
+Manifest `1.0` bootstrap state may receive the portable path upgrade without semantic invention. A
+complete `1.0` Harness must provide a new complete bundle; otherwise return
+`semantic_refresh_required` and do not publish.
 
 ## Invariants
 
-- Init and migrate use the same bundle validation and renderer.
-- Build and validate a complete non-state candidate before publication.
-- Preserve current `state/changes`, Change INDEX, Registry, evolution evaluated IDs/results, and
-  in-flight ownership records.
-- Artifact merge means the bundle supplies the complete merged candidate file, not an append.
-- Knowledge comes from the profile; workflow/rule/template/check artifacts come from the delta.
-- Knowledge scan/check remains read-only and cannot substitute for migrate.
-- Existing business code/documents are evidence and stay canonical in Git.
-- Repository writes remain limited to managed routes/connectors and local project Harness exclusion.
+- Preserve the opaque project id across directory moves and Git transitions.
+- Persist only project-relative or Skill-relative paths.
+- Remove project roots, Git common dirs, worktree paths, interpreter commands, runtime-link lists,
+  and canonical-root fields from durable state.
+- Preserve Change evidence, INDEX, contracts, baseline events, Integration results, and Evolution
+  evaluated ids/results.
+- Rebuild nonterminal Lane ownership from `project_id + branch_ref`; never rewrite archived Change
+  prose merely to change an owner id.
+- Convert Integration worktree records to `state/integrations/<integration-id>`.
+- Repository prose is candidate context, not complete-bundle or knowledge-index evidence.
+- Knowledge scan/check remains read-only and cannot substitute for migration.
 
 ## Transaction
 
-1. Validate project identity, bundle schemas, non-empty evidence, artifact target allowlist, and
-   symlink/path boundaries.
-2. Copy current non-state Skill content into a temporary candidate.
-3. Apply the same profile/delta renderer used by init.
-4. Regenerate rule views and Wiki index; run candidate knowledge, stage, doctor, artifact, and
-   declared project checks.
-5. Acquire the shared writer and short publication lock.
-6. Publish the candidate as one recoverable root transaction while moving current dynamic state
-   into the new root.
-7. Repair all existing worktree links/routes, update manifest revision/runtime facts, and remove
-   temporary transaction material.
+1. Validate route identity, current state, bundle schema/evidence, artifact allowlist, and path/link
+   boundaries.
+2. Build a non-state candidate and mirror the current Harness runtime into it.
+3. Apply the complete bundle when semantic refresh is required.
+4. Regenerate rules and knowledge index; run candidate checks.
+5. Acquire the shared writer and publish through the recoverable content transaction.
+6. Normalize manifest, baseline, Lane, Change owner, and Integration records to portable schema
+   `2.0` while retaining dynamic state.
+7. Repair current-machine links and bounded routes from live Git discovery.
 
-Any failure restores current content and state, retains diagnostics, and never leaves a mixed root.
+Any failure restores current content, state, and routes without leaving a mixed schema.
 
-## Single-Lane To Git Upgrade
+## Non-Git To Git
 
-Derive the new identity from Git common dir, copy the existing physical Skill, preserve all Change
-history/INDEX/evolution state, attach every detected worktree, install the host-native future
-worktree connector, update baseline, and remove only old links that resolve to the predecessor.
-Never run `git init` automatically.
+Never run `git init`. After Git exists on a named branch, keep the same physical Harness and project
+id, replace `lane-single` with the branch-derived Lane, update nonterminal Change ownership, and
+refresh source fingerprints using Git canonical blob semantics. Discover current and future
+worktrees through Git and the connector; do not store their paths.
 
 ## Exit
 
-Exit when one physical Skill remains, all runtime links resolve to it, dynamic state is unchanged
-except intentional manifest/baseline updates, and the new semantic projection passes.
+Exit when one physical Harness remains, current links resolve to it, durable JSON contains no
+machine-specific absolute paths, self-contained knowledge passes, and preserved state retains the
+same business history and commit evidence.

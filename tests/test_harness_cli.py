@@ -32,6 +32,7 @@ class HarnessCliTests(unittest.TestCase):
         assert spec and spec.loader
         self.cli_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.cli_module)
+        self.runtime_analysis = importlib.import_module("harness_runtime.analysis")
         self.runtime_core = importlib.import_module("harness_runtime.core")
         self.runtime_evolution = importlib.import_module("harness_runtime.evolution")
         self.runtime_integration = importlib.import_module("harness_runtime.integration")
@@ -160,7 +161,7 @@ class HarnessCliTests(unittest.TestCase):
             "schema_version": "1.0",
             "analysis_status": "complete",
             "project_name": project.name,
-            "purpose": {"summary": purpose, "confidence": "high", "evidence": ["README.md"]},
+            "purpose": {"summary": purpose, "confidence": "high", "evidence": [module_entrypoint, module_test]},
             "primary_flows": [
                 {
                     "name": "Submit and run a job",
@@ -214,7 +215,6 @@ class HarnessCliTests(unittest.TestCase):
                 ],
                 "evidence": [".env.example"],
             },
-            "documents": [{"name": "Project README", "path": "README.md", "evidence": ["README.md"]}],
             "ci": [],
             "bridges": [],
             "global_boundaries": [
@@ -225,7 +225,7 @@ class HarnessCliTests(unittest.TestCase):
                 }
             ],
             "unknowns": [],
-            "evidence": ["README.md", command_evidence, module_entrypoint],
+            "evidence": [command_evidence, module_entrypoint, module_test],
         }
         if include_bridge:
             profile["bridges"].append(
@@ -237,7 +237,7 @@ class HarnessCliTests(unittest.TestCase):
                         {
                             "from": "submit a job",
                             "to": "src/jobs/service.py::submit_job",
-                            "evidence": ["README.md", module_entrypoint],
+                            "evidence": [module_entrypoint, module_test],
                         }
                     ],
                 }
@@ -339,6 +339,23 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn(profile["analysis_status"], {"partial", "bootstrap_only"})
         self.assertNotEqual(profile["analysis_status"], "complete")
         profile["analysis_status"] = "complete"
+        profile.pop("document_candidates", None)
+        profile["purpose"] = {
+            "summary": "Accept jobs, coordinate execution, and persist observable results.",
+            "confidence": "high",
+            "evidence": [profile["entrypoints"][0]["path"], profile["modules"][0]["tests"][0]],
+        }
+        if not profile.get("bridges") and profile["entrypoints"][0]["path"] == "src/jobs/service.py":
+            profile["bridges"] = [{
+                "id": "terminology-to-code",
+                "title": "Terminology To Code",
+                "purpose": "Map the reviewed job-submission concept to its implementation owner.",
+                "mappings": [{
+                    "from": "submit a job",
+                    "to": f"{profile['entrypoints'][0]['path']}::submit_job",
+                    "evidence": [profile["entrypoints"][0]["path"], profile["modules"][0]["tests"][0]],
+                }],
+            }]
         profile["unknowns"] = [
             item for item in profile.get("unknowns", [])
             if "Agent semantic review is required" not in item
@@ -374,11 +391,11 @@ class HarnessCliTests(unittest.TestCase):
             check = artifact_dir / "check_source_roots.py"
             roots = [item["path"] for item in profile["source_roots"]]
             check.write_text(
-                "import json\nfrom pathlib import Path\n"
+                "import subprocess\nfrom pathlib import Path\n"
                 "skill=Path(__file__).resolve().parents[2]\n"
                 f"roots={roots!r}\n"
-                "manifest=skill/'state/manifest.json'\n"
-                "root=Path(json.loads(manifest.read_text(encoding='utf-8'))['project_root']) if manifest.is_file() else skill.parents[2]\n"
+                "found=subprocess.run(['git','-C',str(skill),'rev-parse','--show-toplevel'],text=True,capture_output=True)\n"
+                "root=Path(found.stdout.strip()) if found.returncode == 0 else skill.parents[2]\n"
                 "missing=[item for item in roots if not (root/item).exists()]\n"
                 "if missing: raise SystemExit('CHECK-SOURCE-ROOTS missing: '+', '.join(missing))\n"
                 "print('CHECK-SOURCE-ROOTS ok')\n",
@@ -594,7 +611,7 @@ class HarnessCliTests(unittest.TestCase):
         record = json.loads((
             skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
         ).read_text(encoding="utf-8"))
-        return self.git(Path(record["worktree"]), "rev-parse", "HEAD")
+        return self.git(skill_root / record["worktree"], "rev-parse", "HEAD")
 
     def write_integration_review(self, skill_root: Path, integration_id: str, commit: str) -> Path:
         path = self.root / "reviews" / f"{integration_id}-{commit[:8]}.json"
@@ -727,7 +744,8 @@ class HarnessCliTests(unittest.TestCase):
             })
         self.assertEqual(semantic_install_callers, {"project_init", "project_migrate", "evolve_stage"})
         links_source = (ROOT / "scripts" / "harness_runtime" / "links.py").read_text(encoding="utf-8")
-        self.assertIn("python_command = str(Path(sys.executable).resolve())", links_source)
+        self.assertNotIn("python_command = str(Path(sys.executable).resolve())", links_source)
+        self.assertIn("ECL_HARNESS_PYTHON", links_source)
 
         facade_tree = ast.parse(cli_source)
         facade_functions = {
@@ -1112,12 +1130,12 @@ class HarnessCliTests(unittest.TestCase):
         profile["environment"]["modes"] = [{
             "title": "Local development",
             "description": "Runs the project with local dependencies.",
-            "evidence": ["README.md"],
+            "evidence": [".env.example"],
         }]
         profile["environment"]["helpers"] = [{
             "name": "Readiness helper",
             "purpose": "Checks the configured local dependency.",
-            "evidence": ["README.md"],
+            "evidence": [".env.example"],
         }]
         profile["environment"]["startup_order"] = [{
             "service": "job service",
@@ -1152,7 +1170,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("Readiness helper", environment)
         self.assertIn("job service", environment)
         overview = (wiki / "overview.md").read_text(encoding="utf-8")
-        self.assertIn("`README.md`", overview)
+        self.assertNotIn("Canonical Documents", overview)
         verification = (wiki / "systems" / "verification.md").read_text(encoding="utf-8")
         self.assertIn("Verification workflow", verification)
         self.assertIn("`.github/workflows/verify.yml`", verification)
@@ -1240,7 +1258,7 @@ class HarnessCliTests(unittest.TestCase):
         initialized = self.init_project(project, bundle, allow_executable_artifacts=True)
         skill_root = Path(initialized["skill_root"])
         profile = json.loads((skill_root / "state" / "analysis" / "project-profile.json").read_text(encoding="utf-8"))
-        self.assertIn("accepts jobs", profile["purpose"]["summary"].lower())
+        self.assertIn("accept jobs", profile["purpose"]["summary"].lower())
         self.assertTrue(profile["primary_flows"])
         self.assertTrue(profile["modules"])
         self.assertTrue(profile["commands"])
@@ -1397,7 +1415,7 @@ class HarnessCliTests(unittest.TestCase):
                 "evidence": ["src/scheduler.py", "tests/test_scheduler.py"],
             }],
             "unknowns": ["Production persistence behavior was not inspected."],
-            "evidence": ["README.md", "LICENSE", "src/scheduler.py", "tests/test_scheduler.py"],
+            "evidence": ["LICENSE", "src/scheduler.py", "tests/test_scheduler.py"],
         }]
         profile["modules"][0]["reference_sources"] = [{
             "reference_id": "symphony",
@@ -1845,8 +1863,12 @@ class HarnessCliTests(unittest.TestCase):
         initialized = self.init_project(project, self.write_bundle(project, "knowledge-entropy"))
         skill_root = Path(initialized["skill_root"])
         repeated = "Current baseline is main at the accepted integration commit and next action is runtime verification."
-        (project / "STATUS.md").write_text(f"# Status\n\n{repeated}\nLatest completed: changes/archive/old-change\n", encoding="utf-8")
-        (project / "CURRENT-PLAN.md").write_text(f"# Current Plan\n\n{repeated}\n", encoding="utf-8")
+        overview = skill_root / "references" / "project_wiki" / "overview.md"
+        module = skill_root / "references" / "project_wiki" / "modules" / "job-processing.md"
+        with overview.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n## Current Status\n\n{repeated}\nLatest completed: changes/archive/old-change\n")
+        with module.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n## Current Plan\n\n{repeated}\n")
         warning_result = self.cli(project, "knowledge", "check")
         warning_types = {item["type"] for item in warning_result["warnings"]}
         self.assertTrue(warning_result["healthy"])
@@ -1867,10 +1889,14 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("uncited_l3_bridge", {item["type"] for item in failed["findings"]})
 
     def test_evolution_requires_findings_classification_and_before_after_entropy(self) -> None:
-        project, _, bundle = self.prepare_evolution("evolution-entropy", stage=False)
+        project, skill_root, bundle = self.prepare_evolution("evolution-entropy", stage=False)
         repeated = "Current baseline is canonical and next action is to verify the runtime integration contract."
-        (project / "STATUS.md").write_text(f"# Status\n\n{repeated}\nLatest completed: changes/archive/old\n", encoding="utf-8")
-        (project / "CURRENT-PLAN.md").write_text(f"# Current Plan\n\n{repeated}\n", encoding="utf-8")
+        overview = skill_root / "references" / "project_wiki" / "overview.md"
+        module = skill_root / "references" / "project_wiki" / "modules" / "job-processing.md"
+        with overview.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n## Current Status\n\n{repeated}\nLatest completed: changes/archive/old\n")
+        with module.open("a", encoding="utf-8") as handle:
+            handle.write(f"\n## Current Plan\n\n{repeated}\n")
         rejected = self.cli(
             project, "evolve", "stage", "--proposal-id", "accepted-knowledge",
             "--owner", "independent-judge", "--analysis-bundle", str(bundle), expected=(2,),
@@ -2078,12 +2104,12 @@ class HarnessCliTests(unittest.TestCase):
         before = self.tree_hashes(skill_root)
         (project / "README.md").write_text("# Changed\n\nCanonical evidence changed.\n", encoding="utf-8")
         changed_project = self.tree_hashes(project)
-        scanned = self.cli(project, "knowledge", "scan", expected=(1,))
+        scanned = self.cli(project, "knowledge", "scan")
         self.assertTrue(scanned["ok"])
         self.assertTrue(scanned["read_only"])
-        self.assertFalse(scanned["healthy"])
-        self.assertTrue(scanned["stale"])
-        self.cli(project, "knowledge", "check", expected=(1,))
+        self.assertTrue(scanned["healthy"])
+        self.assertFalse(scanned["stale"])
+        self.cli(project, "knowledge", "check")
         self.assertEqual(before, self.tree_hashes(skill_root))
         self.assertEqual(changed_project, self.tree_hashes(project))
         pending = self.runtime_transactions.content_transaction_store(skill_root) / "pending-read-only"
@@ -2125,7 +2151,7 @@ class HarnessCliTests(unittest.TestCase):
         ]
         self.assertTrue(package_records)
         expected = package_records[0]["source_fingerprints"]["package.json"]
-        self.assertEqual(expected, self.runtime_core.file_fingerprint([package], project))
+        self.assertEqual(expected, self.runtime_knowledge.source_fingerprint(package, project))
 
         baseline = self.cli(project, "knowledge", "scan")
         self.assertTrue(baseline["healthy"])
@@ -2193,6 +2219,20 @@ class HarnessCliTests(unittest.TestCase):
             )
         self.assertIn("outside_project", {item["type"] for item in result["findings"]})
 
+    def test_git_source_fingerprint_is_stable_across_line_endings(self) -> None:
+        project = self.create_git_project("line-ending-fingerprint")
+        (project / ".gitattributes").write_text("* text=auto\n", encoding="utf-8")
+        self.git(project, "add", ".gitattributes")
+        self.git(project, "commit", "-m", "normalize text")
+        self.init_project(project, self.write_bundle(project, "line-ending-fingerprint"))
+        source = project / "src" / "jobs" / "service.py"
+        original = source.read_text(encoding="utf-8")
+        before = self.runtime_knowledge.source_fingerprint(source, project)
+        source.write_bytes(original.replace("\n", "\r\n").encode("utf-8"))
+        after = self.runtime_knowledge.source_fingerprint(source, project)
+        self.assertEqual(before, after)
+        self.assertTrue(self.cli(project, "knowledge", "scan")["healthy"])
+
     def test_read_only_knowledge_waits_for_content_publication(self) -> None:
         project = self.create_git_project("read-lock")
         initialized = self.init_project(project, self.write_bundle(project, "read-lock"))
@@ -2220,8 +2260,10 @@ class HarnessCliTests(unittest.TestCase):
         reader.start()
         self.assertFalse(completed.wait(0.2))
         release.set()
-        holder.join(2)
-        reader.join(2)
+        holder.join(10)
+        reader.join(30)
+        self.assertFalse(holder.is_alive())
+        self.assertFalse(reader.is_alive())
         self.assertTrue(completed.is_set())
         self.assertTrue(result.get("healthy"))
 
@@ -2276,6 +2318,8 @@ class HarnessCliTests(unittest.TestCase):
         self.assertNotIn("hashlib", stale_source)
         self.assertNotIn("def sha256", stale_source)
         self.assertIn("knowledge_fingerprint_scan", stale_source)
+        self.assertNotIn('manifest.get("project_root")', stale_source)
+        self.assertIn('parser.add_argument("--project-root", type=Path, required=True)', stale_source)
         self.assertNotIn("def canonical_id", stage_source)
         self.assertNotIn("def atomic_write", rule_source)
 
@@ -2326,10 +2370,10 @@ class HarnessCliTests(unittest.TestCase):
         initialized = self.init_project(project, self.write_bundle(project, "manifest-owner"))
         manifest_path = Path(initialized["skill_root"]) / "state" / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["project_root"] = str(self.root / "wrong-project")
+        manifest["project_id"] = "wrong-project"
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         mismatch = self.cli(project, "change", "status", expected=(2,))
-        self.assertIn("Project root does not match", mismatch["error"])
+        self.assertIn("Project id does not match", mismatch["error"])
 
     def test_new_worktree_connector_creates_project_level_codex_and_claude_links(self) -> None:
         project = self.create_git_project("connector-project")
@@ -2353,10 +2397,13 @@ class HarnessCliTests(unittest.TestCase):
         self.assertTrue(doctor["healthy"])
         skill_root = Path(initialized["skill_root"])
         manifest = json.loads((skill_root / "state" / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(Path(manifest["host_command"]), Path(sys.executable).resolve())
+        for machine_field in ("host_command", "project_root", "git_common_dir", "runtime_links"):
+            self.assertNotIn(machine_field, manifest)
         if os.name == "nt":
             launcher = skill_root / "scripts" / "harness-project.ps1"
-            self.assertIn(str(Path(sys.executable).resolve()), launcher.read_text(encoding="utf-8"))
+            launcher_content = launcher.read_text(encoding="utf-8")
+            self.assertNotIn(str(Path(sys.executable).resolve()), launcher_content)
+            self.assertIn("ECL_HARNESS_PYTHON", launcher_content)
             launcher_command = [
                 "powershell",
                 "-NoProfile",
@@ -2370,7 +2417,9 @@ class HarnessCliTests(unittest.TestCase):
             ]
         else:
             launcher = skill_root / "scripts" / "harness-project.sh"
-            self.assertIn(str(Path(sys.executable).resolve()), launcher.read_text(encoding="utf-8"))
+            launcher_content = launcher.read_text(encoding="utf-8")
+            self.assertNotIn(str(Path(sys.executable).resolve()), launcher_content)
+            self.assertIn("ECL_HARNESS_PYTHON", launcher_content)
             launcher_command = [
                 str(launcher),
                 "doctor",
@@ -3024,6 +3073,20 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertIn("terminal", reopened["error"].lower())
 
+    def test_dirty_git_lane_cannot_resume_a_parked_change(self) -> None:
+        project = self.create_git_project("dirty-resume")
+        self.init_project(project, self.write_bundle(project, "dirty-resume"))
+        self.commit_routes(project)
+        self.cli(project, "change", "new", "parked", "--scope", "resume safely")
+        self.cli(project, "change", "park", "parked")
+        dirty = project / "unrelated.tmp"
+        dirty.write_text("unrelated work\n", encoding="utf-8")
+
+        rejected = self.cli(project, "change", "resume", "parked", expected=(2,))
+        self.assertIn("clean", rejected["error"].lower())
+        dirty.unlink()
+        self.assertEqual(self.cli(project, "change", "resume", "parked")["status"], "resumed")
+
     def test_change_lifecycle_and_index_live_only_in_project_skill(self) -> None:
         project = self.root / "skill-owned-changes"
         project.mkdir()
@@ -3093,7 +3156,7 @@ class HarnessCliTests(unittest.TestCase):
         false_profile["evidence"] = []
         for field in (
             "primary_flows", "languages", "frameworks", "package_managers", "source_roots",
-            "entrypoints", "modules", "commands", "documents", "ci", "bridges", "global_boundaries",
+            "entrypoints", "modules", "commands", "ci", "bridges", "global_boundaries",
         ):
             false_profile[field] = []
         false_profile_path.write_text(json.dumps(false_profile, indent=2), encoding="utf-8")
@@ -3114,7 +3177,7 @@ class HarnessCliTests(unittest.TestCase):
         shallow_profile = json.loads(shallow_profile_path.read_text(encoding="utf-8"))
         for field in (
             "primary_flows", "frameworks", "package_managers", "source_roots", "entrypoints",
-            "modules", "commands", "documents", "ci", "bridges", "global_boundaries",
+            "modules", "commands", "ci", "bridges", "global_boundaries",
         ):
             shallow_profile[field] = []
         shallow_profile_path.write_text(json.dumps(shallow_profile, indent=2), encoding="utf-8")
@@ -3482,7 +3545,7 @@ class HarnessCliTests(unittest.TestCase):
         record = json.loads((
             skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
         ).read_text(encoding="utf-8"))
-        worktree = Path(record["worktree"])
+        worktree = skill_root / record["worktree"]
         reviewed = self.git(worktree, "rev-parse", "HEAD")
         (worktree / "after-review.txt").write_text("not reviewed\n", encoding="utf-8")
         self.git(worktree, "add", "after-review.txt")
@@ -3780,6 +3843,13 @@ class HarnessCliTests(unittest.TestCase):
             "--contract",
             str(contract_path),
         )
+        published_change = json.loads((
+            Path(initialized["skill_root"]) / "state" / "registry" / "changes" / "api-change.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(
+            published_change["contract_path"],
+            "state/registry/contracts/api-change.json",
+        )
         with (producer / "src" / "jobs" / "service.py").open("a", encoding="utf-8") as handle:
             handle.write("\ndef submit_job_v2(payload): return submit_job(payload)\n")
 
@@ -3871,7 +3941,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(event["contracts"][0]["subject"], "jobs.v1.submit")
         self.assertIn("src/jobs/service.py", event["affected_paths"])
 
-    def test_single_lane_git_upgrade_repairs_existing_and_future_worktrees(self) -> None:
+    def test_single_lane_git_transition_preserves_identity_and_repairs_worktrees(self) -> None:
         project = self.root / "upgrade-project"
         (project / "src" / "jobs").mkdir(parents=True)
         (project / "src" / "runtime").mkdir(parents=True)
@@ -3908,11 +3978,24 @@ class HarnessCliTests(unittest.TestCase):
             existing.append(worktree)
 
         migrated = self.cli(project, "project", "migrate")
-        self.assertEqual(migrated["init"]["status"], "upgraded_single_lane")
-        skill_root = Path(migrated["init"]["skill_root"])
-        self.assertFalse(old_skill_root.exists())
+        self.assertIsNone(migrated["init"])
+        self.assertTrue(migrated["applied"]["lane_rebound"])
+        skill_root = old_skill_root
+        self.assertTrue(skill_root.exists())
+        self.assertEqual(initial["project_id"], json.loads(
+            (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
+        )["project_id"])
         self.assertEqual(preserved_changes, self.tree_hashes(skill_root / "state" / "changes"))
         self.assertEqual(preserved_results, (skill_root / "state" / "evolution" / "results.tsv").read_bytes())
+        rebound_change = json.loads((
+            skill_root / "state" / "registry" / "changes" / "upgrade-history.json"
+        ).read_text(encoding="utf-8"))
+        rebound_baseline = json.loads((
+            skill_root / "state" / "registry" / "baseline.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(rebound_change["base_commit"], baseline)
+        self.assertEqual(rebound_baseline["canonical_branch"], "main")
+        self.assertEqual(rebound_baseline["canonical_commit"], baseline)
         for worktree in [project, *existing]:
             codex = worktree / ".agents" / "skills" / skill_root.name
             claude = worktree / ".claude" / "skills" / skill_root.name
@@ -3931,6 +4014,34 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(missing_worktrees, {str(path) for path in existing})
 
         committed = self.commit_routes(project)
+        self.cli(project, "change", "park", "upgrade-history")
+        resumed = self.cli(existing[0], "change", "resume", "upgrade-history")
+        self.assertNotEqual(resumed["change"]["lane_id"], rebound_change["lane_id"])
+        self.assertEqual(resumed["change"]["base_commit"], baseline)
+        self.complete_change_documents(existing[0], "upgrade-history")
+        (existing[0] / "upgrade-history.txt").write_text("portable change\n", encoding="utf-8")
+        self.cli(
+            existing[0], "change", "publish", "upgrade-history",
+            "--paths", "upgrade-history.txt",
+        )
+        prepared = self.cli(
+            existing[0], "change", "close", "upgrade-history", "--status", "completed",
+            "--validation", "transition validation passed", "--validation-passed",
+        )
+        self.assertEqual(prepared["status"], "prepared_for_completion_commit")
+        self.git(existing[0], "add", "upgrade-history.txt")
+        self.git(existing[0], "commit", "-m", "complete portable upgrade change")
+        completion = self.git(existing[0], "rev-parse", "HEAD")
+        self.cli(
+            existing[0], "change", "close", "upgrade-history",
+            "--status", "completed", "--completion-commit", completion, "--validation-passed",
+        )
+        integrated = self.cli(
+            project, "integrate", "start", "upgrade-integration", "upgrade-history",
+        )
+        self.assertEqual(integrated["status"], "ready_for_review")
+        self.cli(project, "integrate", "abort", "upgrade-integration")
+
         future = self.root / "upgrade-future"
         self.git(project, "worktree", "add", "-b", "upgrade-future", str(future), committed)
         self.assertFalse((future / ".agents" / "skills" / skill_root.name).exists())
@@ -3938,7 +4049,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertTrue(os.path.samefile(future / ".agents" / "skills" / skill_root.name, skill_root))
         self.assertTrue(os.path.samefile(future / ".claude" / "skills" / skill_root.name, skill_root))
 
-    def test_single_lane_upgrade_rejects_unowned_predecessor_manifest(self) -> None:
+    def test_project_marker_rejects_mismatched_manifest_identity(self) -> None:
         project = self.root / "upgrade-invalid-owner"
         project.mkdir()
         initial = self.init_project(project)
@@ -3957,19 +4068,189 @@ class HarnessCliTests(unittest.TestCase):
         self.git(project, "commit", "-m", "initialize git")
 
         rejected = self.cli(project, "project", "migrate", expected=(2,))
-        self.assertIn("predecessor project id", rejected["error"])
+        self.assertIn("Project id does not match", rejected["error"])
         self.assertTrue(predecessor.is_dir())
-        context = self.runtime_project.project_context(project)
-        self.assertFalse(self.runtime_project.skill_root_for(context, self.cli_args(project, "project", "migrate")).exists())
 
-        manifest["project_id"] = initial["project_id"]
-        manifest["runtime_links"][0]["path"] = str(self.root / "outside-owned-link")
-        with self.assertRaisesRegex(self.cli_module.HarnessError, "outside project ownership"):
-            self.runtime_project_commands.validate_single_lane_predecessor(
-                predecessor,
-                manifest,
-                self.runtime_core.normalize_path(project),
-            )
+    def test_project_identity_and_fingerprints_survive_directory_move(self) -> None:
+        project = self.create_git_project("portable-move")
+        initialized = self.init_project(project, self.write_bundle(project, "portable-move"))
+        project_id = initialized["project_id"]
+        before = self.cli(project, "knowledge", "scan")
+        self.assertTrue(before["healthy"])
+
+        moved = self.root / "moved" / "portable-move"
+        moved.parent.mkdir()
+        shutil.move(str(project), str(moved))
+        context = self.runtime_project.project_context(moved)
+        self.assertEqual(context["project_id"], project_id)
+        after = self.cli(moved, "knowledge", "scan")
+        self.assertTrue(after["healthy"])
+        self.assertEqual(after["checked"], before["checked"])
+
+    def test_persistent_state_contains_no_machine_absolute_paths(self) -> None:
+        project = self.create_git_project("portable-state")
+        initialized = self.init_project(project, self.write_bundle(project, "portable-state"))
+        skill_root = Path(initialized["skill_root"])
+        absolute = re.compile(r"^(?:[A-Za-z]:[\\/]|/)")
+        prohibited_fields = {
+            "project_root", "git_common_dir", "canonical_root", "host_command", "runtime_links",
+        }
+
+        def inspect(value: object, path: str = "") -> list[str]:
+            findings: list[str] = []
+            if isinstance(value, dict):
+                for key, nested in value.items():
+                    if key in prohibited_fields:
+                        findings.append(f"{path}/{key}")
+                    findings.extend(inspect(nested, f"{path}/{key}"))
+            elif isinstance(value, list):
+                for index, nested in enumerate(value):
+                    findings.extend(inspect(nested, f"{path}/{index}"))
+            elif isinstance(value, str) and absolute.match(value):
+                findings.append(f"{path}={value}")
+            return findings
+
+        findings = []
+        for path in sorted((skill_root / "state").rglob("*.json")):
+            findings.extend(inspect(json.loads(path.read_text(encoding="utf-8")), path.name))
+        self.assertEqual(findings, [])
+
+    def test_complete_bundle_rejects_repository_prose_evidence(self) -> None:
+        project = self.create_git_project("prose-evidence")
+        bundle = self.write_bundle(project, "prose-evidence")
+        profile_path = bundle / "project-profile.json"
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        profile["purpose"]["evidence"] = ["README.md"]
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+        rejected = self.cli(
+            project, "project", "init", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("repository prose-document references", rejected["error"])
+        self.assertIn("README.md", rejected["error"])
+
+        (project / "STATUS.md").write_text("# Current status\n", encoding="utf-8")
+        profile["purpose"]["evidence"] = ["STATUS.md"]
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+        status_rejected = self.cli(
+            project, "project", "init", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("STATUS.md", status_rejected["error"])
+
+        profile["purpose"]["evidence"] = ["src/jobs/service.py"]
+        original_roots = profile["modules"][0]["roots"]
+        profile["modules"][0]["roots"] = ["STATUS.md"]
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+        structural_rejected = self.cli(
+            project, "project", "init", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("STATUS.md", structural_rejected["error"])
+        profile["modules"][0]["roots"] = original_roots
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+
+        architecture_path = bundle / "architecture.json"
+        architecture = json.loads(architecture_path.read_text(encoding="utf-8"))
+        original_flow = architecture["code_paths"][0]["flow"]
+        architecture["code_paths"][0]["flow"] = ["STATUS.md"]
+        architecture_path.write_text(json.dumps(architecture, indent=2), encoding="utf-8")
+        architecture_rejected = self.cli(
+            project, "project", "init", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("STATUS.md", architecture_rejected["error"])
+        architecture["code_paths"][0]["flow"] = original_flow
+
+        original_dependency = architecture["dependencies"][0]["from"]
+        architecture["dependencies"][0]["from"] = "STATUS.md"
+        architecture_path.write_text(json.dumps(architecture, indent=2), encoding="utf-8")
+        dependency_rejected = self.cli(
+            project, "project", "init", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("STATUS.md", dependency_rejected["error"])
+        architecture["dependencies"][0]["from"] = original_dependency
+        architecture_path.write_text(json.dumps(architecture, indent=2), encoding="utf-8")
+
+        source = project / "src" / "readme_parser.py"
+        source.write_text("def parse_readme():\n    return 'source code'\n", encoding="utf-8")
+        interface = project / "docs" / "openapi.yaml"
+        interface.parent.mkdir()
+        interface.write_text("openapi: 3.1.0\n", encoding="utf-8")
+        self.assertFalse(self.runtime_analysis.is_repository_prose_path("src/readme_parser.py"))
+        self.assertFalse(self.runtime_analysis.is_repository_prose_path("docs/openapi.yaml"))
+        self.assertFalse(self.runtime_analysis.is_repository_prose_path("https://example.test/spec.md"))
+        self.assertFalse(self.runtime_analysis.is_repository_prose_path("user: Generate README.md"))
+        self.assertTrue(self.runtime_analysis.is_repository_prose_path("STATUS.md"))
+        profile["purpose"]["summary"] = "Generate README.md output from source-backed behavior."
+        profile["purpose"]["evidence"] = ["src/readme_parser.py", "user: Generate README.md"]
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+        accepted = self.cli(
+            project, "project", "init", "--analysis-bundle", str(bundle),
+        )
+        self.assertEqual(accepted["status"], "initialized")
+
+    def test_detached_head_cannot_create_structured_change(self) -> None:
+        project = self.create_git_project("detached-lane")
+        self.init_project(project, self.write_bundle(project, "detached-lane"))
+        self.commit_routes(project)
+        self.git(project, "checkout", "--detach")
+        rejected = self.cli(
+            project, "change", "new", "detached-change", "--scope", "mutate project",
+            expected=(2,),
+        )
+        self.assertIn("named Git branch", rejected["error"])
+
+    def test_manifest_1_upgrade_is_portable_and_complete_requires_refresh(self) -> None:
+        bootstrap = self.root / "portable-bootstrap"
+        bootstrap.mkdir()
+        initialized = self.init_project(bootstrap)
+        manifest_path = Path(initialized["skill_root"]) / "state" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.cli(bootstrap, "change", "new", "portable-contract", "--scope", "portable contract")
+        contract_input = self.root / "portable-contract.json"
+        contract_input.write_text(json.dumps({
+            "kind": "api", "subject": "portable.v1.sample", "operation": "change",
+            "owner_module": "portable-contract", "compatibility": "backward-compatible",
+            "status": "proposed", "affected_paths": ["src/api.py"], "consumers": [],
+            "depends_on": [], "depends_on_changes": [],
+        }), encoding="utf-8")
+        published = self.cli(
+            bootstrap, "change", "publish", "portable-contract", "--contract", str(contract_input),
+        )
+        change_path = manifest_path.parent / "registry" / "changes" / "portable-contract.json"
+        change = json.loads(change_path.read_text(encoding="utf-8"))
+        contract_record = Path(initialized["skill_root"]) / published["change"]["contract_path"]
+        change["contract_path"] = str(contract_record.resolve())
+        change_path.write_text(json.dumps(change, indent=2), encoding="utf-8")
+
+        manifest.update({
+            "schema_version": "1.0", "project_root": str(bootstrap),
+            "git_common_dir": None, "host_command": str(Path(sys.executable).resolve()),
+            "runtime_links": [{"runtime": "codex", "path": str(manifest_path.parent)}],
+        })
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        migrated = self.cli(bootstrap, "project", "migrate")
+        self.assertTrue(migrated["applied"]["portable_state_upgrade"])
+        portable = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(portable["schema_version"], "2.0")
+        for key in ("project_root", "git_common_dir", "host_command", "runtime_links"):
+            self.assertNotIn(key, portable)
+        migrated_change = json.loads(change_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            migrated_change["contract_path"],
+            "state/registry/contracts/portable-contract.json",
+        )
+
+        project = self.create_git_project("semantic-refresh-required")
+        complete = self.init_project(project, self.write_bundle(project, "semantic-refresh-required"))
+        complete_manifest_path = Path(complete["skill_root"]) / "state" / "manifest.json"
+        complete_manifest = json.loads(complete_manifest_path.read_text(encoding="utf-8"))
+        complete_manifest["schema_version"] = "1.0"
+        complete_manifest["project_root"] = str(project)
+        complete_manifest_path.write_text(json.dumps(complete_manifest, indent=2), encoding="utf-8")
+        rejected = self.cli(project, "project", "migrate", expected=(2,))
+        self.assertIn("semantic_refresh_required", rejected["error"])
+        self.assertEqual(
+            json.loads(complete_manifest_path.read_text(encoding="utf-8"))["schema_version"], "1.0",
+        )
 
     def test_fresh_migrate_reports_applied_analysis_bundle(self) -> None:
         project = self.create_git_project("fresh-migrate")
@@ -4050,7 +4331,9 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("harness-project.cmd", launchers)
         launcher = destination / "scripts" / "harness-project.cmd"
         content = launcher.read_text(encoding="utf-8")
-        self.assertIn(str(Path(sys.executable).resolve()), content)
+        self.assertNotIn(str(Path(sys.executable).resolve()), content)
+        self.assertIn("ECL_HARNESS_PYTHON", content)
+        self.assertIn("py -3", content)
         self.assertNotIn("powershell", content.lower())
 
 

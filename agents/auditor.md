@@ -54,7 +54,8 @@ Check:
 - Sensitive variable names are identified without storing values or credential-bearing strings.
 - Unknown critical configuration is not guessed.
 - Target project runtime remains separate from Harness host runtime.
-- Pinned launchers and the pre-discovery worktree connector are runnable on the detected host.
+- Host-resolved launchers and the pre-discovery worktree connector are runnable on the detected
+  host without persisting its interpreter path.
 
 ### Local Coordination And Integration
 

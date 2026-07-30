@@ -4,7 +4,8 @@
 
 - Populate every section from profile evidence; omit unsupported optional sections.
 - Use project-relative source citations and stable owner IDs.
-- Keep canonical business documents in Git and cite them rather than copying bodies.
+- Rewrite verified project knowledge into the project Harness. Repository prose is an analysis lead,
+  not a durable citation or required navigation dependency.
 - Entry routes are short; detailed behavior belongs to workflows/rules/Wiki/Change state.
 - Do not create empty L2/L3 pages or placeholder catalogs.
 
@@ -47,10 +48,6 @@ launcher placeholders; project-specific detail belongs in project knowledge and 
 ## Commands
 | Purpose | Command | Status | Evidence |
 | --- | --- | --- | --- |
-
-## Canonical Documents
-| Document | Owner/purpose | Path/section |
-| --- | --- | --- |
 
 ## Global Boundaries
 - <Boundary and evidence>
@@ -154,8 +151,8 @@ Statuses are configured/candidate/executed. A candidate is visibly not a project
 - <Candidate that must not be used as durable truth>
 ```
 
-Every durable row needs source code, canonical documentation, integrated contract, or explicit
-user evidence.
+Every durable row needs source code, manifest/configuration, an integrated contract, a test, or
+explicit user evidence.
 
 ## Workflow
 
@@ -189,7 +186,7 @@ Do not duplicate complete Change templates in this reference; validate the actua
 
 ## Architecture And Quality Projection
 
-Preserve useful canonical architecture content through section-level maps and citations:
+Express useful architecture knowledge directly through evidence-backed maps:
 
 - package/component dependency graph;
 - layer hierarchy and forbidden edges;
@@ -217,8 +214,8 @@ Before publishing:
 ## Canonical Project Documents
 
 These templates are available when analysis or a greenfield Change proves the project needs a
-canonical business document. They are business-repository artifacts created through an accepted
-Change, not automatic Harness-init outputs. The project Harness cites relevant sections from L1/L2/L3.
+human-facing business document. They are business-repository artifacts created through an accepted
+Change, not Harness-init outputs and not project Harness knowledge dependencies.
 
 ### Architecture Document
 

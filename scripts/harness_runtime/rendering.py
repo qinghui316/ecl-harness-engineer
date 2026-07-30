@@ -80,7 +80,7 @@ def circular_dependency_items(values: list[dict[str, Any]]) -> list[str]:
         lines.append(f"- `{source}` <-> `{target}`" + (f": {detail}" if detail else ""))
     return lines or ["- No dependency cycle recorded."]
 
-def document_items(values: list[dict[str, Any]]) -> list[str]:
+def record_items(values: list[dict[str, Any]]) -> list[str]:
     lines = []
     for value in values:
         label = semantic_display_text(value, ("name", "title", "path", "id"))
@@ -88,7 +88,7 @@ def document_items(values: list[dict[str, Any]]) -> list[str]:
         detail = str(value.get("description", "")).strip()
         path_note = f" (`{path}`)" if path and path != label else ""
         lines.append(f"- {label}{path_note}" + (f": {detail}" if detail else ""))
-    return lines or ["- No canonical document recorded."]
+    return lines or ["- No record configured."]
 
 def mermaid_sequence(path: dict[str, Any]) -> list[str]:
     flow = [str(item).strip() for item in path.get("flow", []) if str(item).strip()]
@@ -129,7 +129,6 @@ def render_project_wiki(
     purpose = profile.get("purpose") or {}
     modules = profile.get("modules", [])
     commands = profile.get("commands", [])
-    documents = profile.get("documents", [])
     ci = profile.get("ci", [])
     boundaries = profile.get("global_boundaries", [])
     reference_projects = profile.get("reference_projects", [])
@@ -157,10 +156,6 @@ def render_project_wiki(
             [f"| {item['name']} | {item['responsibility']} | [map](modules/{item['id']}.md) |" for item in modules]
             or ["| None recorded | Run analyzer before adding module pages | - |"]
         ),
-        "",
-        "## Canonical Documents",
-        "",
-        *document_items(documents),
         "",
         "## Common Commands",
         "",
@@ -351,7 +346,7 @@ def render_project_wiki(
                 for item in verification
             ],
             "", "## CI Definitions", "",
-            *document_items(ci),
+            *record_items(ci),
         ]
         systems.append(("verification", "verification.md", lines, sources))
     for identifier, filename, lines, sources in systems:
@@ -531,7 +526,6 @@ def render_project_wiki(
         *profile.get("primary_flows", []),
         *modules,
         *commands,
-        *documents,
         *boundaries,
     ]
     for item in overview_items:
@@ -595,7 +589,7 @@ def render_architecture_system(
     ]))
     lines = [
         "# Architecture Map", "",
-        "This is an evidence-backed navigation map. Canonical project documents and source remain authoritative.", "",
+        "This is the project Harness architecture map, backed by cited implementation evidence.", "",
         "## Layers", "",
         "| Level | Packages/Modules | Responsibility | Evidence |",
         "| --- | --- | --- | --- |",

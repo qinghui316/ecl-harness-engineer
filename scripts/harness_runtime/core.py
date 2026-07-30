@@ -22,6 +22,8 @@ from typing import Any, Iterable
 
 SCHEMA_VERSION = "1.0"
 
+MANIFEST_SCHEMA_VERSION = "2.0"
+
 EVOLUTION_THRESHOLD = 5
 
 TEXT_SUFFIXES = {".md", ".json", ".txt", ".tsv", ".tpl", ".py", ".ps1", ".sh", ".mjs"}

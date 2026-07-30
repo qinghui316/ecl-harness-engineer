@@ -14,7 +14,7 @@ Use this project Harness when the current project id is `{{PROJECT_ID}}`. Its co
 2. Read the relevant L2 module or system pages, then follow linked L3 bridges and reference-source
    maps when the task crosses those boundaries.
 3. For explanation, navigation, or read-only source research, continue from project knowledge and
-   canonical evidence without running Registry commands.
+   project knowledge and cited implementation evidence without running Registry commands.
 4. Before planning or editing a repository mutation, run `{{CHANGE_COMMAND}} preflight
    --project-root <cwd>` and read the Lane, Registry, and current Change records it names.
 5. Read the current workflow and `references/rules/by-stage/<stage>.md` before making that stage's
@@ -68,7 +68,7 @@ When sources disagree, use this order:
 ```text
 Registry baseline events and contracts
 -> current Change evidence
--> canonical code and documents
+-> repository code, manifests, configuration, tests, and accepted interfaces
 -> periodic L1/L2/L3 project knowledge
 ```
 

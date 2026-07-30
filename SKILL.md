@@ -28,8 +28,10 @@ When ownership is unclear, audit before proposing mutation.
 ### 1. Inspect Read Only
 
 Read `references/project-analysis-and-creation.md`. Resolve the project root, applicable
-instructions, Git/common-dir/worktree facts, existing project Harness, canonical documents,
-manifests, source roots, entrypoints, tests, CI, and command evidence.
+instructions, Git/common-dir/worktree facts, existing project Harness, repository-document
+candidates, manifests, source roots, entrypoints, tests, CI, and command evidence. Treat repository
+prose as a temporary analysis lead; verify durable knowledge against code, manifests, interfaces,
+configuration, tests, accepted contracts, or explicit user evidence.
 
 Use these roles without merging their responsibilities:
 
@@ -57,7 +59,7 @@ artifacts/
 
 `scripts/build_analysis_bundle.py` may extract a `partial` or `bootstrap_only` evidence draft. It
 cannot decide purpose, module responsibility, final audit scores, or publication artifacts. The
-Analyzer, Auditor, and Creators review canonical evidence and complete the bundle.
+Analyzer, Auditor, and Creators review implementation evidence and complete the bundle.
 
 Read `references/knowledge-model.md` for L1/L2/L3 and reference-source maps,
 `references/architecture-diagrams.md` for evidenced Mermaid projections, and
@@ -70,6 +72,10 @@ safety, executable authorization, or command behavior. An empty project requires
 purpose, stack, application type, constraints, and acceptance before business scaffolding.
 
 ### 4. Publish Deterministically
+
+`CHECKPOINT H1`: before `init` or `migrate`, show the resolved project root, stable project id or
+new identity, semantic completion status, managed route/link changes, executable artifacts, and
+validation plan. Publish only after the user confirms these material effects.
 
 Use the public runtime rather than hand-writing identity, links, Registry state, or indexes:
 
@@ -115,7 +121,7 @@ Current-fact precedence is:
 ```text
 Registry baseline events and contracts
 -> current Change evidence
--> canonical code and documents
+-> canonical code, manifests, configuration, tests, and accepted interfaces
 -> periodic L1/L2/L3 project knowledge
 ```
 
@@ -139,6 +145,7 @@ not block a Lane.
 
 ## Checkpoints And Failures
 
+- `CHECKPOINT H1`: confirm project identity and publication effects before `init` or `migrate`.
 - `CHECKPOINT E1`: obtain user confirmation before claiming Evolution ownership or staging changes.
 - `CHECKPOINT I2`: obtain user confirmation only after an Integration candidate, aggregate
   validation, and candidate-bound independent review are ready.
@@ -147,6 +154,8 @@ not block a Lane.
 - Integration applies selected `base_commit..completion_commit` ranges, not a long-lived Lane tip.
 - A fingerprint, Judge, validation, or publication failure leaves current Harness content intact.
 - Integration and Evolution share one writer lock; recovery resumes the recorded phase.
+- Stop publication when a complete bundle still depends on repository prose or machine-specific
+  paths, or when an executable artifact lacks explicit authorization and declared validation.
 
 ## Maintaining ECL Harness Engineer
 

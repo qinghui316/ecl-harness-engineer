@@ -5,8 +5,9 @@ semantics; `scripts/harness_cli.py` validates and publishes deterministic artifa
 
 ## Evidence Funnel
 
-Read canonical README/product/architecture/API documents, manifests and workspaces, CI/task files,
-entrypoints, imports/interfaces, configuration access, and tests. Select adapters from manifests
+Read repository prose as candidate context, then verify durable claims against manifests and
+workspaces, CI/task files, entrypoints, imports/interfaces, configuration access, accepted
+contracts, and tests. Select adapters from manifests
 and source evidence. A top-level directory is not a module, an adapter default is not a configured
 command, and search similarity is not an L3 fact.
 
@@ -27,19 +28,19 @@ artifacts/                    # only sources named by creation-delta
 
 Start with `python scripts/build_analysis_bundle.py --project-root <canonical-root> --output
 <empty-bundle-dir>`. The extractor always emits `partial` or `bootstrap_only`; it cannot certify
-semantic completion, score the audit, or authorize artifacts. Agent judgment reviews canonical
+semantic completion, score the audit, or authorize artifacts. Agent judgment reviews implementation
 evidence and writes the final four files. The generated CLI remains only the
 schema/evidence/publication gate.
 
 Fixed byte, line, word, item, diagram, or command counts must not reject otherwise valid project
 knowledge. Keep L1 navigable by moving implementation detail into linked L2/L3 pages, not by
-truncating project-level owners, flows, commands, documents, boundaries, or material unknowns.
+truncating project-level owners, flows, commands, boundaries, or material unknowns.
 
 All files use `schema_version: "1.0"`.
 
 `project-profile.json` declares `analysis_status` as `complete`, `partial`, or `bootstrap_only` and
 contains purpose, primary_flows, languages, frameworks, package_managers, source_roots,
-entrypoints, modules, commands, environment, documents, ci, bridges, reference_projects,
+entrypoints, modules, commands, environment, ci, bridges, reference_projects,
 global_boundaries, unknowns,
 and top-level evidence. Complete records require non-empty evidence. Commands use only
 `configured|candidate|executed`. Environment contains services, startup_order, readiness,
@@ -63,8 +64,12 @@ L3 mappings may cite a reference project while retaining target evidence. Refere
 never populate target modules, commands, environment, CI, or dependencies.
 
 `architecture.json` contains analysis_status, layers, circular_dependencies, key_interfaces,
-code_paths, error_patterns, and evidence. It summarizes analyzed structure; canonical architecture
-documents remain in the repository and are cited rather than copied.
+code_paths, error_patterns, and evidence. It expresses verified architecture directly and does not
+depend on repository prose documents.
+
+A deterministic draft may contain `document_candidates` for Agent review. Remove that field before
+semantic completion. A complete bundle must not contain `documents` or persist README, `docs/**`,
+or ADR paths in profile, architecture, audit, or creation delta.
 
 `audit.json` uses the dimensions, weights, score range, and overall calculation in
 `references/audit-rubric.json`. Every gap has priority, dimension, issue, fix, and non-empty

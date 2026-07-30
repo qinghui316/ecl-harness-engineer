@@ -120,7 +120,7 @@ def function_names(text: str, language: str) -> list[str]:
 
 
 def analyze(root: Path, adapters: dict) -> tuple[dict, dict]:
-    purpose, readme = first_readme_paragraph(root)
+    _, readme = first_readme_paragraph(root)
     files = source_files(root)
     tests = [path for path in files if "test" in path.name.lower() or "tests" in path.parts]
     implementation = [path for path in files if path not in tests]
@@ -228,45 +228,24 @@ def analyze(root: Path, adapters: dict) -> tuple[dict, dict]:
                 name = match.group(1)
                 variables.append({"name": name, "required": True, "sensitive": bool(re.search(r"TOKEN|SECRET|PASSWORD|KEY", name)), "description": "Declared environment variable.", "evidence": [env_example]})
     bridges = []
-    symbol_locations: dict[str, Path] = {}
-    for path in implementation:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for symbol in function_names(text, source_language(path)):
-            symbol_locations.setdefault(symbol, path)
-    mappings = []
-    if readme:
-        readme_text = (root / readme).read_text(encoding="utf-8", errors="replace")
-        explicit_mappings = re.findall(
-            r"(?im)^([^`\n]{3,80}?)\s+(?:uses|maps to|is implemented by)\s+`([A-Za-z_]\w*)`",
-            readme_text,
-        )
-        for term, symbol in explicit_mappings:
-            location = symbol_locations.get(symbol)
-            if location:
-                mappings.append({
-                    "from": term.strip(" .:-"), "to": f"{relative(location, root)}::{symbol}",
-                    "evidence": [readme, relative(location, root)],
-                })
-    if mappings:
-        bridges.append({"id": "terminology-to-code", "title": "Terminology To Code", "purpose": "Map canonical documented terminology to evidenced code symbols.", "mappings": mappings})
     represented_languages = {source_language(path) for path in implementation}
     detected_languages = {item["id"] for item in adapters.get("adapters", []) if item["id"] != "generic"}
     language_coverage = not detected_languages or detected_languages.issubset(represented_languages)
     reviewable = bool(
-        purpose and languages and language_coverage and roots and entries and modules and tests
+        languages and language_coverage and roots and entries and modules and tests
         and commands and (dependencies or interfaces or code_paths)
     )
-    evidence = [item for item in (readme, manifest, relative(entries[0], root) if entries else None) if item]
+    evidence = [item for item in (manifest, relative(entries[0], root) if entries else None) if item]
     status = "partial" if evidence else "bootstrap_only"
     profile = {
         "schema_version": "1.0", "analysis_status": status,
-        "project_name": root.name, "purpose": {"summary": purpose, "confidence": "high", "evidence": [readme]} if purpose else None,
+        "project_name": root.name, "purpose": None,
         "primary_flows": [{"name": "Primary evidenced call", "description": "A source import connects the primary project flow.", "evidence": code_paths[0]["evidence"]}] if code_paths else [],
         "languages": languages, "frameworks": [], "package_managers": [], "source_roots": roots,
         "entrypoints": [{"path": relative(entry, root), "kind": "source", "evidence": [relative(entry, root)]} for entry in entries],
         "modules": modules, "commands": commands,
         "environment": {"services": [], "variables": variables, "modes": [], "startup_order": [], "helpers": [], "unknowns": [], "evidence": [env_example] if env_example else []},
-        "documents": [{"name": "README", "path": readme, "evidence": [readme]}] if readme else [],
+        "document_candidates": ([{"path": readme, "kind": "repository-prose"}] if readme else []),
         "ci": [{"path": relative(path, root), "evidence": [relative(path, root)]} for path in sorted((root / ".github" / "workflows").glob("*")) if path.is_file()],
         "bridges": bridges, "reference_projects": [], "global_boundaries": [],
         "unknowns": [

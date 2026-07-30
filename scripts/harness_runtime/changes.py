@@ -182,7 +182,6 @@ def ensure_lane(
     value = {
         "schema_version": SCHEMA_VERSION,
         "lane_id": identifier,
-        "worktree": str(context["project_root"]),
         "branch": context["branch"],
         "head_commit": context["head"],
         "active_change_id": resolved_active,
@@ -526,7 +525,7 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
             "fact_priority": [
                 "registry contracts and baseline events",
                 "shared current Change evidence",
-                "canonical repository documents and code",
+                "repository code, manifests, configuration, tests, and accepted interfaces",
                 "L1/L2/L3 periodic index",
             ],
         },
@@ -579,7 +578,7 @@ def change_publish(args: argparse.Namespace) -> dict[str, Any]:
         target = contract_record_path(skill_root, change_id)
         atomic_write_json(target, contract)
         value["contract_required"] = True
-        value["contract_path"] = str(target)
+        value["contract_path"] = target.relative_to(skill_root).as_posix()
     value["updated_at"] = utc_now()
     atomic_write_json(path, value)
     ensure_lane(skill_root, context, change_id if value["status"] in {"planning", "active"} else None)
@@ -755,16 +754,21 @@ def change_resume(args: argparse.Namespace) -> dict[str, Any]:
     skill_root = require_skill(context, args)
     change_id = canonical_id(args.change_id, "Change id")
     value = load_change_record(skill_root, change_id, required=True)
-    require_change_owner(context, value)
     if value.get("status") != "parking":
         raise HarnessError(f"Only a parked Change may be resumed: {value.get('status')}")
+    current_lane_id = lane_id(context)
     active_on_lane = [
         item for item in change_records(skill_root)
-        if item.get("lane_id") == lane_id(context)
+        if item.get("lane_id") == current_lane_id
         and item.get("status") in {"planning", "active", "closing"}
     ]
     if active_on_lane:
         raise HarnessError("This Lane already has an active or closing Change.")
+    if context["mode"] == "multi_lane":
+        if git(context["project_root"], "status", "--porcelain").stdout.strip():
+            raise HarnessError("Git worktree must be clean before a parked Change can resume on this Lane.")
+        if not value.get("base_commit"):
+            value["base_commit"] = context["head"]
     source = parking_change_dir(skill_root, change_id)
     destination = active_change_dir(skill_root, change_id)
     if not source.is_dir():
@@ -774,6 +778,7 @@ def change_resume(args: argparse.Namespace) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
     value["status"] = "active"
+    value["lane_id"] = current_lane_id
     value["evidence_paths"] = [destination.relative_to(skill_root).as_posix()]
     value["updated_at"] = utc_now()
     atomic_write_json(change_record_path(skill_root, change_id), value)

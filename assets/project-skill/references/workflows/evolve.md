@@ -4,14 +4,14 @@
 
 - Frozen five-Change window, compact Registry summaries, selected Change/review evidence, and
   Integration signals.
-- Current canonical code/documents, current project profile, L1/L2/L3, workflows, rules, templates,
+- Current code/manifests/configuration/tests/interfaces, current project profile, L1/L2/L3, workflows, rules, templates,
   checks, drift findings, and document-entropy findings.
 - `references/analysis-contract.md`, which defines the self-contained four-file rescan bundle,
   audit weights, evidence rules, and creation-delta boundary.
 
 ## Agent Judgment
 
-Rescan current canonical project facts and classify accumulated experience as Promote, Retain,
+Rescan current project facts and classify accumulated experience as Promote, Retain,
 Merge, Retire, or Archive-only. Distinguish project knowledge from Harness process rules. Do not
 promote unintegrated implementation facts or generic article advice without project evidence.
 
@@ -34,7 +34,7 @@ promote unintegrated implementation facts or generic article advice without proj
 ## Actions
 
 1. Freeze the five ids; queue later Changes for the next window.
-2. Build and preflight the fresh four-file bundle from canonical evidence using
+2. Build and preflight the fresh four-file bundle from implementation evidence using
    `references/analysis-contract.md`.
 3. Propose L1/L2/L3, command/environment, workflow, rule, template, check, and entropy changes.
 4. Remove duplicate current facts, retire stale guidance, and retain detailed history in archive.

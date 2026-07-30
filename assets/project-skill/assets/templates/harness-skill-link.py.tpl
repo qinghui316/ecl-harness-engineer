@@ -112,9 +112,7 @@ def main() -> int:
     manifest = json.loads((canonical / "state" / "manifest.json").read_text(encoding="utf-8"))
     if (
         manifest.get("project_id") != PROJECT_ID
-        or manifest.get("mode") != "multi_lane"
-        or Path(manifest.get("project_root", "")).resolve() != primary
-        or Path(manifest.get("git_common_dir", "")).resolve() != common
+        or manifest.get("skill_name") != SKILL_NAME
     ):
         raise RuntimeError("canonical project Harness manifest does not match this Git project")
     links = {

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
 
-from .core import HarnessError, file_fingerprint, is_within, read_json, safe_relative
+from .core import HarnessError, git, git_value, is_within, read_json, safe_relative
 from .project import primary_worktree_root, project_context, require_skill
 from .transactions import guard_project_skill_read_only
 
@@ -15,12 +16,49 @@ NON_LOCAL_EVIDENCE_PREFIXES = ("http://", "https://", "user:", "contract:", "reg
 FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 def knowledge_source_location(context: dict[str, Any], source: str) -> tuple[Path, Path]:
-    base = (
-        primary_worktree_root(context)
-        if source.startswith(".agents/reference-projects/")
-        else context["project_root"]
-    )
+    if source.startswith(".agents/reference-projects/"):
+        parts = Path(source).parts
+        if len(parts) < 4:
+            return primary_worktree_root(context) / source, primary_worktree_root(context)
+        primary = primary_worktree_root(context)
+        base = primary / Path(*parts[:3])
+        return primary / source, base
+    else:
+        base = context["project_root"]
     return base / source, base
+
+
+def source_fingerprint(path: Path, source_root: Path) -> str:
+    resolved_path = path.resolve()
+    resolved_root = source_root.resolve()
+    if not is_within(resolved_path, resolved_root):
+        raise HarnessError(f"Knowledge source resolves outside its evidence root: {path}")
+
+    git_root_value = git_value(resolved_path.parent, "rev-parse", "--show-toplevel")
+    if git_root_value:
+        git_root = Path(git_root_value).resolve()
+        if is_within(resolved_path, git_root):
+            relative = resolved_path.relative_to(git_root).as_posix()
+            tracked = git(git_root, "ls-files", "--error-unmatch", "--", relative, check=False)
+            if tracked.returncode == 0:
+                hashed = git(
+                    git_root, "hash-object", f"--path={relative}", str(resolved_path), check=False,
+                )
+                blob = hashed.stdout.strip()
+                if hashed.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", blob):
+                    payload = relative.encode("utf-8") + b"\0git:" + blob.encode("ascii")
+                    return hashlib.sha256(payload).hexdigest()
+
+    relative = resolved_path.relative_to(resolved_root).as_posix()
+    content = resolved_path.read_bytes()
+    if b"\0" not in content[:8192]:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        else:
+            content = text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+    return hashlib.sha256(relative.encode("utf-8") + b"\0" + content).hexdigest()
 
 def context_source_fingerprints(context: dict[str, Any], sources: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
@@ -29,7 +67,7 @@ def context_source_fingerprints(context: dict[str, Any], sources: list[str]) -> 
             continue
         path, base = knowledge_source_location(context, source)
         if path.is_file():
-            result[source] = file_fingerprint([path], base)
+            result[source] = source_fingerprint(path, base)
     return result
 
 def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dict[str, Any]:
@@ -82,7 +120,7 @@ def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dic
             if not source_path.is_file():
                 add("missing", item_id, source, expected=expected, current=None)
                 continue
-            current = file_fingerprint([source_path], source_root)
+            current = source_fingerprint(source_path, source_root)
             if current != expected:
                 add("changed", item_id, source, expected=expected, current=current)
 
@@ -198,14 +236,13 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
                 if not markdown_has_substance(path):
                     findings.append({"type": "empty_knowledge_entry", "path": str(path)})
     review_files = [path for path in knowledge.rglob("*.md") if path.is_file()]
-    project_root = context["project_root"]
-    for pattern in ("AGENTS.md", "CLAUDE.md", "STATUS*.md", "CURRENT*.md"):
-        review_files.extend(path for path in project_root.glob(pattern) if path.is_file())
     normalized: dict[str, list[str]] = {}
     archive_lines: list[str] = []
     current_fact_files: set[str] = set()
+    roadmap_fact_files: set[str] = set()
+    status_fact_files: set[str] = set()
     for path in dict.fromkeys(review_files):
-        relative = str(path.relative_to(project_root)) if is_within(path, project_root) else str(path.relative_to(skill_root))
+        relative = str(path.relative_to(skill_root))
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             compact = re.sub(r"[`*_#>|\[\](){}]", " ", line.lower())
             compact = re.sub(r"\s+", " ", compact).strip()
@@ -219,6 +256,10 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
                 archive_lines.append(f"{relative}: {line.strip()[:180]}")
             if is_current_fact:
                 current_fact_files.add(relative)
+                if re.search(r"current plan|roadmap|next action", compact):
+                    roadmap_fact_files.add(relative)
+                if re.search(r"current status|current baseline|latest completed|pending integration", compact):
+                    status_fact_files.add(relative)
     duplicates = [
         {"text": line[:180], "owners": sorted(set(owners))}
         for line, owners in normalized.items() if len(set(owners)) > 1
@@ -229,8 +270,8 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
         warnings.append({"type": "archive_ledger_leakage", "count": len(archive_lines), "examples": archive_lines[:10]})
     if len(current_fact_files) > 1:
         warnings.append({"type": "multiple_current_state_owners", "owners": sorted(current_fact_files)})
-    roadmap_owners = [item for item in current_fact_files if "plan" in item.lower() or "roadmap" in item.lower()]
-    status_owners = [item for item in current_fact_files if "status" in item.lower() or "agents.md" in item.lower()]
+    roadmap_owners = sorted(roadmap_fact_files)
+    status_owners = sorted(status_fact_files)
     if roadmap_owners and status_owners:
         warnings.append({
             "type": "roadmap_current_state_conflict",
