@@ -13,7 +13,8 @@ from preferences, and distinguish configured commands from adapter-derived candi
 
 ## Deterministic Commands
 
-- Run `change preflight` before and after publishing path claims.
+- Run `change preflight` before finalizing the plan and again after materially changing path or
+  contract claims.
 - Run `change publish` with paths and a contract when high-impact boundaries change.
 - Run `check_stage_artifacts.py --stage plan` before requesting plan approval.
 

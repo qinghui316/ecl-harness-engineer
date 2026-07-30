@@ -14,9 +14,10 @@ allowed for locating code; implementation scope still requires source, contract,
 
 ## Deterministic Commands
 
-- Run `change preflight` before source search.
+- Use the current preflight for repository-mutating work; pure navigation and source research do not
+  require one.
 - Use repository-native search, symbol, dependency, and test discovery commands.
-- Run the Wiki stale checker when a selected L2/L3 page appears inconsistent with source.
+- Run knowledge scan/check only when a selected L2/L3 page appears inconsistent with source.
 
 ## Actions
 

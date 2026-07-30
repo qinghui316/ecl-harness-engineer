@@ -24,7 +24,7 @@ ECL Harness Engineer 分析项目并执行四类项目 Harness 操作：
 1. `init`：从真实代码、文档和验证命令初始化项目 Harness。
 2. `audit`：检查知识漂移、Registry、运行时链接和流程 gate。
 3. `migrate`：用新的分析 bundle 原子更新已有项目 Harness，并保留动态状态。
-4. `doctor`：机械检查链接、Lane、baseline 和知识索引。
+4. `doctor`：机械检查安装、Runtime、链接、Lane、baseline、锁和恢复状态；完整知识、ECL 和规则检查由 `audit` 聚合。
 
 项目 Harness 负责日常 Change、worktree 协作、Integration 和每五个 Change 的轻量进化。
 
@@ -233,6 +233,9 @@ harness-integrate start|status|complete|abort
 harness-evolve check|status|stage|mark-complete
 harness-knowledge scan|check
 ```
+
+`knowledge scan|check` 只在怀疑漂移、preflight 命中相关漂移、audit/migrate 或 E1 时运行。
+两者不写项目知识；健康返回 0，发现问题返回 1，命令或事务错误返回 2。
 
 `project init|migrate` 由 ECL Harness Engineer 执行。项目 Harness 自带四文件 analysis
 contract 和 draft 证据提取器；Agent 完成语义复核后可独立执行只读

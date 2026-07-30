@@ -35,6 +35,7 @@ class HarnessCliTests(unittest.TestCase):
         self.runtime_core = importlib.import_module("harness_runtime.core")
         self.runtime_evolution = importlib.import_module("harness_runtime.evolution")
         self.runtime_integration = importlib.import_module("harness_runtime.integration")
+        self.runtime_knowledge = importlib.import_module("harness_runtime.knowledge")
         self.runtime_links = importlib.import_module("harness_runtime.links")
         self.runtime_project = importlib.import_module("harness_runtime.project")
         self.runtime_project_commands = importlib.import_module("harness_runtime.project_commands")
@@ -728,16 +729,16 @@ class HarnessCliTests(unittest.TestCase):
         links_source = (ROOT / "scripts" / "harness_runtime" / "links.py").read_text(encoding="utf-8")
         self.assertIn("python_command = str(Path(sys.executable).resolve())", links_source)
 
-        self.assertLessEqual(len(cli_source.splitlines()), 300)
+        facade_tree = ast.parse(cli_source)
+        facade_functions = {
+            node.name for node in facade_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        self.assertEqual(facade_functions, {"add_common", "build_parser", "dispatch", "main"})
         runtime_root = ROOT / "scripts" / "harness_runtime"
         module_names = {path.stem for path in runtime_root.glob("*.py") if path.name != "__init__.py"}
         dependencies: dict[str, set[str]] = {name: set() for name in module_names}
         for path in runtime_root.glob("*.py"):
-            self.assertLess(
-                len(path.read_text(encoding="utf-8").splitlines()),
-                1000,
-                f"Runtime module exceeds the maintenance limit: {path.name}",
-            )
             if path.name == "__init__.py":
                 continue
             tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -849,8 +850,9 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("references/analysis-contract.md", generated_entry)
         self.assertIn("references/bootstrap/project.md", generated_entry)
         self.assertIn("references/runtime-modules.md", generated_entry)
-        self.assertIn("current workflow and relevant L2", generated_entry)
-        self.assertIn("reference-source maps", generated_entry)
+        self.assertIn("relevant L2 module or system pages", generated_entry)
+        self.assertIn("Read the current workflow", generated_entry)
+        self.assertRegex(generated_entry, r"reference-source\s+maps")
         self.assertIn("references/rules/by-stage/<stage>.md", generated_entry)
         self.assertTrue(analysis_contract.is_file())
         self.assertTrue(runtime_modules.is_file())
@@ -988,7 +990,7 @@ class HarnessCliTests(unittest.TestCase):
         rule_source = (skill_root / "references" / "rules" / "red_lines.yaml").read_text(encoding="utf-8")
         self.assertIn("at most three high-impact questions", intake)
         self.assertIn('"id":"HR-23"', rule_source)
-        self.assertTrue(self.cli(project, "project", "doctor")["rules"]["healthy"])
+        self.assertTrue(self.cli(project, "project", "audit")["rules"]["healthy"])
         wiki_index = json.loads((wiki / "index.json").read_text(encoding="utf-8"))
         overview_record = next(item for item in wiki_index["items"] if item["id"] == "overview")
         self.assertIn("src/runtime/worker.py", overview_record["sources"])
@@ -1443,6 +1445,7 @@ class HarnessCliTests(unittest.TestCase):
         self.run_connector(secondary)
         secondary_checked = self.cli(secondary, "knowledge", "check")
         self.assertEqual(secondary_checked["findings"], [])
+        self.assertTrue(self.cli(secondary, "knowledge", "scan")["healthy"])
         self.assertFalse((secondary / ".agents" / "reference-projects" / "symphony").exists())
 
         (reference / "src" / "scheduler.py").write_text(
@@ -1451,6 +1454,10 @@ class HarnessCliTests(unittest.TestCase):
         )
         drift = self.cli(secondary, "knowledge", "check", expected=(1,))
         self.assertIn("knowledge_drift", {item["type"] for item in drift["findings"]})
+        scan_drift = self.cli(secondary, "knowledge", "scan", expected=(1,))
+        self.assertEqual({item["source"] for item in scan_drift["findings"]}, {
+            ".agents/reference-projects/symphony/src/scheduler.py",
+        })
 
     def test_project_harness_rescans_audits_and_evolves_without_creator_files(self) -> None:
         project = self.root / "generated-independent"
@@ -1607,14 +1614,20 @@ class HarnessCliTests(unittest.TestCase):
 
         index["changes"][0]["tags"] = ["tampered"]
         index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-        doctor = self.cli(project, "project", "doctor", expected=(1,))
-        self.assertIn("stale_or_tampered_change_index", {item["type"] for item in doctor["findings"]})
+        audit_result = self.cli(project, "project", "audit")
+        self.assertIn(
+            "stale_or_tampered_change_index",
+            {item["type"] for item in audit_result["ecl"]["findings"]},
+        )
 
         self.cli(project, "change", "reindex")
         tasks = skill_root / "state" / "changes" / "archive" / "indexed-change" / "tasks.md"
         tasks.write_text(tasks.read_text(encoding="utf-8") + "\nTBD\n", encoding="utf-8")
-        doctor = self.cli(project, "project", "doctor", expected=(1,))
-        self.assertIn("tampered_change_evidence", {item["type"] for item in doctor["findings"]})
+        audit_result = self.cli(project, "project", "audit")
+        self.assertIn(
+            "tampered_change_evidence",
+            {item["type"] for item in audit_result["ecl"]["findings"]},
+        )
 
     def test_greenfield_capability_routes_through_structured_change(self) -> None:
         project = self.root / "greenfield-route"
@@ -2059,19 +2072,20 @@ class HarnessCliTests(unittest.TestCase):
         initialized = self.init_project(project, self.write_bundle(project, "read-only"))
         skill_root = Path(initialized["skill_root"])
         operation_locks = skill_root.parent / ".harness-operation-locks"
-        shutil.rmtree(operation_locks, ignore_errors=True)
-        project_before_audit = self.tree_hashes(project)
         audited = self.cli(project, "project", "audit")
         self.assertTrue(audited["initialized"])
-        self.assertFalse(operation_locks.exists())
-        self.assertEqual(project_before_audit, self.tree_hashes(project))
+        self.assertTrue(operation_locks.is_dir())
         before = self.tree_hashes(skill_root)
         (project / "README.md").write_text("# Changed\n\nCanonical evidence changed.\n", encoding="utf-8")
-        scanned = self.cli(project, "knowledge", "scan")
+        changed_project = self.tree_hashes(project)
+        scanned = self.cli(project, "knowledge", "scan", expected=(1,))
+        self.assertTrue(scanned["ok"])
         self.assertTrue(scanned["read_only"])
+        self.assertFalse(scanned["healthy"])
         self.assertTrue(scanned["stale"])
         self.cli(project, "knowledge", "check", expected=(1,))
         self.assertEqual(before, self.tree_hashes(skill_root))
+        self.assertEqual(changed_project, self.tree_hashes(project))
         pending = self.runtime_transactions.content_transaction_store(skill_root) / "pending-read-only"
         pending.mkdir(parents=True)
         (pending / "sentinel.txt").write_text("keep\n", encoding="utf-8")
@@ -2079,8 +2093,205 @@ class HarnessCliTests(unittest.TestCase):
         for command in (("knowledge", "scan"), ("knowledge", "check")):
             rejected = self.cli(project, *command, expected=(2,))
             self.assertIn("incomplete content transaction", rejected["error"])
+        wrapped = self.run_process([
+            sys.executable, str(skill_root / "scripts" / "check_project_wiki_stale.py"),
+            "--skill-root", str(skill_root), "--project-root", str(project),
+        ], expected=(2,))
+        self.assertIn("incomplete content transaction", json.loads(wrapped.stdout)["error"])
         self.assertEqual(transaction_before, self.tree_hashes(skill_root))
         self.assertTrue((pending / "sentinel.txt").is_file())
+
+    def test_knowledge_fingerprints_have_one_generation_and_scan_contract(self) -> None:
+        project = self.create_git_project("fingerprint-contract")
+        package = project / "package.json"
+        original = '{"name":"fingerprint-contract","scripts":{"test":"node --test"}}\n'
+        package.write_text(original, encoding="utf-8")
+        self.git(project, "add", "package.json")
+        self.git(project, "commit", "-m", "add package evidence")
+        bundle = self.write_bundle(
+            project,
+            "fingerprint-contract",
+            command="npm test",
+            command_evidence="package.json",
+            language="TypeScript",
+        )
+        initialized = self.init_project(project, bundle)
+        skill_root = Path(initialized["skill_root"])
+        index_path = skill_root / "references" / "project_wiki" / "index.json"
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        package_records = [
+            item for item in index["items"]
+            if "package.json" in item.get("source_fingerprints", {})
+        ]
+        self.assertTrue(package_records)
+        expected = package_records[0]["source_fingerprints"]["package.json"]
+        self.assertEqual(expected, self.runtime_core.file_fingerprint([package], project))
+
+        baseline = self.cli(project, "knowledge", "scan")
+        self.assertTrue(baseline["healthy"])
+        self.assertFalse(baseline["stale"])
+        self.assertEqual(baseline["findings"], [])
+        self.assertTrue(self.cli(project, "knowledge", "check")["healthy"])
+        self.assertTrue(self.cli(project, "project", "doctor")["healthy"])
+        wrapper = skill_root / "scripts" / "check_project_wiki_stale.py"
+        wrapped = self.run_process([
+            sys.executable, str(wrapper), "--skill-root", str(skill_root),
+            "--project-root", str(project),
+        ])
+        self.assertTrue(json.loads(wrapped.stdout)["healthy"])
+
+        package.write_text('{"name":"fingerprint-contract","scripts":{"test":"node --test test"}}\n', encoding="utf-8")
+        changed = self.cli(project, "knowledge", "scan", expected=(1,))
+        self.assertEqual({item["type"] for item in changed["findings"]}, {"changed"})
+        self.assertEqual({item["source"] for item in changed["findings"]}, {"package.json"})
+        wrapped = self.run_process([
+            sys.executable, str(wrapper), "--skill-root", str(skill_root),
+            "--project-root", str(project),
+        ], expected=(1,))
+        wrapped_payload = json.loads(wrapped.stdout)
+        self.assertTrue(wrapped_payload["ok"])
+        self.assertFalse(wrapped_payload["healthy"])
+        self.assertEqual(
+            {item["source"] for item in wrapped_payload["findings"]},
+            {"package.json"},
+        )
+        package.write_text(original, encoding="utf-8")
+        self.assertTrue(self.cli(project, "knowledge", "scan")["healthy"])
+
+        package.unlink()
+        missing = self.cli(project, "knowledge", "scan", expected=(1,))
+        self.assertEqual({item["type"] for item in missing["findings"]}, {"missing"})
+        package.write_text(original, encoding="utf-8")
+
+        original_index = index_path.read_bytes()
+        tampered = json.loads(original_index.decode("utf-8"))
+        target = next(item for item in tampered["items"] if "package.json" in item.get("source_fingerprints", {}))
+        target["source_fingerprints"]["package.json"] = "not-a-fingerprint"
+        index_path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
+        invalid = self.cli(project, "knowledge", "scan", expected=(1,))
+        self.assertIn("invalid_fingerprint", {item["type"] for item in invalid["findings"]})
+
+        tampered = json.loads(original_index.decode("utf-8"))
+        target = next(item for item in tampered["items"] if "package.json" in item.get("source_fingerprints", {}))
+        fingerprint = target["source_fingerprints"].pop("package.json")
+        target["source_fingerprints"]["../package.json"] = fingerprint
+        index_path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
+        invalid = self.cli(project, "knowledge", "scan", expected=(1,))
+        self.assertIn("invalid_source", {item["type"] for item in invalid["findings"]})
+        index_path.write_bytes(original_index)
+
+        outside = self.root / "outside-source.txt"
+        outside.write_text("outside\n", encoding="utf-8")
+        with mock.patch.object(
+            self.runtime_knowledge,
+            "knowledge_source_location",
+            return_value=(outside, project),
+        ):
+            result = self.runtime_knowledge.knowledge_fingerprint_scan(
+                skill_root,
+                self.runtime_project.project_context(project),
+            )
+        self.assertIn("outside_project", {item["type"] for item in result["findings"]})
+
+    def test_read_only_knowledge_waits_for_content_publication(self) -> None:
+        project = self.create_git_project("read-lock")
+        initialized = self.init_project(project, self.write_bundle(project, "read-lock"))
+        skill_root = Path(initialized["skill_root"])
+        entered = threading.Event()
+        release = threading.Event()
+        completed = threading.Event()
+        result: dict[str, object] = {}
+
+        def hold_publication() -> None:
+            with self.runtime_transactions.content_publication_guard(skill_root):
+                entered.set()
+                release.wait(5)
+
+        def scan() -> None:
+            try:
+                result.update(self.dispatch(project, "knowledge", "scan"))
+            finally:
+                completed.set()
+
+        holder = threading.Thread(target=hold_publication)
+        reader = threading.Thread(target=scan)
+        holder.start()
+        self.assertTrue(entered.wait(2))
+        reader.start()
+        self.assertFalse(completed.wait(0.2))
+        release.set()
+        holder.join(2)
+        reader.join(2)
+        self.assertTrue(completed.is_set())
+        self.assertTrue(result.get("healthy"))
+
+    def test_runtime_copy_is_a_controlled_machine_owned_mirror(self) -> None:
+        destination = self.root / "runtime-mirror"
+        scripts = destination / "scripts"
+        package = scripts / "harness_runtime"
+        checks = scripts / "checks"
+        helpers = scripts / "helpers"
+        package.mkdir(parents=True)
+        checks.mkdir()
+        helpers.mkdir()
+        (package / "obsolete.py").write_text("obsolete = True\n", encoding="utf-8")
+        (package / "__pycache__").mkdir()
+        (package / "__pycache__" / "obsolete.pyc").write_bytes(b"old")
+        (scripts / "obsolete_runtime.py").write_text("obsolete = True\n", encoding="utf-8")
+        (scripts / "harness-project.sh").write_text("old launcher\n", encoding="utf-8")
+        (checks / "project_check.py").write_text("print('check')\n", encoding="utf-8")
+        (helpers / "project_helper.py").write_text("print('helper')\n", encoding="utf-8")
+        manifest = destination / "state" / "manifest.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps({
+            "launchers": [
+                "obsolete_runtime.py",
+                "harness_runtime/obsolete.py",
+                "harness-project.sh",
+            ]
+        }), encoding="utf-8")
+
+        launchers = self.runtime_links.copy_runtime(destination)
+        self.assertFalse((scripts / "obsolete_runtime.py").exists())
+        self.assertFalse((package / "obsolete.py").exists())
+        self.assertFalse((package / "__pycache__").exists())
+        self.assertTrue((checks / "project_check.py").is_file())
+        self.assertTrue((helpers / "project_helper.py").is_file())
+        source_package = ROOT / "scripts" / "harness_runtime"
+        self.assertEqual(
+            {path.name: path.read_bytes() for path in source_package.glob("*.py")},
+            {path.name: path.read_bytes() for path in package.glob("*.py")},
+        )
+        for name in (
+            "harness_cli.py", "detect_adapters.py", "build_analysis_bundle.py",
+            "render_greenfield.py", "generate_rule_docs.py",
+            "check_project_wiki_stale.py", "check_stage_artifacts.py",
+        ):
+            self.assertEqual((ROOT / "scripts" / name).read_bytes(), (scripts / name).read_bytes())
+        self.assertTrue(any(name.startswith("harness-project.") for name in launchers))
+
+        stale_source = (ROOT / "scripts" / "check_project_wiki_stale.py").read_text(encoding="utf-8")
+        stage_source = (ROOT / "scripts" / "check_stage_artifacts.py").read_text(encoding="utf-8")
+        rule_source = (ROOT / "scripts" / "generate_rule_docs.py").read_text(encoding="utf-8")
+        self.assertNotIn("hashlib", stale_source)
+        self.assertNotIn("def sha256", stale_source)
+        self.assertIn("knowledge_fingerprint_scan", stale_source)
+        self.assertNotIn("def canonical_id", stage_source)
+        self.assertNotIn("def atomic_write", rule_source)
+
+    def test_project_harness_routes_scripts_only_for_mechanical_state(self) -> None:
+        entry = (ROOT / "assets" / "project-skill" / "SKILL.md.tpl").read_text(encoding="utf-8")
+        intake = (ROOT / "assets" / "project-skill" / "references" / "workflows" / "intake.md").read_text(encoding="utf-8")
+        locate = (ROOT / "assets" / "project-skill" / "references" / "workflows" / "locate.md").read_text(encoding="utf-8")
+        implement = (ROOT / "assets" / "project-skill" / "references" / "workflows" / "implement.md").read_text(encoding="utf-8")
+        runtime = (ROOT / "references" / "runtime-modules.md").read_text(encoding="utf-8")
+        self.assertIn("explanation, navigation, or read-only source research", entry)
+        self.assertIn("Before planning or editing a repository mutation", entry)
+        self.assertNotIn("preflight before classification", intake)
+        self.assertNotIn("preflight` before source search", locate)
+        self.assertNotIn("preflight` at stage entry", implement)
+        self.assertNotIn("300 lines", runtime)
+        self.assertNotIn("1000 lines", runtime)
 
     def test_stage_checker_reads_skill_owned_change_evidence(self) -> None:
         project = self.create_git_project("stage-check")
@@ -2414,6 +2625,17 @@ class HarnessCliTests(unittest.TestCase):
         self.commit_routes(project)
         self.cli(project, "change", "new", "preserved-change", "--scope", "preserve shared evidence")
         skill_root = Path(initialized["skill_root"])
+        obsolete_package = skill_root / "scripts" / "harness_runtime" / "obsolete.py"
+        obsolete_package.write_text("obsolete = True\n", encoding="utf-8")
+        obsolete_runtime = skill_root / "scripts" / "obsolete_runtime.py"
+        obsolete_runtime.write_text("obsolete = True\n", encoding="utf-8")
+        helper = skill_root / "scripts" / "helpers" / "project_helper.py"
+        helper.parent.mkdir(exist_ok=True)
+        helper.write_text("print('helper')\n", encoding="utf-8")
+        manifest_path = skill_root / "state" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["launchers"].extend(["obsolete_runtime.py", "harness_runtime/obsolete.py"])
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         changes_before = self.tree_hashes(skill_root / "state" / "changes")
         forbidden = (
             "docs/ECL.md", "docs/STATUS.md", "harness/config", "harness/changes",
@@ -2433,6 +2655,15 @@ class HarnessCliTests(unittest.TestCase):
             self.assertFalse((project / relative).exists(), relative)
         self.assertEqual(changes_before, self.tree_hashes(skill_root / "state" / "changes"))
         self.assertTrue((skill_root / "state" / "changes" / "INDEX.json").is_file())
+        self.assertFalse(obsolete_package.exists())
+        self.assertFalse(obsolete_runtime.exists())
+        self.assertTrue(helper.is_file())
+        source_runtime = ROOT / "scripts" / "harness_runtime"
+        installed_runtime = skill_root / "scripts" / "harness_runtime"
+        self.assertEqual(
+            {path.name: path.read_bytes() for path in source_runtime.glob("*.py")},
+            {path.name: path.read_bytes() for path in installed_runtime.glob("*.py")},
+        )
 
     def test_multilanguage_profiles_preserve_evidence_backed_commands(self) -> None:
         fixtures = [

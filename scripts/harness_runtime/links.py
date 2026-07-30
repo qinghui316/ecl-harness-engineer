@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .core import HarnessError, MANAGED_CONNECTOR_MARKER, MANAGED_ROUTE_BEGIN, MANAGED_ROUTE_END, MAX_ROUTE_BYTES, TEXT_SUFFIXES, atomic_write_bytes, atomic_write_text, is_link_like, normalize_path, reject_linked_ancestors, render, run
+from .core import HarnessError, MANAGED_CONNECTOR_MARKER, MANAGED_ROUTE_BEGIN, MANAGED_ROUTE_END, MAX_ROUTE_BYTES, TEXT_SUFFIXES, atomic_write_bytes, atomic_write_text, is_link_like, normalize_path, read_json, reject_linked_ancestors, render, run, safe_relative
 from .project import worktree_roots
 
 def distribution_root() -> Path:
@@ -65,6 +65,25 @@ def copy_runtime(destination: Path) -> list[str]:
         "check_project_wiki_stale.py",
         "check_stage_artifacts.py",
     )
+    previous_manifest = read_json(destination / "state" / "manifest.json", {})
+    previous_launchers = previous_manifest.get("launchers", [])
+    if not isinstance(previous_launchers, list):
+        raise HarnessError("Project Harness manifest launchers must be an array.")
+    expected_top_level = set(runtime_names)
+    for value in previous_launchers:
+        if not isinstance(value, str):
+            raise HarnessError("Project Harness manifest contains a non-string launcher path.")
+        relative = Path(safe_relative(value, "Harness-owned runtime path"))
+        if len(relative.parts) != 1 or relative.name in expected_top_level:
+            continue
+        target = scripts / relative
+        if target.is_file() or target.is_symlink():
+            target.unlink()
+    for domain in ("project", "change", "integrate", "evolve", "knowledge"):
+        for suffix in ("ps1", "cmd", "sh"):
+            stale_launcher = scripts / f"harness-{domain}.{suffix}"
+            if stale_launcher.is_file() or stale_launcher.is_symlink():
+                stale_launcher.unlink()
     for runtime_name in runtime_names:
         source = source_root / runtime_name
         if not source.is_file():
@@ -77,11 +96,18 @@ def copy_runtime(destination: Path) -> list[str]:
     package_files = sorted(package_source.glob("*.py"))
     if not package_files or not (package_source / "__init__.py").is_file():
         raise HarnessError(f"Bundled Harness runtime package is incomplete: {package_source}")
-    package_target.mkdir(parents=True, exist_ok=True)
-    for source in package_files:
-        target = package_target / source.name
-        if source.resolve() != target.resolve():
-            shutil.copy2(source, target)
+    if package_source.resolve() != package_target.resolve():
+        package_target.mkdir(parents=True, exist_ok=True)
+        expected_package = {source.name for source in package_files}
+        for existing in package_target.iterdir():
+            if existing.name in expected_package and existing.is_file() and not existing.is_symlink():
+                continue
+            if existing.is_dir() and not existing.is_symlink():
+                shutil.rmtree(existing)
+            else:
+                existing.unlink()
+        for source in package_files:
+            shutil.copy2(source, package_target / source.name)
     rubric_source = distribution_root() / "references" / "audit-rubric.json"
     if not rubric_source.is_file():
         raise HarnessError(f"Bundled audit rubric is missing: {rubric_source}")

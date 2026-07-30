@@ -6,25 +6,19 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import tempfile
+import sys
 from pathlib import Path
+
+_SCRIPT_ROOT = Path(__file__).resolve().parent
+if str(_SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_ROOT))
+
+from harness_runtime.core import atomic_write_text
 
 
 RULE_ID = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]{2,}$")
 STAGE_ID = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 SEVERITIES = {"critical", "standard"}
-
-
-def atomic_write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not content.endswith("\n"):
-        content += "\n"
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", newline="\n", dir=path.parent, delete=False
-    ) as handle:
-        handle.write(content)
-        temporary = Path(handle.name)
-    temporary.replace(path)
 
 
 def load_rules(path: Path) -> dict:
@@ -86,7 +80,7 @@ def generate(source: Path, output_root: Path) -> dict:
     rules = sorted(value["rules"], key=lambda item: item["id"])
     source_label = source.name
     critical = [rule for rule in rules if rule["severity"] == "critical"]
-    atomic_write(
+    atomic_write_text(
         output_root / "critical.md",
         render_rules("Critical Harness Rules", critical, source_label),
     )
@@ -113,7 +107,7 @@ def generate(source: Path, output_root: Path) -> dict:
             if rule["severity"] != "critical"
             and (stage in rule["stages"] or "all" in rule["stages"])
         ]
-        atomic_write(
+        atomic_write_text(
             by_stage / f"{stage}.md",
             render_rules(f"{stage.title()} Stage Rules", selected, source_label),
         )

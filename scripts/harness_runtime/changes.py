@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .contracts import validate_change_evidence
-from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, file_fingerprint, git, git_value, read_json, render, safe_relative, slugify, utc_now
-from .knowledge import knowledge_source_location
+from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, git, git_value, read_json, render, safe_relative, slugify, utc_now
+from .knowledge import knowledge_fingerprint_scan
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
 from .transactions import guard_project_skill, short_registry_lock
@@ -415,29 +415,26 @@ def knowledge_drift_impacts(
 ) -> list[dict[str, Any]]:
     wiki = skill_root / "references" / "project_wiki"
     index = read_json(wiki / "index.json", {})
+    scan = knowledge_fingerprint_scan(skill_root, context)
+    drift_by_item: dict[str, list[str]] = {}
+    for finding in scan["findings"]:
+        if finding["type"] not in {"changed", "missing"}:
+            continue
+        item_id = str(finding.get("item") or "")
+        source = finding.get("source")
+        if item_id and isinstance(source, str):
+            drift_by_item.setdefault(item_id, []).append(source)
     current_paths = [normalize_claim(item) for item in current.get("paths", [])]
     owner_module = current_contract.get("owner_module") if current_contract else None
     impacts = []
     for item in index.get("items", []):
         if not isinstance(item, dict):
             continue
-        drifted_sources = []
-        related_sources = []
-        for source, expected in item.get("source_fingerprints", {}).items():
-            if not isinstance(source, str) or not isinstance(expected, str):
-                continue
-            source = safe_relative(source, "knowledge source")
-            source_path, source_root = knowledge_source_location(context, source)
-            current_fingerprint = (
-                file_fingerprint([source_path], source_root)
-                if source_path.is_file()
-                else "missing"
-            )
-            if current_fingerprint == expected:
-                continue
-            drifted_sources.append(source)
-            if any(path_overlap(path, source) for path in current_paths):
-                related_sources.append(source)
+        drifted_sources = sorted(set(drift_by_item.get(str(item.get("id") or ""), [])))
+        related_sources = sorted({
+            source for source in drifted_sources
+            if any(path_overlap(path, source) for path in current_paths)
+        })
         module_related = bool(
             owner_module
             and item.get("kind") == "module"

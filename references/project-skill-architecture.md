@@ -50,8 +50,8 @@ when possible.
 Future worktrees cannot inherit untracked links from a branch. Therefore the repository route
 includes one small tracked host-native connector: PowerShell on Windows when available, Node on
 other supported hosts when available, and Python as a fallback. A fresh Agent reads the managed
-AGENTS/Claude route, runs the connector when the project Harness is absent, then reloads it and
-runs preflight. The connector resolves the Git common dir/primary worktree and creates only the
+AGENTS/Claude route, runs the connector when the project Harness is absent, then reloads it. It runs
+preflight before planning or editing repository changes. The connector resolves the Git common dir/primary worktree and creates only the
 current worktree's two project-level links. `project doctor --repair-links` repairs all detected
 worktrees.
 

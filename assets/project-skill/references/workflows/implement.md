@@ -13,7 +13,7 @@ plan or contract, but they do not silently expand scope or rewrite stable shared
 
 ## Deterministic Commands
 
-- Run `change preflight` at stage entry and after material contract discoveries.
+- Use the plan's current preflight; rerun it after material path, contract, or baseline discoveries.
 - Run targeted format, compile, lint, or test commands listed in project knowledge.
 - Update Change task evidence after verified milestones.
 

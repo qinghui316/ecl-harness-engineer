@@ -43,7 +43,8 @@ exposes only `project audit|doctor`.
 | Public command | Primary module | Supporting modules to inspect next |
 | --- | --- | --- |
 | `project init|migrate` | `project_commands.py` | `analysis.py`, `rendering.py`, `links.py`, `transactions.py` |
-| `project audit|doctor` | `project_commands.py` | `knowledge.py`, `changes.py`, `links.py`, `transactions.py` |
+| `project audit` | `project_commands.py` | `knowledge.py`, `changes.py`, `links.py`, `transactions.py` |
+| `project doctor` | `project_commands.py` | `links.py`, `registry.py`, `transactions.py` |
 | `change *` | `changes.py` | `contracts.py`, `registry.py`, `transactions.py` |
 | `integrate *` | `integration.py` | `reviews.py`, `changes.py`, `registry.py`, `transactions.py` |
 | `evolve *` | `evolution.py` | `analysis.py`, `rendering.py`, `reviews.py`, `transactions.py` |
@@ -64,8 +65,9 @@ core
 -> harness_cli
 ```
 
-This is an ownership direction, not a required loading order for Agents. Tests enforce an acyclic
-package, a facade no larger than 300 lines, and individual runtime modules below 1000 lines.
+This is an ownership direction, not a required loading order for Agents. Keep the package acyclic,
+the facade limited to public parsing/dispatch, and module boundaries justified by ownership,
+test isolation, and diagnostics rather than line-count targets.
 
 ## Traceback Triage
 

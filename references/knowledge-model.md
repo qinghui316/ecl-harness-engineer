@@ -67,6 +67,9 @@ Registry state.
 - `harness-knowledge scan` and `check` are read-only. They report missing sources, fingerprint
   drift, broken links, duplicate ownership, misplaced detail, and uncited L3 claims; they never apply a
   semantic refresh.
+- Run them when source drift is suspected, preflight identifies related drift, or audit, migration,
+  or E1 needs a mechanical knowledge report. Ordinary explanation, navigation, and source reading
+  follow the document links without running a knowledge command.
 - L1/L2/L3 is a periodic AI index and can lag up to four integrated Changes. Every stage preflight
   reads baseline events and related source drift. When the current Change touches an affected path,
   module, or contract, return `refresh-needed/replan` rather than silently trusting stale Wiki text.

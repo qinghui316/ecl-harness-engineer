@@ -22,7 +22,7 @@ from typing import Any, Iterable
 
 from .analysis import load_analysis_bundle
 from .changes import ecl_integrity_findings
-from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, canonical_id, file_fingerprint, is_link_like, normalize_lexical_path, normalize_path, read_json, reject_tree_links, run, utc_now
+from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, canonical_id, file_fingerprint, is_link_like, is_within, normalize_lexical_path, normalize_path, read_json, reject_tree_links, run, safe_relative, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
 from .knowledge import knowledge_check_internal
@@ -93,8 +93,17 @@ def project_audit(args: argparse.Namespace) -> dict[str, Any]:
     if not initialized:
         findings.append("project_skill_missing")
     doctor = project_doctor_internal(args) if initialized else None
+    knowledge = knowledge_check_internal(root, context) if initialized else None
+    ecl_findings = ecl_integrity_findings(root) if initialized else []
+    rules = rule_views_check(root) if initialized else None
     if doctor and not doctor["healthy"]:
         findings.append("project_skill_drift")
+    if knowledge and not knowledge["healthy"]:
+        findings.append("project_knowledge_drift")
+    if ecl_findings:
+        findings.append("project_change_evidence_drift")
+    if rules and not rules["healthy"]:
+        findings.append("project_rule_view_drift")
     semantic = None
     if getattr(args, "analysis_bundle", None):
         profile, audit, delta, architecture, _ = load_analysis_bundle(args, context)
@@ -111,6 +120,9 @@ def project_audit(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "project_id": context["project_id"], "mode": context["mode"], "skill_root": str(root),
         "initialized": initialized, "findings": findings, "doctor": doctor,
+        "knowledge": knowledge,
+        "ecl": {"healthy": not ecl_findings, "findings": ecl_findings},
+        "rules": rules,
         "semantic": semantic,
     }
 
@@ -412,6 +424,24 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
         manifest["runtime_links"] = links
         manifest["updated_at"] = utc_now()
         atomic_write_json(root / "state" / "manifest.json", manifest)
+    launchers = manifest.get("launchers", [])
+    if not isinstance(launchers, list):
+        findings.append({"type": "invalid_runtime_inventory"})
+        launchers = []
+    for value in launchers:
+        if not isinstance(value, str):
+            findings.append({"type": "invalid_runtime_inventory_entry", "path": value})
+            continue
+        try:
+            relative = safe_relative(value, "Runtime inventory path")
+        except HarnessError as exc:
+            findings.append({"type": "invalid_runtime_inventory_entry", "path": value, "detail": str(exc)})
+            continue
+        runtime_path = root / "scripts" / relative
+        if not is_within(runtime_path.resolve(), root / "scripts"):
+            findings.append({"type": "runtime_inventory_escape", "path": value})
+        elif not runtime_path.is_file():
+            findings.append({"type": "missing_runtime_file", "path": value})
     for link in manifest.get("runtime_links", []):
         path = Path(link["path"])
         if not path.exists() or not same_target(path, root):
@@ -478,18 +508,9 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
                     "operation": journal.get("operation"),
                     "phase": journal.get("phase"),
                 })
-    knowledge = knowledge_check_internal(root, context)
-    findings.extend(knowledge["findings"])
-    ecl_findings = ecl_integrity_findings(root)
-    findings.extend(ecl_findings)
-    rules = rule_views_check(root)
-    findings.extend(rules["findings"])
     return {
         "healthy": not findings,
         "findings": findings,
-        "knowledge": knowledge,
-        "ecl": {"healthy": not ecl_findings, "findings": ecl_findings},
-        "rules": rules,
         "runtime_links": manifest.get("runtime_links", []),
         "repaired_routes": repaired_routes,
     }

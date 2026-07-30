@@ -3,26 +3,16 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
-import os
 import re
-import secrets
-import shlex
-import shutil
-import subprocess
-import sys
-import tempfile
-import threading
-import time
-from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from .core import HarnessError, file_fingerprint, is_within, read_json, run, safe_relative
+from .core import HarnessError, file_fingerprint, is_within, read_json, safe_relative
 from .project import primary_worktree_root, project_context, require_skill
 from .transactions import guard_project_skill_read_only
+
+NON_LOCAL_EVIDENCE_PREFIXES = ("http://", "https://", "user:", "contract:", "registry:")
+FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 def knowledge_source_location(context: dict[str, Any], source: str) -> tuple[Path, Path]:
     base = (
@@ -35,12 +25,74 @@ def knowledge_source_location(context: dict[str, Any], source: str) -> tuple[Pat
 def context_source_fingerprints(context: dict[str, Any], sources: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for source in sources:
-        if source.startswith(("http://", "https://", "user:", "contract:", "registry:")):
+        if source.startswith(NON_LOCAL_EVIDENCE_PREFIXES):
             continue
         path, base = knowledge_source_location(context, source)
         if path.is_file():
             result[source] = file_fingerprint([path], base)
     return result
+
+def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dict[str, Any]:
+    index_path = skill_root / "references" / "project_wiki" / "index.json"
+    index = read_json(index_path, None)
+    if not isinstance(index, dict) or not isinstance(index.get("items"), list):
+        raise HarnessError(f"Invalid project knowledge index: {index_path}")
+
+    findings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    checked = 0
+
+    def add(finding_type: str, item_id: Any, source: Any, **detail: Any) -> None:
+        key = (finding_type, str(item_id or ""), str(source or ""))
+        if key in seen:
+            return
+        seen.add(key)
+        findings.append({"type": finding_type, "item": item_id, "source": source, **detail})
+
+    for item in index["items"]:
+        if not isinstance(item, dict):
+            add("invalid_source", None, None, detail="knowledge index item must be an object")
+            continue
+        item_id = item.get("id")
+        fingerprints = item.get("source_fingerprints", {})
+        if not isinstance(fingerprints, dict):
+            add("invalid_fingerprint", item_id, None, detail="source_fingerprints must be an object")
+            continue
+        for raw_source, expected in fingerprints.items():
+            if not isinstance(raw_source, str) or not raw_source.strip():
+                add("invalid_source", item_id, raw_source, detail="source must be a non-empty string")
+                continue
+            if raw_source.startswith(NON_LOCAL_EVIDENCE_PREFIXES):
+                continue
+            try:
+                source = safe_relative(raw_source, "knowledge fingerprint source")
+            except HarnessError as exc:
+                add("invalid_source", item_id, raw_source, detail=str(exc))
+                continue
+            if not isinstance(expected, str) or not FINGERPRINT_PATTERN.fullmatch(expected):
+                add("invalid_fingerprint", item_id, source, expected=expected)
+                continue
+            source_path, source_root = knowledge_source_location(context, source)
+            resolved_root = source_root.resolve()
+            resolved_source = source_path.resolve()
+            if not is_within(resolved_source, resolved_root):
+                add("outside_project", item_id, source, expected=expected)
+                continue
+            checked += 1
+            if not source_path.is_file():
+                add("missing", item_id, source, expected=expected, current=None)
+                continue
+            current = file_fingerprint([source_path], source_root)
+            if current != expected:
+                add("changed", item_id, source, expected=expected, current=current)
+
+    return {
+        "read_only": True,
+        "healthy": not findings,
+        "stale": bool(findings),
+        "checked": checked,
+        "findings": findings,
+    }
 
 def markdown_has_substance(path: Path) -> bool:
     content = re.sub(r"<!--[\s\S]*?-->", "", path.read_text(encoding="utf-8", errors="replace"))
@@ -62,26 +114,29 @@ def markdown_has_substance(path: Path) -> bool:
 def knowledge_scan(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
     skill_root = require_skill(context, args)
-    script = skill_root / "scripts" / "check_project_wiki_stale.py"
-    result = run(
-        [
-            sys.executable,
-            str(script),
-            "--skill-root",
-            str(skill_root),
-            "--project-root",
-            str(context["project_root"]),
-        ],
-        check=False,
-    )
-    try:
-        value = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise HarnessError(f"Wiki stale scan returned invalid output: {result.stdout}") from exc
-    return {"read_only": True, "stale": not value.get("ok", False), **value}
+    return knowledge_fingerprint_scan(skill_root, context)
 
 def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[str, Any]:
-    findings: list[dict[str, Any]] = []
+    fingerprint_scan = knowledge_fingerprint_scan(skill_root, context)
+    fingerprint_types = {
+        "changed": "knowledge_drift",
+        "missing": "missing_knowledge_source",
+        "invalid_source": "invalid_knowledge_source",
+        "outside_project": "external_knowledge_source",
+        "invalid_fingerprint": "invalid_knowledge_fingerprint",
+    }
+    findings: list[dict[str, Any]] = [
+        {
+            **item,
+            "type": fingerprint_types[item["type"]],
+            "id": item.get("item"),
+        }
+        for item in fingerprint_scan["findings"]
+    ]
+    finding_keys = {
+        (item.get("type"), item.get("id"), item.get("source"))
+        for item in findings
+    }
     warnings: list[dict[str, Any]] = []
     knowledge = skill_root / "references" / "project_wiki"
     overview = knowledge / "overview.md"
@@ -106,7 +161,7 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
             if not isinstance(source, str):
                 findings.append({"type": "invalid_knowledge_source", "id": item.get("id")})
                 continue
-            if source.startswith(("http://", "https://", "user:", "contract:", "registry:")):
+            if source.startswith(NON_LOCAL_EVIDENCE_PREFIXES):
                 continue
             try:
                 source = safe_relative(source, "knowledge source")
@@ -115,26 +170,15 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
                 continue
             source_path, source_root = knowledge_source_location(context, source)
             if not is_within(source_path.resolve(), source_root):
-                findings.append({"type": "external_knowledge_source", "id": item.get("id"), "source": source})
+                key = ("external_knowledge_source", item.get("id"), source)
+                if key not in finding_keys:
+                    findings.append({"type": key[0], "id": key[1], "source": key[2]})
+                    finding_keys.add(key)
             elif not source_path.exists():
-                findings.append({"type": "missing_knowledge_source", "id": item.get("id"), "source": source})
-        for source, expected in item.get("source_fingerprints", {}).items():
-            if not isinstance(source, str) or not isinstance(expected, str):
-                findings.append({"type": "invalid_knowledge_fingerprint", "id": item.get("id")})
-                continue
-            try:
-                source = safe_relative(source, "knowledge fingerprint source")
-            except HarnessError as exc:
-                findings.append({"type": "invalid_knowledge_source", "id": item.get("id"), "detail": str(exc)})
-                continue
-            path_source, source_root = knowledge_source_location(context, source)
-            if not is_within(path_source.resolve(), source_root):
-                findings.append({"type": "external_knowledge_source", "id": item.get("id"), "source": source})
-                continue
-            if path_source.is_file():
-                current = file_fingerprint([path_source], source_root)
-                if current != expected:
-                    findings.append({"type": "knowledge_drift", "id": item.get("id"), "source": source})
+                key = ("missing_knowledge_source", item.get("id"), source)
+                if key not in finding_keys:
+                    findings.append({"type": key[0], "id": key[1], "source": key[2]})
+                    finding_keys.add(key)
         if path.exists() and path.suffix == ".md":
             content = path.read_text(encoding="utf-8")
             for target in re.findall(r"\[[^\]]+\]\(([^)#]+)(?:#[^)]+)?\)", content):
@@ -210,7 +254,10 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
             item.setdefault("reason", item["type"].replace("_", " "))
             item.setdefault("repair", repairs.get(item["type"], "Rescan evidence and repair through init, migrate, or accepted E1 Evolution."))
     return {
+        "read_only": True,
         "healthy": not findings,
+        "stale": not fingerprint_scan["healthy"],
+        "checked": fingerprint_scan["checked"],
         "findings": findings,
         "warnings": warnings,
         "items": len(index.get("items", [])),

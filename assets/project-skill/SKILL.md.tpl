@@ -11,11 +11,14 @@ Use this project Harness when the current project id is `{{PROJECT_ID}}`. Its co
 ## Start
 
 1. Read `references/rules/critical.md` and `references/project_wiki/overview.md`.
-2. Run `{{CHANGE_COMMAND}} preflight --project-root <cwd>`.
-3. Read the Lane, Registry, and current Change records named by preflight.
-4. Read the current workflow and relevant L2 module or system pages.
-5. Follow linked L3 bridges and reference-source maps when the task crosses those boundaries.
-6. Read `references/rules/by-stage/<stage>.md` for additional stage rules.
+2. Read the relevant L2 module or system pages, then follow linked L3 bridges and reference-source
+   maps when the task crosses those boundaries.
+3. For explanation, navigation, or read-only source research, continue from project knowledge and
+   canonical evidence without running Registry commands.
+4. Before planning or editing a repository mutation, run `{{CHANGE_COMMAND}} preflight
+   --project-root <cwd>` and read the Lane, Registry, and current Change records it names.
+5. Read the current workflow and `references/rules/by-stage/<stage>.md` before making that stage's
+   decisions.
 
 If the detected project id differs, stop and locate the correct project Harness.
 
@@ -39,6 +42,10 @@ If the detected project id differs, stop and locate the correct project Harness.
 Use `references/analysis-contract.md` for a semantic audit or E1 rescan. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback.
+
+Rerun preflight after material path, contract, or baseline changes and before publish, close, or
+Integration. Run knowledge scan/check only for suspected drift, a related preflight signal, audit,
+migration, or E1; these commands report evidence and never rewrite project knowledge.
 
 ## Stage Route
 

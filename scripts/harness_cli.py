@@ -196,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps({"ok": True, **result}, ensure_ascii=False, indent=2))
     if args.domain == "project" and args.action == "doctor" and not result.get("healthy", False):
         return 1
-    if args.domain == "knowledge" and args.action == "check" and not result.get("healthy", False):
+    if args.domain == "knowledge" and not result.get("healthy", False):
         return 1
     return 0
 

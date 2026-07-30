@@ -164,17 +164,23 @@ def guard_project_skill(function: Any) -> Any:
     guarded.__doc__ = function.__doc__
     return guarded
 
-def guard_project_skill_read_only(function: Any) -> Any:
-    def guarded(args: argparse.Namespace) -> dict[str, Any]:
-        context = project_context(Path(args.project_root))
-        root = skill_root_for(context, args)
-        store = content_transaction_store(root)
+@contextmanager
+def project_skill_read_guard(skill_root: Path):
+    with content_publication_guard(skill_root):
+        store = content_transaction_store(skill_root)
         if store.exists() and any(store.iterdir()):
             raise HarnessError(
                 "Project Harness has an incomplete content transaction; run project doctor and an "
                 "explicit mutating recovery command before read-only inspection."
             )
-        return function(args)
+        yield
+
+def guard_project_skill_read_only(function: Any) -> Any:
+    def guarded(args: argparse.Namespace) -> dict[str, Any]:
+        context = project_context(Path(args.project_root))
+        root = skill_root_for(context, args)
+        with project_skill_read_guard(root):
+            return function(args)
 
     guarded.__name__ = function.__name__
     guarded.__doc__ = function.__doc__

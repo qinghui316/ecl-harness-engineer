@@ -5,8 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+import sys
 from pathlib import Path
+
+_SCRIPT_ROOT = Path(__file__).resolve().parent
+if str(_SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_ROOT))
+
+from harness_runtime.core import HarnessError, canonical_id
 
 
 REQUIRED_SECTIONS = (
@@ -21,23 +27,6 @@ CHANGE_FILES = {
     "verify": ("summary.md", "spec.md", "plan.md", "tasks.md", "reviews/review.md"),
     "close": ("summary.md", "spec.md", "plan.md", "tasks.md", "reviews/review.md"),
 }
-ID_MAX_LENGTH = 96
-
-
-def canonical_id(value: str, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{label} must be a non-empty identifier.")
-    raw = value.strip()
-    if any(character in raw for character in ("/", "\\", "\0")) or raw in {".", ".."}:
-        raise ValueError(f"{label} must not contain path separators or traversal segments.")
-    if not re.search(r"[A-Za-z0-9]", raw):
-        raise ValueError(f"{label} must contain at least one letter or digit.")
-    canonical = re.sub(r"[^a-z0-9]+", "-", raw.lower()).strip("-")
-    if len(canonical) > ID_MAX_LENGTH:
-        raise ValueError(f"{label} exceeds {ID_MAX_LENGTH} canonical characters.")
-    return canonical
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--skill-root", type=Path, default=Path(__file__).resolve().parent.parent)
@@ -47,7 +36,7 @@ def main() -> int:
     try:
         stage = canonical_id(args.stage, "Stage")
         change_id = canonical_id(args.change_id, "Change id") if args.change_id else None
-    except ValueError as exc:
+    except HarnessError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         return 2
     skill_root = args.skill_root.resolve()

@@ -117,9 +117,11 @@ active -> abandoned -> archive
 
 ## Registry Preflight And Contracts
 
-Run preflight before planning, after publishing paths/contracts, before implementation, and at
-stage boundaries. Publish project-relative paths. Require a contract for API, schema, event,
-configuration, permission, or module-boundary changes.
+Pure explanation, navigation, and read-only source research do not require preflight. For repository
+mutation, run it once after scope is understood and before planning or editing. Rerun after material
+path, contract, or baseline changes and before publish, close, or Integration; do not rerun before
+every source read or unchanged stage boundary. Publish project-relative paths. Require a contract
+for API, schema, event, configuration, permission, or module-boundary changes.
 
 Contracts record kind, stable subject, owner module, operation, affected paths, consumers,
 dependencies, compatibility, migration note, evidence, and status. Preflight identifies overlap,
@@ -131,14 +133,15 @@ filenames, and mismatched record IDs.
 
 ## Stage Update Protocol
 
-At every stage boundary:
+When Change evidence or shared facts change at a stage boundary:
 
 1. Update summary phase/outcome/next step.
 2. Update spec when WHAT/WHY or acceptance changed.
 3. Update plan when HOW, ownership, contracts, risk, or verification changed.
 4. Update tasks immediately when work completes, blocks, or is deferred.
 5. Record review and validation evidence before claiming the stage exit.
-6. Publish compact Registry facts and rerun preflight.
+6. Publish changed Registry facts and rerun preflight when paths, contracts, or baseline assumptions
+   materially changed.
 
 Hook/check tooling may validate but never auto-write Change docs, move state, or rebuild current
 facts without the explicit lifecycle command.

@@ -11,6 +11,8 @@ links, Registry records, commit identity, locks, review bindings, and recoverabl
 
 The public entry is `scripts/harness_cli.py`. Project Harness installations expose
 `project audit|doctor`; project creation and migration are performed by ECL Harness Engineer.
+`doctor` diagnoses installation, runtime inventory, links, Registry identity, locks, and recovery.
+`audit` adds Change evidence, rule views, project knowledge, citations, drift, and entropy.
 
 ## Modules
 

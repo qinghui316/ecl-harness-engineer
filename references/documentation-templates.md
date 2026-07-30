@@ -15,7 +15,8 @@ The CLI owns an idempotent bounded block in existing AGENTS/Claude files:
 ```markdown
 <!-- ECL-HARNESS:BEGIN -->
 This project uses the local `<project-id>-harness` project Harness. If its project-level link is
-missing in a new worktree, run `<host-native connector>`, reload the Skill, and run preflight.
+missing in a new worktree, run `<host-native connector>` and reload the Skill. Run preflight before
+planning or editing repository changes.
 <!-- ECL-HARNESS:END -->
 ```
 
