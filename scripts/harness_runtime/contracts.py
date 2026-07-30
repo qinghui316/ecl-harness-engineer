@@ -94,10 +94,30 @@ def validate_architecture(
                 validate_evidence(evidence, f"architecture {key}[{index}]")
             if key == "dependencies" and not all(str(item.get(field, "")).strip() for field in ("from", "to")):
                 raise ValueError(f"Architecture dependencies[{index}] requires from and to.")
-            if key == "key_interfaces" and not isinstance(item.setdefault("implementations", []), list):
-                raise ValueError(f"Architecture key_interfaces[{index}].implementations must be an array.")
-            if key == "code_paths" and not isinstance(item.get("flow", []), list):
-                raise ValueError(f"Architecture code_paths[{index}].flow must be an array.")
+            if key == "layers" and (
+                "level" not in item
+                or not isinstance(item.get("packages"), list)
+                or not item["packages"]
+            ):
+                raise ValueError(f"Architecture layers[{index}] requires level and packages.")
+            if key == "components" and not any(
+                str(item.get(field, "")).strip() for field in ("name", "summary", "title", "path", "id")
+            ):
+                raise ValueError(f"Architecture components[{index}] requires displayable semantic text.")
+            if key == "circular_dependencies" and not all(
+                str(item.get(field, "")).strip() for field in ("pkg_a", "pkg_b")
+            ):
+                raise ValueError(f"Architecture circular_dependencies[{index}] requires pkg_a and pkg_b.")
+            if key == "key_interfaces":
+                if not str(item.get("name", "")).strip():
+                    raise ValueError(f"Architecture key_interfaces[{index}] requires name.")
+                if not isinstance(item.setdefault("implementations", []), list):
+                    raise ValueError(f"Architecture key_interfaces[{index}].implementations must be an array.")
+            if key == "code_paths":
+                if not str(item.get("name", "")).strip():
+                    raise ValueError(f"Architecture code_paths[{index}] requires name.")
+                if not isinstance(item.get("flow", []), list):
+                    raise ValueError(f"Architecture code_paths[{index}].flow must be an array.")
     return architecture
 
 

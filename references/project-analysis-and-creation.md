@@ -134,11 +134,24 @@ array of project-relative paths, canonical URLs, `user:` statements, or accepted
     "mappings": [{"from": "place order", "to": "src/orders/service.ts::place", "evidence": ["README.md", "src/orders/service.ts"]}]
   }],
   "reference_projects": [],
-  "global_boundaries": [],
+  "global_boundaries": [
+    {
+      "rule": "All order state changes pass through OrderService.",
+      "evidence": ["src/orders/service.ts"]
+    }
+  ],
   "unknowns": [],
   "evidence": ["README.md", "package.json"]
 }
 ```
+
+Each `global_boundaries` item uses a non-empty `rule` plus project evidence. Existing bundles that
+use `name` with an optional `description` remain valid, but every complete record must contain
+displayable boundary semantics; evidence alone is insufficient.
+
+The same projection rule applies to primary flows, environment modes/helpers/object startup steps,
+architecture components, dependency cycles, interfaces, and code paths: complete records must use
+the semantic fields documented for their destination page, not evidence-only placeholder objects.
 
 When the user requests a source reference, `reference_projects` contains a separately analyzed
 project-local checkout at `.agents/reference-projects/<id>` or an existing

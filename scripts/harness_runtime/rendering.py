@@ -20,16 +20,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .analysis import evidence_values, reference_project_sources, validate_project_evidence
+from .analysis import DISPLAY_TEXT_FIELDS, evidence_values, reference_project_sources, semantic_display_text, validate_project_evidence
 from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, file_fingerprint, is_within, read_json, run, safe_relative, slugify, stable_hash, utc_now
 from .knowledge import context_source_fingerprints
 from .project import primary_worktree_root
 
-def markdown_items(values: list[Any], empty: str) -> list[str]:
+def markdown_items(
+    values: list[Any],
+    empty: str,
+    fields: tuple[str, ...] = DISPLAY_TEXT_FIELDS,
+) -> list[str]:
     lines = []
     for value in values:
         if isinstance(value, dict):
-            label = value.get("name") or value.get("summary") or value.get("path") or value.get("id")
+            label = semantic_display_text(value, fields)
             detail = value.get("description") or value.get("purpose")
             if label:
                 lines.append(f"- {label}" + (f": {detail}" if detail else ""))
@@ -64,6 +68,27 @@ def mermaid_interface_graph(interfaces: list[dict[str, Any]]) -> list[str]:
         for implementation in interface.get("implementations", [])
     ]
     return mermaid_dependency_graph(edges)
+
+def circular_dependency_items(values: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for value in values:
+        source = str(value.get("pkg_a", "")).strip()
+        target = str(value.get("pkg_b", "")).strip()
+        if not source or not target:
+            continue
+        detail = str(value.get("suggested_fix", "")).strip()
+        lines.append(f"- `{source}` <-> `{target}`" + (f": {detail}" if detail else ""))
+    return lines or ["- No dependency cycle recorded."]
+
+def document_items(values: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for value in values:
+        label = semantic_display_text(value, ("name", "title", "path", "id"))
+        path = str(value.get("path", "")).strip()
+        detail = str(value.get("description", "")).strip()
+        path_note = f" (`{path}`)" if path and path != label else ""
+        lines.append(f"- {label}{path_note}" + (f": {detail}" if detail else ""))
+    return lines or ["- No canonical document recorded."]
 
 def mermaid_sequence(path: dict[str, Any]) -> list[str]:
     flow = [str(item).strip() for item in path.get("flow", []) if str(item).strip()]
@@ -105,6 +130,7 @@ def render_project_wiki(
     modules = profile.get("modules", [])
     commands = profile.get("commands", [])
     documents = profile.get("documents", [])
+    ci = profile.get("ci", [])
     boundaries = profile.get("global_boundaries", [])
     reference_projects = profile.get("reference_projects", [])
     references_by_id = {item["id"]: item for item in reference_projects}
@@ -134,7 +160,7 @@ def render_project_wiki(
         "",
         "## Canonical Documents",
         "",
-        *markdown_items(documents, "No canonical document recorded."),
+        *document_items(documents),
         "",
         "## Common Commands",
         "",
@@ -145,7 +171,7 @@ def render_project_wiki(
         *(
             (["- [Commands](systems/commands.md)"] if commands else [])
             + (["- [Environment](systems/environment.md)"] if any((profile.get("environment") or {}).get(key) for key in ("services", "variables", "modes", "startup_order", "helpers", "unknowns")) else [])
-            + (["- [Verification](systems/verification.md)"] if any(item.get("category") in {"test", "lint", "typecheck", "build", "verify"} for item in commands) else [])
+            + (["- [Verification](systems/verification.md)"] if ci or any(item.get("category") in {"test", "lint", "typecheck", "build", "verify"} for item in commands) else [])
             + (["- [Architecture](systems/architecture.md)"] if architecture and any(architecture.get(key) for key in ("layers", "circular_dependencies", "key_interfaces", "code_paths", "error_patterns")) else [])
             + (["- [Reference Projects](reference_projects/index.md)"] if reference_projects else [])
             or ["- No evidenced system map recorded."]
@@ -258,6 +284,12 @@ def render_project_wiki(
                 for item in environment.get(key, [])
                 for value in evidence_values(item)
             ),
+            *(
+                value
+                for item in environment.get("startup_order", [])
+                if isinstance(item, dict)
+                for value in evidence_values(item)
+            ),
         ]))
         lines = [
             "# Project Environment", "",
@@ -294,15 +326,22 @@ def render_project_wiki(
             lines.append("| None recorded | - | - | - | - |")
         lines.extend([
             "", "## Runtime Modes", "", *markdown_items(environment.get("modes", []), "No runtime mode recorded."), "",
-            "## Startup Order", "", *markdown_items(environment.get("startup_order", []), "No startup order recorded."), "",
+            "## Startup Order", "", *markdown_items(
+                environment.get("startup_order", []),
+                "No startup order recorded.",
+                (*DISPLAY_TEXT_FIELDS, "service", "step"),
+            ), "",
             "## Readiness And Cleanup Helpers", "", *markdown_items(environment.get("helpers", []), "No helper recorded."), "",
             "## Unknown Prerequisites", "", *markdown_items(environment.get("unknowns", []), "No environment unknown recorded."), "",
             "## Evidence", "", *[f"- `{value}`" for value in sources],
         ])
         systems.append(("environment", "environment.md", lines, sources))
     verification = [item for item in commands if item.get("category") in {"test", "lint", "typecheck", "build", "verify"}]
-    if verification:
-        sources = list(dict.fromkeys(value for item in verification for value in evidence_values(item)))
+    if verification or ci:
+        sources = list(dict.fromkeys([
+            *(value for item in verification for value in evidence_values(item)),
+            *(value for item in ci for value in evidence_values(item)),
+        ]))
         lines = [
             "# Project Verification", "",
             "| Gate | Command | Status | Last Result |",
@@ -311,6 +350,8 @@ def render_project_wiki(
                 f"| {item['purpose']} | `{item['command']}` | {item['status']} | {item.get('last_result', 'not executed')} |"
                 for item in verification
             ],
+            "", "## CI Definitions", "",
+            *document_items(ci),
         ]
         systems.append(("verification", "verification.md", lines, sources))
     for identifier, filename, lines, sources in systems:
@@ -567,6 +608,8 @@ def render_architecture_system(
         )
     lines.extend(["", "## Package And Module Dependencies", ""])
     lines.extend(mermaid_dependency_graph(architecture.get("dependencies", [])) or ["No evidenced dependency edge recorded."])
+    lines.extend(["", "## Components", ""])
+    lines.extend(markdown_items(architecture.get("components", []), "No architecture component recorded."))
     lines.extend(["", "## Interface Implementations", ""])
     lines.extend(mermaid_interface_graph(architecture.get("key_interfaces", [])) or ["No evidenced interface implementation recorded."])
     lines.extend(["", "## Key Interfaces", ""])
@@ -578,7 +621,7 @@ def render_architecture_system(
         if diagram:
             lines.extend(["", f"### {code_path.get('name', 'Flow')}", "", *diagram])
     lines.extend(["", "## Dependency Findings", ""])
-    lines.extend(markdown_items(architecture.get("circular_dependencies", []), "No dependency cycle recorded."))
+    lines.extend(circular_dependency_items(architecture.get("circular_dependencies", [])))
     lines.extend(["", "## Error Handling", ""])
     lines.extend(markdown_items([
         f"{key}: {value}" for key, value in architecture.get("error_patterns", {}).items()

@@ -1062,6 +1062,135 @@ class HarnessCliTests(unittest.TestCase):
             {item.get("path") for item in rejected["findings"] if item["type"] == "empty_knowledge_entry"},
         )
 
+    def test_rule_shaped_global_boundaries_render_completely_in_l1(self) -> None:
+        project = self.create_git_project("rule-boundaries")
+        bundle = self.write_bundle(project, "rule-boundaries")
+        profile_path = bundle / "project-profile.json"
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        expected = [f"Global boundary rule {index}: use the public job service." for index in range(1, 8)]
+        profile["global_boundaries"] = [
+            {"rule": rule, "evidence": ["src/jobs/service.py"]}
+            for rule in expected
+        ]
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+
+        initialized = self.init_project(project, bundle)
+        overview = (
+            Path(initialized["skill_root"])
+            / "references" / "project_wiki" / "overview.md"
+        ).read_text(encoding="utf-8")
+        for rule in expected:
+            self.assertIn(rule, overview)
+        self.assertNotIn("No project-specific global boundary recorded.", overview)
+
+        invalid_project = self.create_git_project("invalid-rule-boundary")
+        invalid_bundle = self.write_bundle(invalid_project, "invalid-rule-boundary")
+        invalid_profile_path = invalid_bundle / "project-profile.json"
+        invalid_profile = json.loads(invalid_profile_path.read_text(encoding="utf-8"))
+        invalid_profile["global_boundaries"] = [{"evidence": ["src/jobs/service.py"]}]
+        invalid_profile_path.write_text(json.dumps(invalid_profile, indent=2), encoding="utf-8")
+        rejected = self.cli(
+            invalid_project,
+            "project", "init", "--analysis-bundle", str(invalid_bundle),
+            expected=(2,),
+        )
+        self.assertIn("global_boundaries", rejected["error"])
+        self.assertIn("no displayable semantic text", rejected["error"])
+
+    def test_other_semantic_projection_records_render_or_fail_validation(self) -> None:
+        project = self.create_git_project("semantic-projections")
+        workflow = project / ".github" / "workflows" / "verify.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text("name: verify\n", encoding="utf-8")
+        self.git(project, "add", ".github/workflows/verify.yml")
+        self.git(project, "commit", "-m", "add verification workflow")
+        bundle = self.write_bundle(project, "semantic-projections")
+        profile_path = bundle / "project-profile.json"
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        profile["environment"]["modes"] = [{
+            "title": "Local development",
+            "description": "Runs the project with local dependencies.",
+            "evidence": ["README.md"],
+        }]
+        profile["environment"]["helpers"] = [{
+            "name": "Readiness helper",
+            "purpose": "Checks the configured local dependency.",
+            "evidence": ["README.md"],
+        }]
+        profile["environment"]["startup_order"] = [{
+            "service": "job service",
+            "evidence": ["src/jobs/service.py"],
+        }]
+        profile["ci"] = [{
+            "name": "Verification workflow",
+            "path": ".github/workflows/verify.yml",
+            "evidence": [".github/workflows/verify.yml"],
+        }]
+        profile_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+
+        architecture_path = bundle / "architecture.json"
+        architecture = json.loads(architecture_path.read_text(encoding="utf-8"))
+        architecture["components"] = [{
+            "name": "Job API",
+            "description": "Owns public job submission.",
+            "evidence": ["src/jobs/service.py"],
+        }]
+        architecture["circular_dependencies"] = [{
+            "pkg_a": "src.jobs",
+            "pkg_b": "src.runtime",
+            "suggested_fix": "Keep dependency direction through the public job service.",
+            "evidence": ["src/jobs/service.py", "src/runtime/worker.py"],
+        }]
+        architecture_path.write_text(json.dumps(architecture, indent=2), encoding="utf-8")
+
+        initialized = self.init_project(project, bundle)
+        wiki = Path(initialized["skill_root"]) / "references" / "project_wiki"
+        environment = (wiki / "systems" / "environment.md").read_text(encoding="utf-8")
+        self.assertIn("Local development", environment)
+        self.assertIn("Readiness helper", environment)
+        self.assertIn("job service", environment)
+        overview = (wiki / "overview.md").read_text(encoding="utf-8")
+        self.assertIn("`README.md`", overview)
+        verification = (wiki / "systems" / "verification.md").read_text(encoding="utf-8")
+        self.assertIn("Verification workflow", verification)
+        self.assertIn("`.github/workflows/verify.yml`", verification)
+        architecture_map = (wiki / "systems" / "architecture.md").read_text(encoding="utf-8")
+        self.assertIn("Job API", architecture_map)
+        self.assertIn("`src.jobs` <-> `src.runtime`", architecture_map)
+        self.assertNotIn("No dependency cycle recorded.", architecture_map)
+
+        for case in ("primary-flow", "ci", "environment-mode", "startup-order", "component", "cycle"):
+            with self.subTest(case=case):
+                invalid_project = self.create_git_project(f"invalid-{case}")
+                invalid_bundle = self.write_bundle(invalid_project, f"invalid-{case}")
+                invalid_profile_path = invalid_bundle / "project-profile.json"
+                invalid_profile = json.loads(invalid_profile_path.read_text(encoding="utf-8"))
+                invalid_architecture_path = invalid_bundle / "architecture.json"
+                invalid_architecture = json.loads(invalid_architecture_path.read_text(encoding="utf-8"))
+                if case == "primary-flow":
+                    invalid_profile["primary_flows"] = [{"evidence": ["README.md"]}]
+                elif case == "ci":
+                    invalid_profile["ci"] = [{"evidence": ["README.md"]}]
+                elif case == "environment-mode":
+                    invalid_profile["environment"]["modes"] = [{"evidence": ["README.md"]}]
+                elif case == "startup-order":
+                    invalid_profile["environment"]["startup_order"] = [{"evidence": ["README.md"]}]
+                elif case == "component":
+                    invalid_architecture["components"] = [{"evidence": ["README.md"]}]
+                else:
+                    invalid_architecture["circular_dependencies"] = [{
+                        "pkg_a": "src.jobs",
+                        "evidence": ["src/jobs/service.py"],
+                    }]
+                invalid_profile_path.write_text(json.dumps(invalid_profile, indent=2), encoding="utf-8")
+                invalid_architecture_path.write_text(json.dumps(invalid_architecture, indent=2), encoding="utf-8")
+                rejected = self.cli(
+                    invalid_project,
+                    "project", "init", "--analysis-bundle", str(invalid_bundle),
+                    expected=(2,),
+                )
+                self.assertTrue(rejected["error"])
+
     def test_evolution_proposal_uses_semantic_gate_instead_of_byte_length(self) -> None:
         project, skill_root, bundle = self.prepare_evolution("short-evolution-proposal", stage=False)
         proposal = skill_root / "state" / "evolution" / "proposals" / "accepted-knowledge.md"

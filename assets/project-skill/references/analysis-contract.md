@@ -44,6 +44,12 @@ global_boundaries, unknowns,
 and top-level evidence. Complete records require non-empty evidence. Commands use only
 `configured|candidate|executed`. Environment contains services, startup_order, readiness,
 migration/seed, cleanup, variable names/sensitivity, modes, helpers, unknowns, and evidence.
+Each global boundary contains a non-empty `rule` and project evidence. `name` plus an optional
+`description` is accepted for an existing bundle, but evidence without displayable boundary
+semantics is invalid.
+Every flow, environment mode/helper/object startup step, architecture component, dependency cycle,
+interface, and code path must likewise contain the semantic fields used by its Wiki projection;
+evidence-only objects are invalid.
 
 Each module has a stable id, name, responsibility, roots, entrypoints, interfaces, dependencies,
 tests, commands, boundaries, and evidence. Each bridge has a purpose and non-empty mappings from a

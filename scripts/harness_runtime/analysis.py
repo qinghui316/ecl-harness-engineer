@@ -24,6 +24,18 @@ from .contracts import reject_secret_values, validate_architecture, validate_aud
 from .core import HarnessError, SCHEMA_VERSION, is_within, read_json, safe_relative, slugify
 from .project import primary_worktree_root
 
+DISPLAY_TEXT_FIELDS = ("name", "summary", "rule", "title", "path", "id")
+
+def semantic_display_text(item: Any, fields: tuple[str, ...] = DISPLAY_TEXT_FIELDS) -> str:
+    if isinstance(item, str):
+        return item.strip()
+    if isinstance(item, dict):
+        for field in fields:
+            value = item.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
 def evidence_values(item: dict[str, Any]) -> list[str]:
     values = item.get("evidence", [])
     if (
@@ -169,6 +181,16 @@ def validate_profile(profile: dict[str, Any], context: dict[str, Any]) -> dict[s
             for item in profile[field]:
                 if not isinstance(item, dict):
                     raise HarnessError(f"Complete profile field {field} must contain evidence-backed objects.")
+                display_fields = {
+                    "primary_flows": ("name", "summary", "title", "id"),
+                    "documents": ("name", "title", "path", "id"),
+                    "ci": ("name", "title", "path", "id"),
+                    "global_boundaries": ("rule", "name", "summary"),
+                }
+                if field in display_fields and not semantic_display_text(item, display_fields[field]):
+                    raise HarnessError(
+                        f"Complete profile field {field} contains an item with no displayable semantic text."
+                    )
                 validate_project_evidence(root, evidence_values(item), f"profile {field}")
     references_by_id: dict[str, dict[str, Any]] = {}
     for reference in profile["reference_projects"]:
@@ -323,9 +345,28 @@ def validate_profile(profile: dict[str, Any], context: dict[str, Any]) -> dict[s
             for item in environment[key]:
                 if not isinstance(item, dict):
                     raise HarnessError(f"Complete environment field {key} must contain evidence-backed objects.")
+                environment_display_fields = {
+                    "modes": ("name", "summary", "title", "id"),
+                    "helpers": ("name", "summary", "title", "path", "id"),
+                }
+                if key in environment_display_fields and not semantic_display_text(
+                    item, environment_display_fields[key]
+                ):
+                    raise HarnessError(
+                        f"Complete environment field {key} contains an item with no displayable semantic text."
+                    )
                 validate_project_evidence(root, evidence_values(item), f"environment {key}")
     if not all(isinstance(item, (str, dict)) for item in environment["startup_order"]):
         raise HarnessError("Environment startup_order entries must be strings or evidence-backed objects.")
+    for item in environment["startup_order"]:
+        if isinstance(item, str):
+            if not item.strip():
+                raise HarnessError("Environment startup_order strings must not be empty.")
+            continue
+        if not semantic_display_text(item, (*DISPLAY_TEXT_FIELDS, "service", "step")):
+            raise HarnessError("Environment startup_order object has no displayable semantic text.")
+        if profile.get("analysis_status") == "complete":
+            validate_project_evidence(root, evidence_values(item), "environment startup_order")
     if not all(isinstance(item, str) and item.strip() for item in environment["unknowns"]):
         raise HarnessError("Environment unknowns must be non-empty strings.")
     if environment.get("evidence"):
