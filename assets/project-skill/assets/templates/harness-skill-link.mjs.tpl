@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ECL-HARNESS-CONNECTOR
-// Attach this worktree to its project-level shared Harness Skill without requiring Python.
+// Attach or detach this worktree's project-level shared Harness Skill without requiring Python.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -8,6 +8,11 @@ import { execFileSync } from "node:child_process";
 
 const skillName = "{{SKILL_NAME}}";
 const projectId = "{{PROJECT_ID}}";
+const arguments_ = process.argv.slice(2);
+if (arguments_.some((argument) => argument !== "--detach") || arguments_.filter((argument) => argument === "--detach").length > 1) {
+  throw new Error("usage: harness-skill-link.mjs [--detach]");
+}
+const detach = arguments_.includes("--detach");
 
 function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
@@ -46,7 +51,7 @@ function addSkillLink(root, link, target) {
   const type = process.platform === "win32" ? "junction" : "dir";
   const value = process.platform === "win32" ? target : path.relative(path.dirname(link), target);
   fs.symlinkSync(value, link, type);
-  return "created";
+  return "attached";
 }
 
 const current = process.cwd();
@@ -60,11 +65,54 @@ const primary = path.basename(common) === ".git"
   : path.resolve(firstWorktree?.slice("worktree ".length).trim() ?? "");
 if (!primary) throw new Error("could not resolve the primary worktree");
 const canonical = path.join(primary, ".agents", "skills", skillName);
-if (!fs.statSync(path.join(canonical, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) {
-  throw new Error(`canonical project Harness is missing: ${canonical}`);
+const links = {
+  codex: path.join(root, ".agents", "skills", skillName),
+  claude: path.join(root, ".claude", "skills", skillName),
+};
+if (detach) {
+  if (path.resolve(root) === path.resolve(primary)) {
+    throw new Error("the primary worktree hosts the physical project Harness and cannot be detached");
+  }
+  const result = {};
+  for (const [name, link] of Object.entries(links)) {
+    const item = fs.lstatSync(link, { throwIfNoEntry: false });
+    if (!item) {
+      result[name] = { path: link, status: "missing" };
+    } else if (!item.isSymbolicLink()) {
+      throw new Error(`refusing to detach an unmanaged physical Skill path: ${link}`);
+    } else if (!sameTarget(link, canonical)) {
+      throw new Error(`refusing to detach a Skill link with the wrong target: ${link}`);
+    } else {
+      result[name] = { path: link, status: "detached" };
+    }
+  }
+  const removed = [];
+  try {
+    for (const [name, link] of Object.entries(links)) {
+      if (result[name].status === "detached") {
+        fs.unlinkSync(link);
+        removed.push(link);
+      }
+    }
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const link of removed.reverse()) {
+      try { addSkillLink(root, link, canonical); } catch (rollbackError) {
+        rollbackErrors.push(`${link}: ${rollbackError.message}`);
+      }
+    }
+    const detail = rollbackErrors.length ? `; rollback failed for ${rollbackErrors.join(", ")}` : "";
+    throw new Error(`could not detach all shared Harness links: ${error.message}${detail}`);
+  }
+  process.stdout.write(`${JSON.stringify({ ok: true, action: "detached", skill: canonical, links: result }, null, 2)}\n`);
+  process.exit(0);
 }
-if (fs.lstatSync(canonical).isSymbolicLink()) {
+const canonicalItem = fs.lstatSync(canonical, { throwIfNoEntry: false });
+if (canonicalItem?.isSymbolicLink()) {
   throw new Error(`canonical project Harness must be physical: ${canonical}`);
+}
+if (!canonicalItem || !fs.statSync(path.join(canonical, "SKILL.md"), { throwIfNoEntry: false })?.isFile()) {
+  throw new Error(`canonical project Harness is missing: ${canonical}`);
 }
 const manifest = JSON.parse(fs.readFileSync(path.join(canonical, "state", "manifest.json"), "utf8"));
 if (
@@ -73,18 +121,13 @@ if (
 ) {
   throw new Error("canonical project Harness manifest does not match this Git project");
 }
-
-const links = {
-  codex: path.join(root, ".agents", "skills", skillName),
-  claude: path.join(root, ".claude", "skills", skillName),
-};
 const result = {};
 const created = [];
 try {
   for (const [name, link] of Object.entries(links)) {
     const status = addSkillLink(root, link, canonical);
     result[name] = { path: link, status };
-    if (status === "created") created.push(link);
+    if (status === "attached") created.push(link);
   }
 } catch (error) {
   for (const link of created.reverse()) {
@@ -92,4 +135,4 @@ try {
   }
   throw error;
 }
-process.stdout.write(`${JSON.stringify({ ok: true, skill: canonical, links: result }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ ok: true, action: "attached", skill: canonical, links: result }, null, 2)}\n`);

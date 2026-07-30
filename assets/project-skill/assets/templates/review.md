@@ -18,6 +18,12 @@
 - Scope matches spec: TBD
 - Contract conflicts resolved: not applicable
 
+## Prior Change Review (When Applicable)
+
+- Related archive remained unchanged: TBD
+- Inherited facts were rechecked against current baseline/contracts: TBD
+- Remaining or corrective scope is explicit: TBD
+
 ## Code And Validation
 
 - Findings: TBD

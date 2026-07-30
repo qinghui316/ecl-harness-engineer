@@ -112,6 +112,10 @@ active -> abandoned -> archive
 - Different Lanes may work concurrently.
 - New claims use exclusive create so simultaneous identical IDs have one winner.
 - A terminal Change cannot be reopened by publish.
+- When work corrects or continues a terminal Change, create a new Change and read the relevant
+  archived summary first. In the new spec or summary, name that archive, distinguish inherited
+  decisions from superseded assumptions, state the remaining scope, and revalidate those facts
+  against current evidence. Keep the archived Change unchanged.
 - Parking preserves complete evidence and frees the Lane for another Change.
 - Resume restores the same owner Lane and fails when that Lane already has active work.
 

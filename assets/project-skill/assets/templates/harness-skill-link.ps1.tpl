@@ -1,4 +1,6 @@
 # ECL-HARNESS-CONNECTOR
+param([switch] $Detach)
+
 $ErrorActionPreference = "Stop"
 
 $SkillName = "{{SKILL_NAME}}"
@@ -63,7 +65,7 @@ function Add-SkillLink([string] $Root, [string] $Path, [string] $Target) {
     if ($LASTEXITCODE -ne 0) {
         throw (($output | Out-String).Trim())
     }
-    return "created"
+    return "attached"
 }
 
 $current = (Get-Location).Path
@@ -84,22 +86,68 @@ $primary = if ((Split-Path -Leaf $common) -eq ".git") {
     $line.Substring("worktree ".Length).Trim()
 }
 $canonical = Join-Path $primary ".agents/skills/$SkillName"
-if (-not (Test-Path -LiteralPath (Join-Path $canonical "SKILL.md") -PathType Leaf)) {
-    throw "canonical project Harness is missing: $canonical"
+$links = [ordered]@{
+    codex = Join-Path $root ".agents/skills/$SkillName"
+    claude = Join-Path $root ".claude/skills/$SkillName"
 }
-$canonicalItem = Get-Item -LiteralPath $canonical -Force
-if ($canonicalItem.LinkType) {
+
+if ($Detach) {
+    if ([System.IO.Path]::GetFullPath($root).TrimEnd('\', '/') -ieq
+        [System.IO.Path]::GetFullPath($primary).TrimEnd('\', '/')) {
+        throw "the primary worktree hosts the physical project Harness and cannot be detached"
+    }
+    $result = [ordered]@{}
+    foreach ($entry in $links.GetEnumerator()) {
+        $item = Get-Item -LiteralPath $entry.Value -Force -ErrorAction SilentlyContinue
+        if (-not $item) {
+            $result[$entry.Key] = [ordered]@{ path = $entry.Value; status = "missing" }
+        } elseif (-not $item.LinkType) {
+            throw "refusing to detach an unmanaged physical Skill path: $($entry.Value)"
+        } elseif ((Resolve-LinkTarget $entry.Value) -ine
+            [System.IO.Path]::GetFullPath($canonical).TrimEnd('\', '/')) {
+            throw "refusing to detach a Skill link with the wrong target: $($entry.Value)"
+        } else {
+            $result[$entry.Key] = [ordered]@{ path = $entry.Value; status = "detached" }
+        }
+    }
+    $removed = [System.Collections.Generic.List[string]]::new()
+    try {
+        foreach ($entry in $links.GetEnumerator()) {
+            if ($result[$entry.Key].status -eq "detached") {
+                [System.IO.Directory]::Delete($entry.Value)
+                $removed.Add($entry.Value)
+            }
+        }
+    } catch {
+        $detachError = $_
+        $rollbackErrors = [System.Collections.Generic.List[string]]::new()
+        for ($index = $removed.Count - 1; $index -ge 0; $index--) {
+            try {
+                Add-SkillLink $root $removed[$index] $canonical | Out-Null
+            } catch {
+                $rollbackErrors.Add("$($removed[$index]): $($_.Exception.Message)")
+            }
+        }
+        $detail = if ($rollbackErrors.Count) { "; rollback failed for " + ($rollbackErrors -join ", ") } else { "" }
+        throw "could not detach all shared Harness links: $($detachError.Exception.Message)$detail"
+    }
+    [ordered]@{ ok = $true; action = "detached"; skill = $canonical; links = $result } |
+        ConvertTo-Json -Depth 5
+    exit 0
+}
+
+$canonicalItem = Get-Item -LiteralPath $canonical -Force -ErrorAction SilentlyContinue
+if ($canonicalItem -and $canonicalItem.LinkType) {
     throw "canonical project Harness must be physical: $canonical"
+}
+if (-not $canonicalItem -or -not (Test-Path -LiteralPath (Join-Path $canonical "SKILL.md") -PathType Leaf)) {
+    throw "canonical project Harness is missing: $canonical"
 }
 $manifest = Get-Content -Raw -Encoding UTF8 (Join-Path $canonical "state/manifest.json") | ConvertFrom-Json
 if ($manifest.project_id -ne $ProjectId -or $manifest.skill_name -ne $SkillName) {
     throw "canonical project Harness manifest does not match this Git project"
 }
 
-$links = [ordered]@{
-    codex = Join-Path $root ".agents/skills/$SkillName"
-    claude = Join-Path $root ".claude/skills/$SkillName"
-}
 $result = [ordered]@{}
 $created = [System.Collections.Generic.List[string]]::new()
 try {
@@ -109,7 +157,7 @@ try {
             path = $entry.Value
             status = $status
         }
-        if ($status -eq "created") {
+        if ($status -eq "attached") {
             $created.Add($entry.Value)
         }
     }
@@ -124,5 +172,5 @@ try {
     throw
 }
 
-[ordered]@{ ok = $true; skill = $canonical; links = $result } |
+[ordered]@{ ok = $true; action = "attached"; skill = $canonical; links = $result } |
     ConvertTo-Json -Depth 5

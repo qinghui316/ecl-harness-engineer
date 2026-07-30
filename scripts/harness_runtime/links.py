@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .core import HarnessError, MANAGED_CONNECTOR_MARKER, MANAGED_ROUTE_BEGIN, MANAGED_ROUTE_END, MAX_ROUTE_BYTES, TEXT_SUFFIXES, atomic_write_bytes, atomic_write_text, is_link_like, normalize_path, read_json, reject_linked_ancestors, render, run, safe_relative
+from .core import HarnessError, MANAGED_CONNECTOR_MARKER, MANAGED_ROUTE_BEGIN, MANAGED_ROUTE_END, MAX_ROUTE_BYTES, TEXT_SUFFIXES, atomic_write_bytes, atomic_write_text, is_link_like, normalize_lexical_path, normalize_path, read_json, reject_linked_ancestors, remove_owned_tree, render, run, safe_relative, unlink_directory_link_node
 from .project import worktree_roots
 
 def distribution_root() -> Path:
@@ -94,15 +94,19 @@ def copy_runtime(destination: Path) -> list[str]:
     package_files = sorted(package_source.glob("*.py"))
     if not package_files or not (package_source / "__init__.py").is_file():
         raise HarnessError(f"Bundled Harness runtime package is incomplete: {package_source}")
+    if is_link_like(package_target):
+        raise HarnessError(f"Managed Harness runtime package must be a physical directory: {package_target}")
     if package_source.resolve() != package_target.resolve():
         package_target.mkdir(parents=True, exist_ok=True)
         expected_package = {source.name for source in package_files}
         for existing in package_target.iterdir():
             if existing.name in expected_package and existing.is_file() and not existing.is_symlink():
                 continue
-            if existing.is_dir() and not existing.is_symlink():
-                shutil.rmtree(existing)
+            if existing.is_dir() and not is_link_like(existing):
+                remove_owned_tree(existing, package_target, "Managed Harness runtime entry")
             else:
+                if is_link_like(existing):
+                    raise HarnessError(f"Managed Harness runtime entry must not be a link: {existing}")
                 existing.unlink()
         for source in package_files:
             shutil.copy2(source, package_target / source.name)
@@ -113,6 +117,16 @@ def copy_runtime(destination: Path) -> list[str]:
     rubric_target.parent.mkdir(parents=True, exist_ok=True)
     if rubric_source.resolve() != rubric_target.resolve():
         shutil.copy2(rubric_source, rubric_target)
+    if scaffold_runtime_available():
+        scaffold_references = scaffold_root() / "references"
+        for reference_name in ("analysis-contract.md", "runtime-modules.md"):
+            reference_source = scaffold_references / reference_name
+            if not reference_source.is_file():
+                raise HarnessError(f"Bundled project Harness reference is missing: {reference_source}")
+            reference_target = destination / "references" / reference_name
+            reference_target.parent.mkdir(parents=True, exist_ok=True)
+            if reference_source.resolve() != reference_target.resolve():
+                shutil.copy2(reference_source, reference_target)
     domains = ("project", "change", "integrate", "evolve", "knowledge")
     launchers = [*runtime_names, *(f"harness_runtime/{path.name}" for path in package_files)]
     windows_shell = (
@@ -205,14 +219,45 @@ def create_directory_link(link: Path, target: Path) -> bool:
     return True
 
 def remove_directory_link(link: Path, expected_target: Path) -> None:
-    if normalize_path(link) == normalize_path(expected_target):
+    if normalize_lexical_path(link) == normalize_lexical_path(expected_target):
         return
-    if not (link.exists() or link.is_symlink()) or not same_target(link, expected_target):
+    if not (link.exists() or is_link_like(link)) or not is_link_like(link) or not same_target(link, expected_target):
         return
-    if link.is_symlink():
-        link.unlink()
-    else:
-        os.rmdir(link)
+    unlink_directory_link_node(link)
+
+def detach_worktree_links(worktree: Path, skill_root: Path) -> dict[str, dict[str, str]]:
+    links = {
+        "codex": worktree / ".agents" / "skills" / skill_root.name,
+        "claude": worktree / ".claude" / "skills" / skill_root.name,
+    }
+    if any(normalize_lexical_path(path) == normalize_lexical_path(skill_root) for path in links.values()):
+        raise HarnessError("The primary worktree hosts the physical project Harness and cannot be detached.")
+    statuses: dict[str, dict[str, str]] = {}
+    for name, path in links.items():
+        if not (path.exists() or is_link_like(path)):
+            statuses[name] = {"path": str(path), "status": "missing"}
+        elif not is_link_like(path):
+            raise HarnessError(f"Refusing to detach an unmanaged physical Skill path: {path}")
+        elif not same_target(path, skill_root):
+            raise HarnessError(f"Refusing to detach a Skill link with the wrong target: {path}")
+        else:
+            statuses[name] = {"path": str(path), "status": "detached"}
+    removed: list[Path] = []
+    try:
+        for name, path in links.items():
+            if statuses[name]["status"] == "detached":
+                unlink_directory_link_node(path)
+                removed.append(path)
+    except Exception as exc:
+        rollback_errors = []
+        for path in reversed(removed):
+            try:
+                create_directory_link(path, skill_root)
+            except Exception as rollback_exc:
+                rollback_errors.append(f"{path}: {rollback_exc}")
+        detail = f"; rollback failed for {', '.join(rollback_errors)}" if rollback_errors else ""
+        raise HarnessError(f"Could not detach all shared Harness links: {exc}{detail}") from exc
+    return statuses
 
 def runtime_roots(context: dict[str, Any], args: argparse.Namespace) -> list[tuple[str, Path]]:
     del args
@@ -246,6 +291,9 @@ def connector_route() -> tuple[str, str]:
     raise HarnessError(
         "No supported new-worktree connector host is available (PowerShell, Node.js, or Python)."
     )
+
+def connector_detach_command(connector_name: str, connector_command: str) -> str:
+    return connector_command + (" -Detach" if connector_name.endswith(".ps1") else " --detach")
 
 def generated_command_routes() -> dict[str, str]:
     if os.name == "nt":
@@ -314,10 +362,13 @@ def ensure_runtime_links(
 
 def route_replacements(context: dict[str, Any]) -> tuple[dict[str, str], str, str]:
     connector_name, connector_command = connector_route()
+    detach_command = connector_detach_command(connector_name, connector_command)
     connector_guidance = (
         "If this is a newly created worktree and the Skill is not discoverable yet, run:\n\n"
         f"```text\n{connector_command}\n```\n\n"
-        "Then reload the project Harness and run its Registry preflight before planning or implementation."
+        "Then reload the project Harness and run its Registry preflight before planning or implementation. "
+        "Before removing this secondary worktree, detach its shared Skill links with:\n\n"
+        f"```text\n{detach_command}\n```"
         if context["mode"] == "multi_lane"
         else "This non-Git project currently uses single-Lane mode; no worktree connector is installed."
     )

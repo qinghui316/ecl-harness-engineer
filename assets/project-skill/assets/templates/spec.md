@@ -12,6 +12,12 @@
 - Current behavior: TBD
 - Evidence: TBD
 
+## Prior Change Context (Optional)
+
+For post-close correction or continuation, name the related archived Change and state inherited
+accepted decisions, superseded assumptions, and the remaining or corrective scope. Remove this
+section when it does not apply.
+
 ## User Scenarios
 
 - Primary scenario: TBD

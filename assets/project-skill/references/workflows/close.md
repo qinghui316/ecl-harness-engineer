@@ -24,6 +24,8 @@ exact clean completion commit; a partial result does not qualify for evolution.
 2. Resolve or document every pending task.
 3. Complete the two-step Git close, or the single-step non-Git close.
 4. Publish the compact terminal Registry record and evolution eligibility.
+5. Record known follow-up as a next action. Later work uses a new Change whose spec or summary
+   references this archived Change; do not mutate terminal evidence.
 
 ## Outputs
 

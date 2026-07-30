@@ -23,7 +23,7 @@ from typing import Any, Iterable
 from .analysis import load_analysis_bundle
 from .changes import evolve_check_internal, evolve_check_locked
 from .contracts import load_audit_rubric
-from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, read_json, reject_tree_links, utc_now
+from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, read_json, reject_tree_links, remove_owned_tree, utc_now
 from .knowledge import knowledge_check_internal
 from .project import project_context, require_skill
 from .rendering import install_analysis_bundle
@@ -165,7 +165,8 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
         if not check["healthy"]:
             raise HarnessError(f"Evolution candidate knowledge validation failed: {check['findings']}")
     except Exception:
-        shutil.rmtree(candidate, ignore_errors=True)
+        if candidate.exists():
+            remove_owned_tree(candidate, staging_root, "Evolution candidate")
         raise
     candidate_fingerprint = harness_content_fingerprint(candidate)
     atomic_write_json(
@@ -267,14 +268,14 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
             ):
                 raise HarnessError("Evolution cleanup cannot release another operation's writer.")
             if owner_path.exists():
-                shutil.rmtree(owner_path)
+                remove_owned_tree(owner_path, owner_path.parent, "Evolution owner claim")
             if writer:
                 release_writer(skill_root, "evolution", owner_id)
             staging = skill_root / "state" / "evolution" / "staging"
             if staging.exists():
                 for staged_candidate in staging.iterdir():
-                    if staged_candidate.is_dir():
-                        shutil.rmtree(staged_candidate)
+                    if staged_candidate.is_dir() or staged_candidate.is_symlink():
+                        remove_owned_tree(staged_candidate, staging, "Evolution staged candidate")
             next_window = evolve_check_locked(skill_root)
             return {
                 "status": "already_completed",
@@ -401,13 +402,13 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         if transaction is not None:
             commit_content_transaction(transaction)
         if owner_path.exists():
-            shutil.rmtree(owner_path)
+            remove_owned_tree(owner_path, owner_path.parent, "Evolution owner claim")
         release_writer(skill_root, "evolution", owner_id)
         staging = skill_root / "state" / "evolution" / "staging"
         if staging.exists():
             for staged_candidate in staging.iterdir():
-                if staged_candidate.is_dir():
-                    shutil.rmtree(staged_candidate)
+                if staged_candidate.is_dir() or staged_candidate.is_symlink():
+                    remove_owned_tree(staged_candidate, staging, "Evolution staged candidate")
         next_window = evolve_check_locked(skill_root)
         return {
             "status": args.status,

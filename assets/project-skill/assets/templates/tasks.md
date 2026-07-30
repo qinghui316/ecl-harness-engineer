@@ -4,7 +4,7 @@ Use `- [ ] T001 [P?] [AC-?] Action; owner/path; validation`.
 
 ## Intake And Setup
 
-- [ ] T001 [AC-001] Confirm `spec.md` and approved `plan.md`; validation: review gate.
+- [ ] T001 [AC-001] Confirm `spec.md`, prior archived Change context when applicable, and approved `plan.md`; validation: review gate.
 
 ## Implementation
 

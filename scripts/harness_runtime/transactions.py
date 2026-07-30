@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .core import HarnessError, SCHEMA_VERSION, _CONTENT_GUARD_LOCAL, atomic_write_bytes, atomic_write_json, canonical_id, is_link_like, is_within, normalize_path, read_json, reject_tree_links, safe_relative, utc_now
+from .core import HarnessError, SCHEMA_VERSION, _CONTENT_GUARD_LOCAL, atomic_write_bytes, atomic_write_json, canonical_id, is_link_like, is_within, normalize_path, read_json, reject_tree_links, remove_owned_tree, safe_relative, unlink_directory_link_node, utc_now
 from .project import project_context, skill_root_for
 from .registry import registry_root
 
@@ -54,7 +54,7 @@ def release_writer(skill_root: Path, kind: str, owner_id: str) -> None:
         return
     if current.get("kind") != kind or current.get("owner_id") != owner_id:
         raise HarnessError("Refusing to release a shared writer owned by another operation.")
-    shutil.rmtree(lock)
+    remove_owned_tree(lock, lock.parent, "Shared writer lock")
 
 @contextmanager
 def short_registry_lock(skill_root: Path, name: str, *, timeout_seconds: float = 10.0):
@@ -80,7 +80,7 @@ def short_registry_lock(skill_root: Path, name: str, *, timeout_seconds: float =
     finally:
         owner = read_json(lock / "owner.json", {})
         if owner.get("token") == token and lock.exists():
-            shutil.rmtree(lock)
+            remove_owned_tree(lock, lock.parent, "Registry lock")
 
 def try_lock_file(handle: Any) -> bool:
     if os.name == "nt":
@@ -208,9 +208,9 @@ def remove_transaction_path(path: Path) -> None:
     if path.is_symlink() or path.is_file():
         path.unlink()
     elif is_link_like(path):
-        os.rmdir(path)
+        unlink_directory_link_node(path)
     else:
-        shutil.rmtree(path)
+        remove_owned_tree(path, path.parent, "Content transaction path")
 
 def copy_transaction_path(source: Path, target: Path) -> None:
     if is_link_like(source):
@@ -293,7 +293,7 @@ def rollback_content_transaction(transaction: dict[str, Any]) -> None:
         elif path_present(target):
             remove_transaction_path(target)
     if transaction_root.exists():
-        shutil.rmtree(transaction_root)
+        remove_owned_tree(transaction_root, transaction_root.parent, "Content transaction journal")
     store = content_transaction_store(skill_root)
     if store.exists() and not any(store.iterdir()):
         store.rmdir()
@@ -392,9 +392,9 @@ def commit_content_transaction(transaction: dict[str, Any]) -> None:
         transaction["phase"] = "committed"
         transaction_journal(transaction_root, transaction)
     if candidate.exists():
-        shutil.rmtree(candidate)
+        remove_owned_tree(candidate, candidate.parent, "Content transaction candidate")
     if transaction_root.exists():
-        shutil.rmtree(transaction_root)
+        remove_owned_tree(transaction_root, transaction_root.parent, "Content transaction journal")
     store = content_transaction_store(Path(transaction["skill_root"]))
     if store.exists() and not any(store.iterdir()):
         store.rmdir()

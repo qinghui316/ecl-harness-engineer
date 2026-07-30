@@ -438,12 +438,12 @@ class HarnessCliTests(unittest.TestCase):
         self.git(project, "commit", "-m", "add harness routes")
         return self.git(project, "rev-parse", "HEAD")
 
-    def connector_command(self, worktree: Path) -> list[str]:
+    def connector_command(self, worktree: Path, *, detach: bool = False) -> list[str]:
         powershell = worktree / "scripts" / "harness-skill-link.ps1"
         node = worktree / "scripts" / "harness-skill-link.mjs"
         python = worktree / "scripts" / "harness-skill-link.py"
         if powershell.is_file():
-            return [
+            command = [
                 "powershell",
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -451,15 +451,18 @@ class HarnessCliTests(unittest.TestCase):
                 "-File",
                 str(powershell),
             ]
+            if detach:
+                command.append("-Detach")
+            return command
         if node.is_file():
-            return ["node", str(node)]
+            return ["node", str(node), *(["--detach"] if detach else [])]
         if python.is_file():
-            return [sys.executable, str(python)]
+            return [sys.executable, str(python), *(["--detach"] if detach else [])]
         self.fail("No worktree connector was generated.")
 
-    def run_connector(self, worktree: Path) -> dict:
+    def run_connector(self, worktree: Path, *, detach: bool = False) -> dict:
         result = self.run_process(
-            self.connector_command(worktree),
+            self.connector_command(worktree, detach=detach),
             cwd=worktree,
         )
         return json.loads(result.stdout)
@@ -2283,6 +2286,10 @@ class HarnessCliTests(unittest.TestCase):
         (scripts / "harness-project.sh").write_text("old launcher\n", encoding="utf-8")
         (checks / "project_check.py").write_text("print('check')\n", encoding="utf-8")
         (helpers / "project_helper.py").write_text("print('helper')\n", encoding="utf-8")
+        references = destination / "references"
+        references.mkdir()
+        (references / "analysis-contract.md").write_text("stale analysis contract\n", encoding="utf-8")
+        (references / "runtime-modules.md").write_text("stale runtime map\n", encoding="utf-8")
         manifest = destination / "state" / "manifest.json"
         manifest.parent.mkdir(parents=True)
         manifest.write_text(json.dumps({
@@ -2310,6 +2317,11 @@ class HarnessCliTests(unittest.TestCase):
             "check_project_wiki_stale.py", "check_stage_artifacts.py",
         ):
             self.assertEqual((ROOT / "scripts" / name).read_bytes(), (scripts / name).read_bytes())
+        for name in ("analysis-contract.md", "runtime-modules.md"):
+            self.assertEqual(
+                (ROOT / "assets" / "project-skill" / "references" / name).read_bytes(),
+                (references / name).read_bytes(),
+            )
         self.assertTrue(any(name.startswith("harness-project.") for name in launchers))
 
         stale_source = (ROOT / "scripts" / "check_project_wiki_stale.py").read_text(encoding="utf-8")
@@ -2322,6 +2334,99 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn('parser.add_argument("--project-root", type=Path, required=True)', stale_source)
         self.assertNotIn("def canonical_id", stage_source)
         self.assertNotIn("def atomic_write", rule_source)
+
+    def test_runtime_copy_rejects_linked_machine_owned_package(self) -> None:
+        destination = self.root / "linked-runtime-mirror"
+        scripts = destination / "scripts"
+        scripts.mkdir(parents=True)
+        external = self.root / "external-runtime-package"
+        external.mkdir()
+        sentinel = external / "sentinel.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+        package = scripts / "harness_runtime"
+        self.runtime_links.create_directory_link(package, external)
+
+        with self.assertRaisesRegex(self.cli_module.HarnessError, "physical directory"):
+            self.runtime_links.copy_runtime(destination)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+        self.assertTrue(os.path.samefile(package, external))
+
+    def test_controlled_tree_removal_never_follows_nested_links(self) -> None:
+        owner = self.root / "owned-cleanup"
+        managed = owner / "candidate"
+        managed.mkdir(parents=True)
+        (managed / "owned.txt").write_text("owned\n", encoding="utf-8")
+        external = self.root / "external-cleanup-target"
+        external.mkdir()
+        sentinel = external / "sentinel.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+        self.runtime_links.create_directory_link(managed / "nested-link", external)
+
+        with self.assertRaisesRegex(self.cli_module.HarnessError, "must not contain links"):
+            self.runtime_core.remove_owned_tree(managed, owner, "fixture candidate")
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+        self.assertTrue((managed / "owned.txt").is_file())
+
+    @unittest.skipUnless(os.name == "nt", "Windows reparse fallback is Windows-specific")
+    def test_windows_reparse_fallback_does_not_require_os_path_isjunction(self) -> None:
+        target = self.root / "junction-fallback-target"
+        target.mkdir()
+        junction = self.root / "junction-fallback-link"
+        self.runtime_links.create_directory_link(junction, target)
+        with mock.patch.object(os.path, "isjunction", None, create=True):
+            self.assertTrue(self.runtime_core.windows_reparse_directory(junction))
+            self.assertTrue(self.runtime_core.is_link_like(junction))
+        self.runtime_core.unlink_directory_link_node(junction)
+        self.assertTrue(target.is_dir())
+
+    @unittest.skipUnless(os.name == "nt", "Windows Junction safety is Windows-specific")
+    def test_rendered_python_connector_rejects_canonical_junction_without_isjunction(self) -> None:
+        project = self.create_git_project("connector-old-python-junction")
+        initialized = self.init_project(project, self.write_bundle(project, "connector-old-python-junction"))
+        baseline = self.commit_routes(project)
+        worktree = self.root / "connector-old-python-junction-worktree"
+        self.git(project, "worktree", "add", "-b", "connector-old-python-junction", str(worktree), baseline)
+        skill_root = Path(initialized["skill_root"])
+        manifest = json.loads((skill_root / "state" / "manifest.json").read_text(encoding="utf-8"))
+        connector = worktree / "scripts" / "old-python-link.py"
+        connector.write_text(
+            self.runtime_core.render(
+                (ROOT / "assets" / "project-skill" / "assets" / "templates" / "harness-skill-link.py.tpl").read_text(encoding="utf-8"),
+                {"SKILL_NAME": skill_root.name, "PROJECT_ID": manifest["project_id"]},
+            ),
+            encoding="utf-8",
+        )
+        physical = self.root / "moved-physical-harness"
+        shutil.move(str(skill_root), str(physical))
+        self.runtime_links.create_directory_link(skill_root, physical)
+        try:
+            wrapper = (
+                "import os, runpy, sys; "
+                "os.path.isjunction = None; "
+                "sys.argv = [sys.argv[1]]; "
+                "runpy.run_path(sys.argv[0], run_name='__main__')"
+            )
+            rejected = self.run_process(
+                [sys.executable, "-c", wrapper, str(connector)],
+                cwd=worktree,
+                expected=(1,),
+            )
+            self.assertIn("must be physical", rejected.stderr)
+            self.assertFalse(os.path.lexists(worktree / ".agents" / "skills" / skill_root.name))
+            self.assertFalse(os.path.lexists(worktree / ".claude" / "skills" / skill_root.name))
+        finally:
+            self.runtime_core.unlink_directory_link_node(skill_root)
+            shutil.move(str(physical), str(skill_root))
+
+    def test_production_runtime_has_one_recursive_directory_deletion_owner(self) -> None:
+        runtime = ROOT / "scripts" / "harness_runtime"
+        offenders = []
+        for path in runtime.glob("*.py"):
+            if path.name == "core.py":
+                continue
+            if "shutil.rmtree" in path.read_text(encoding="utf-8"):
+                offenders.append(path.name)
+        self.assertEqual(offenders, [])
 
     def test_project_harness_routes_scripts_only_for_mechanical_state(self) -> None:
         entry = (ROOT / "assets" / "project-skill" / "SKILL.md.tpl").read_text(encoding="utf-8")
@@ -2428,6 +2533,151 @@ class HarnessCliTests(unittest.TestCase):
             ]
         launcher_result = self.run_process(launcher_command, cwd=worktree)
         self.assertTrue(json.loads(launcher_result.stdout)["healthy"])
+
+    def test_worktree_connector_detaches_links_without_touching_shared_harness(self) -> None:
+        project = self.create_git_project("connector-detach")
+        initialized = self.init_project(project, self.write_bundle(project, "connector-detach"))
+        baseline = self.commit_routes(project)
+        worktree = self.root / "connector-detach-worktree"
+        self.git(project, "worktree", "add", "-b", "connector-detach", str(worktree), baseline)
+        skill_root = Path(initialized["skill_root"])
+        skill_name = skill_root.name
+        codex_link = worktree / ".agents" / "skills" / skill_name
+        claude_link = worktree / ".claude" / "skills" / skill_name
+        self.run_connector(worktree)
+        before = self.tree_hashes(skill_root)
+
+        detached = self.run_connector(worktree, detach=True)
+        self.assertEqual(detached["action"], "detached")
+        self.assertFalse(os.path.lexists(codex_link))
+        self.assertFalse(os.path.lexists(claude_link))
+        self.assertEqual(before, self.tree_hashes(skill_root))
+
+        repeated = self.run_connector(worktree, detach=True)
+        self.assertEqual(
+            {item["status"] for item in repeated["links"].values()},
+            {"missing"},
+        )
+        primary = self.run_process(
+            self.connector_command(project, detach=True), cwd=project, expected=(1,),
+        )
+        self.assertIn("primary worktree", (primary.stderr + primary.stdout).lower())
+        self.assertEqual(before, self.tree_hashes(skill_root))
+
+    def test_worktree_connector_detach_prevalidates_all_links(self) -> None:
+        project = self.create_git_project("connector-detach-collision")
+        initialized = self.init_project(project, self.write_bundle(project, "connector-detach-collision"))
+        baseline = self.commit_routes(project)
+        worktree = self.root / "connector-detach-collision-worktree"
+        self.git(project, "worktree", "add", "-b", "connector-detach-collision", str(worktree), baseline)
+        skill_root = Path(initialized["skill_root"])
+        codex_link = worktree / ".agents" / "skills" / skill_root.name
+        claude_link = worktree / ".claude" / "skills" / skill_root.name
+        self.run_connector(worktree)
+        self.runtime_links.remove_directory_link(claude_link, skill_root)
+        wrong_target = self.root / "wrong-harness-target"
+        wrong_target.mkdir()
+        (wrong_target / "sentinel.txt").write_text("keep\n", encoding="utf-8")
+        self.runtime_links.create_directory_link(claude_link, wrong_target)
+
+        rejected = self.run_process(
+            self.connector_command(worktree, detach=True), cwd=worktree, expected=(1,),
+        )
+        self.assertIn("wrong target", (rejected.stderr + rejected.stdout).lower())
+        self.assertTrue(os.path.samefile(codex_link, skill_root))
+        self.assertTrue(os.path.samefile(claude_link, wrong_target))
+        self.assertTrue((wrong_target / "sentinel.txt").is_file())
+
+    def test_connector_hosts_share_attach_and_detach_contract(self) -> None:
+        project = self.create_git_project("connector-host-parity")
+        initialized = self.init_project(project, self.write_bundle(project, "connector-host-parity"))
+        baseline = self.commit_routes(project)
+        worktree = self.root / "connector-host-parity-worktree"
+        self.git(project, "worktree", "add", "-b", "connector-host-parity", str(worktree), baseline)
+        skill_root = Path(initialized["skill_root"])
+        manifest = json.loads((skill_root / "state" / "manifest.json").read_text(encoding="utf-8"))
+        replacements = {
+            "SKILL_NAME": skill_root.name,
+            "PROJECT_ID": manifest["project_id"],
+        }
+        templates = ROOT / "assets" / "project-skill" / "assets" / "templates"
+        hosts = []
+        powershell = shutil.which("powershell") or shutil.which("pwsh")
+        if powershell:
+            hosts.append((
+                "harness-skill-link.ps1.tpl",
+                worktree / "scripts" / "parity-link.ps1",
+                [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"],
+                ["-Detach"],
+            ))
+        node = shutil.which("node")
+        if node:
+            hosts.append((
+                "harness-skill-link.mjs.tpl",
+                worktree / "scripts" / "parity-link.mjs",
+                [node],
+                ["--detach"],
+            ))
+        hosts.append((
+            "harness-skill-link.py.tpl",
+            worktree / "scripts" / "parity-link.py",
+            [sys.executable],
+            ["--detach"],
+        ))
+
+        for template_name, connector, prefix, detach_args in hosts:
+            connector.write_text(
+                self.runtime_core.render(
+                    (templates / template_name).read_text(encoding="utf-8"), replacements,
+                ),
+                encoding="utf-8",
+            )
+            command = [*prefix, str(connector)]
+            attached = json.loads(self.run_process(command, cwd=worktree).stdout)
+            self.assertEqual(attached["action"], "attached", template_name)
+            self.assertEqual(
+                {item["status"] for item in attached["links"].values()}, {"attached"}, template_name,
+            )
+            existing = json.loads(self.run_process(command, cwd=worktree).stdout)
+            self.assertEqual(
+                {item["status"] for item in existing["links"].values()}, {"existing"}, template_name,
+            )
+            detached = json.loads(self.run_process([*command, *detach_args], cwd=worktree).stdout)
+            self.assertEqual(detached["action"], "detached", template_name)
+            self.assertEqual(
+                {item["status"] for item in detached["links"].values()}, {"detached"}, template_name,
+            )
+            missing = json.loads(self.run_process([*command, *detach_args], cwd=worktree).stdout)
+            self.assertEqual(
+                {item["status"] for item in missing["links"].values()}, {"missing"}, template_name,
+            )
+
+    def test_runtime_detach_rolls_back_when_second_link_removal_fails(self) -> None:
+        project = self.create_git_project("runtime-detach-rollback")
+        initialized = self.init_project(project, self.write_bundle(project, "runtime-detach-rollback"))
+        baseline = self.commit_routes(project)
+        worktree = self.root / "runtime-detach-rollback-worktree"
+        self.git(project, "worktree", "add", "-b", "runtime-detach-rollback", str(worktree), baseline)
+        skill_root = Path(initialized["skill_root"])
+        codex_link = worktree / ".agents" / "skills" / skill_root.name
+        claude_link = worktree / ".claude" / "skills" / skill_root.name
+        self.run_connector(worktree)
+        original = self.runtime_links.unlink_directory_link_node
+        calls = 0
+
+        def fail_second(path: Path) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected second unlink failure")
+            original(path)
+
+        with mock.patch.object(self.runtime_links, "unlink_directory_link_node", side_effect=fail_second):
+            with self.assertRaisesRegex(self.cli_module.HarnessError, "Could not detach all"):
+                self.runtime_links.detach_worktree_links(worktree, skill_root)
+        self.assertTrue(os.path.samefile(codex_link, skill_root))
+        self.assertTrue(os.path.samefile(claude_link, skill_root))
+        self.run_connector(worktree, detach=True)
 
     def test_new_worktree_connector_rejects_linked_discovery_ancestors(self) -> None:
         project = self.create_git_project("connector-linked-ancestor")
@@ -3130,6 +3380,28 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(entry["status"], "completed")
         self.assertEqual(entry["evidence_state"], "archive")
 
+    def test_change_lifecycle_refuses_linked_evidence_without_moving_target(self) -> None:
+        project = self.root / "linked-change-evidence"
+        project.mkdir()
+        initialized = self.init_project(project)
+        skill_root = Path(initialized["skill_root"])
+        self.cli(project, "change", "new", "linked-change", "--scope", "Protect evidence")
+        active_root = skill_root / "state" / "changes" / "active"
+        evidence = active_root / "linked-change"
+        self.runtime_core.remove_owned_tree(evidence, active_root, "test Change evidence")
+        external = self.root / "external-change-evidence"
+        external.mkdir()
+        sentinel = external / "sentinel.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+        self.runtime_links.create_directory_link(evidence, external)
+        try:
+            rejected = self.cli(project, "change", "park", "linked-change", expected=(2,))
+            self.assertIn("physical", rejected["error"])
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+            self.assertFalse((skill_root / "state" / "changes" / "parking" / "linked-change").exists())
+        finally:
+            self.runtime_core.unlink_directory_link_node(evidence)
+
     def test_empty_evidence_and_failed_artifact_validation_do_not_publish(self) -> None:
         empty_project = self.create_git_project("empty-evidence")
         empty_bundle = self.write_bundle(empty_project, "empty-evidence")
@@ -3538,6 +3810,171 @@ class HarnessCliTests(unittest.TestCase):
         self.assertFalse((skill_root / "state" / "registry" / "locks" / "shared-writer").exists())
         completed = self.cli(project, *arguments)
         self.assertEqual(completed["status"], "integrated")
+
+    def test_integration_complete_detaches_shared_harness_before_worktree_removal(self) -> None:
+        project, skill_root, _, _ = self.prepare_integration("safe-complete")
+        integration_id = "safe-complete-integration"
+        record = json.loads((
+            skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        ).read_text(encoding="utf-8"))
+        worktree = skill_root / record["worktree"]
+        attached = self.run_connector(worktree)
+        self.assertEqual(attached["action"], "attached")
+        sentinel = skill_root / "state" / "shared-harness-sentinel.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+        stable_hashes = self.tree_hashes(skill_root / "references")
+        candidate = self.integration_candidate(skill_root, integration_id)
+
+        completed = self.cli(
+            project,
+            "integrate",
+            "complete",
+            integration_id,
+            "--confirm-i2",
+            "--validation",
+            "aggregate pass",
+            "--validation-passed",
+            "--review-report",
+            str(self.write_integration_review(skill_root, integration_id, candidate)),
+        )
+        self.assertEqual(completed["status"], "integrated")
+        self.assertFalse(worktree.exists())
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+        self.assertEqual(stable_hashes, self.tree_hashes(skill_root / "references"))
+
+    def test_integration_abort_detaches_shared_harness_before_worktree_removal(self) -> None:
+        project, skill_root, _, _ = self.prepare_integration("safe-abort")
+        integration_id = "safe-abort-integration"
+        record = json.loads((
+            skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        ).read_text(encoding="utf-8"))
+        worktree = skill_root / record["worktree"]
+        self.run_connector(worktree)
+        sentinel = skill_root / "state" / "abort-sentinel.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+
+        aborted = self.cli(project, "integrate", "abort", integration_id)
+        self.assertEqual(aborted["status"], "aborted")
+        self.assertFalse(worktree.exists())
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+
+    def test_integration_cleanup_failure_resumes_without_relanding(self) -> None:
+        project, skill_root, _, _ = self.prepare_integration("safe-recovery")
+        integration_id = "safe-recovery-integration"
+        candidate = self.integration_candidate(skill_root, integration_id)
+        arguments = (
+            "integrate",
+            "complete",
+            integration_id,
+            "--confirm-i2",
+            "--validation",
+            "aggregate pass",
+            "--validation-passed",
+            "--review-report",
+            str(self.write_integration_review(skill_root, integration_id, candidate)),
+        )
+        with mock.patch.object(
+            self.runtime_integration,
+            "detach_worktree_links",
+            side_effect=self.cli_module.HarnessError("injected detach failure"),
+        ):
+            with self.assertRaisesRegex(self.cli_module.HarnessError, "injected detach failure"):
+                self.dispatch(project, *arguments)
+
+        record_path = skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        failed = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(failed["status"], "landing_recovery_required")
+        self.assertEqual(failed["landing_phase"], "registry_committed")
+        landed = failed["landing_commit"]
+        self.assertEqual(self.git(project, "rev-parse", "HEAD"), landed)
+        self.assertTrue((skill_root / "state" / "registry" / "locks" / "shared-writer").is_dir())
+
+        recovered = self.cli(project, "integrate", "complete", integration_id, "--confirm-i2")
+        self.assertEqual(recovered["status"], "integrated")
+        self.assertEqual(recovered["landing_commit"], landed)
+        self.assertFalse((skill_root / "state" / "registry" / "locks" / "shared-writer").exists())
+
+    def test_integration_git_worktree_remove_failure_is_retryable(self) -> None:
+        project, skill_root, _, _ = self.prepare_integration("safe-git-remove-recovery")
+        integration_id = "safe-git-remove-recovery-integration"
+        candidate = self.integration_candidate(skill_root, integration_id)
+        arguments = (
+            "integrate",
+            "complete",
+            integration_id,
+            "--confirm-i2",
+            "--validation",
+            "aggregate pass",
+            "--validation-passed",
+            "--review-report",
+            str(self.write_integration_review(skill_root, integration_id, candidate)),
+        )
+        original_git = self.runtime_integration.git
+
+        def fail_worktree_remove(project_root: Path, *arguments: str, check: bool = True):
+            if arguments[:2] == ("worktree", "remove"):
+                return subprocess.CompletedProcess(
+                    ["git", *arguments], 1, "", "injected worktree remove failure",
+                )
+            return original_git(project_root, *arguments, check=check)
+
+        with mock.patch.object(self.runtime_integration, "git", side_effect=fail_worktree_remove):
+            with self.assertRaisesRegex(self.cli_module.HarnessError, "injected worktree remove failure"):
+                self.dispatch(project, *arguments)
+        record_path = skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        failed = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(failed["landing_phase"], "registry_committed")
+        self.assertEqual(failed["status"], "landing_recovery_required")
+        landing = failed["landing_commit"]
+        self.assertEqual(self.git(project, "rev-parse", "HEAD"), landing)
+
+        recovered = self.cli(project, "integrate", "complete", integration_id, "--confirm-i2")
+        self.assertEqual(recovered["landing_commit"], landing)
+        self.assertEqual(recovered["record"]["landing_phase"], "cleanup_complete")
+
+    def test_integration_abort_cleanup_failure_keeps_record_retryable(self) -> None:
+        project, skill_root, _, _ = self.prepare_integration("safe-abort-recovery")
+        integration_id = "safe-abort-recovery-integration"
+        record_path = skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        before = json.loads(record_path.read_text(encoding="utf-8"))
+        worktree = skill_root / before["worktree"]
+        with mock.patch.object(
+            self.runtime_integration,
+            "detach_worktree_links",
+            side_effect=self.cli_module.HarnessError("injected abort detach failure"),
+        ):
+            with self.assertRaisesRegex(self.cli_module.HarnessError, "injected abort detach failure"):
+                self.dispatch(project, "integrate", "abort", integration_id)
+        failed = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(failed["status"], before["status"])
+        self.assertIn("injected abort detach failure", failed["last_error"])
+        self.assertTrue(worktree.is_dir())
+
+        aborted = self.cli(project, "integrate", "abort", integration_id)
+        self.assertEqual(aborted["status"], "aborted")
+        self.assertFalse(worktree.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows Junction safety is Windows-specific")
+    def test_integration_rejects_unknown_junction_before_git_worktree_removal(self) -> None:
+        project, skill_root, _, _ = self.prepare_integration("unknown-junction")
+        integration_id = "unknown-junction-integration"
+        record_path = skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        worktree = skill_root / record["worktree"]
+        external = self.root / "external-junction-target"
+        external.mkdir()
+        sentinel = external / "sentinel.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+        unknown = worktree / "unknown-junction"
+        self.runtime_links.create_directory_link(unknown, external)
+
+        rejected = self.cli(project, "integrate", "abort", integration_id, expected=(2,))
+        self.assertIn("directory junctions", rejected["error"])
+        self.assertTrue(worktree.is_dir())
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+        self.runtime_core.unlink_directory_link_node(unknown)
+        self.cli(project, "integrate", "abort", integration_id)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
 
     def test_i2_rejects_candidate_changed_after_review(self) -> None:
         project, skill_root, _, _ = self.prepare_integration("review-binding")
@@ -3961,7 +4398,9 @@ class HarnessCliTests(unittest.TestCase):
         results = old_skill_root / "state" / "evolution" / "results.tsv"
         with results.open("a", encoding="utf-8") as handle:
             handle.write(f"literal\t{initial['project_id']}\t-\t-\tnoop\tdry_run\tpreserve\n")
-        preserved_changes = self.tree_hashes(old_skill_root / "state" / "changes")
+        preserved_active_change = self.tree_hashes(
+            old_skill_root / "state" / "changes" / "active" / "upgrade-history"
+        )
         preserved_results = results.read_bytes()
 
         self.run_process(["git", "init", "-b", "main", str(project)])
@@ -3985,7 +4424,10 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(initial["project_id"], json.loads(
             (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
         )["project_id"])
-        self.assertEqual(preserved_changes, self.tree_hashes(skill_root / "state" / "changes"))
+        self.assertEqual(
+            preserved_active_change,
+            self.tree_hashes(skill_root / "state" / "changes" / "active" / "upgrade-history"),
+        )
         self.assertEqual(preserved_results, (skill_root / "state" / "evolution" / "results.tsv").read_bytes())
         rebound_change = json.loads((
             skill_root / "state" / "registry" / "changes" / "upgrade-history.json"
@@ -3996,6 +4438,11 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(rebound_change["base_commit"], baseline)
         self.assertEqual(rebound_baseline["canonical_branch"], "main")
         self.assertEqual(rebound_baseline["canonical_commit"], baseline)
+        index = json.loads((skill_root / "state" / "changes" / "INDEX.json").read_text(encoding="utf-8"))
+        index_change = next(item for item in index["changes"] if item["change_id"] == "upgrade-history")
+        self.assertEqual(index_change["lane_id"], rebound_change["lane_id"])
+        audit = self.cli(project, "project", "audit")
+        self.assertTrue(audit["ecl"]["healthy"])
         for worktree in [project, *existing]:
             codex = worktree / ".agents" / "skills" / skill_root.name
             claude = worktree / ".claude" / "skills" / skill_root.name
@@ -4251,6 +4698,30 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(
             json.loads(complete_manifest_path.read_text(encoding="utf-8"))["schema_version"], "1.0",
         )
+
+    def test_complete_migrate_refreshes_runtime_owned_scaffold_references(self) -> None:
+        project = self.create_git_project("refresh-runtime-references")
+        bundle = self.write_bundle(project, "refresh-runtime-references")
+        initialized = self.init_project(project, bundle)
+        skill_root = Path(initialized["skill_root"])
+        manifest_path = skill_root / "state" / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["schema_version"] = "1.0"
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        references = skill_root / "references"
+        (references / "analysis-contract.md").write_text(
+            "Use canonical repository documents as durable citations.\n",
+            encoding="utf-8",
+        )
+        (references / "runtime-modules.md").write_text("stale runtime map\n", encoding="utf-8")
+
+        self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
+
+        for name in ("analysis-contract.md", "runtime-modules.md"):
+            self.assertEqual(
+                (ROOT / "assets" / "project-skill" / "references" / name).read_bytes(),
+                (references / name).read_bytes(),
+            )
 
     def test_fresh_migrate_reports_applied_analysis_bundle(self) -> None:
         project = self.create_git_project("fresh-migrate")

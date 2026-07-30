@@ -85,3 +85,9 @@ When baseline events or source drift affect the current scope, Registry contract
 Create greenfield source, project commands, documentation, Make or CI only after purpose, stack, application type, and acceptance are confirmed in an approved Structured Change.
 
 **On violation:** Stop business-project generation and return to bootstrap spec and plan review.
+
+## HR-25: Detach Shared Harness Links Before Worktree Removal
+
+Before removing a secondary worktree, verify that its Codex and Claude Skill links target the marked physical project Harness, then detach those link nodes without following their target.
+
+**On violation:** Stop worktree removal, preserve the worktree and physical project Harness, and report the unverifiable or conflicting path.

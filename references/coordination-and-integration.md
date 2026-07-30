@@ -46,6 +46,9 @@ integration_status, integrated_by, created_at, updated_at
 Allowed terminal statuses are `completed`, `blocked`, and `abandoned`. Only completed, validated,
 evidence-complete Changes are evolution-eligible.
 
+Terminal records and archives remain historical evidence. Describe any follow-up relationship in
+the new Change documents rather than rewriting the archived record.
+
 In Git mode, close is deliberately two-stage. The first close validates project Harness evidence and
 sets `closing`. The Worker commits the business implementation, then reruns close with the exact
 clean HEAD and passing validation. The CLI binds that commit to the Change record, moves Skill
@@ -96,8 +99,10 @@ Integration begins only after a user requests it.
    recoverable `pre_merge`, `canonical_landed`, `registry_committed`, and
    `cleanup_complete` phases. Publish full contract snapshots, previous/new canonical commits, and
     affected paths in `canonical-baseline-advanced`. Do not rewrite L1/L2/L3.
-10. Remove the temporary worktree only after Registry commit. Release the writer only after cleanup
-    and the terminal Integration record are durable.
+10. Remove the temporary worktree only after Registry commit. First verify and detach its Codex and
+    Claude links to the shared project Harness, then reject unknown directory Junctions and run
+    non-force `git worktree remove`. Release the writer only after cleanup and the terminal
+    Integration record are durable.
 
 If cherry-pick conflicts, record the conflicted and remaining commits. After resolving and running
 `git cherry-pick --continue`, use `integrate status --resume` so the same Integration Record applies
@@ -106,6 +111,11 @@ the remaining range before review.
 An Integration Record is audit evidence, not a Change and not evolution-counted. Record conflicts,
 extra Integrator edits, validation failures, human corrections, and documentation drift as signals
 for the next five-Change window.
+
+The same teardown protects `integrate complete` and `integrate abort`. A cleanup failure keeps the
+record and exact failure path for retry; it must not repeat canonical landing or Registry writes.
+For a user-managed secondary worktree, run the tracked connector with `--detach` (or `-Detach` for
+PowerShell) before `git worktree remove`.
 
 Reviewer identity is a cooperative local-agent separation gate, not cryptographic authentication.
 The candidate SHA, report fields, and identity mismatch are mechanically enforced; deployments

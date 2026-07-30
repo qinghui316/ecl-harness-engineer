@@ -61,8 +61,9 @@ flowchart LR
 
 业务仓库只提交精简路由、一个宿主可运行的
 `scripts/harness-skill-link.{ps1|mjs|py}` 和正式业务文档/代码。Change 证据全部位于共享的
-project Harness。新 worktree 先从 `AGENTS.md` 运行 connector；
-`project doctor --repair-links` 可补齐所有已存在 worktree 的链接。项目 Harness 不创建自己的
+project Harness。新 worktree 先从 `AGENTS.md` 运行 connector；删除 secondary worktree 前用
+同一 connector 的 detach 参数解除 Codex/Claude 链接。`project doctor --repair-links` 可补齐
+所有已存在 worktree 的链接。项目 Harness 不创建自己的
 Git、快照、回滚服务或守护进程。
 
 ## 生成目录

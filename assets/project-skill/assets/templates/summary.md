@@ -26,6 +26,12 @@ Pending.
 
 - Pending.
 
+## Prior Change Context (Optional)
+
+For post-close correction or continuation, name the related archived Change and summarize inherited
+decisions, superseded assumptions, remaining scope, and current-evidence revalidation. Remove this
+section when it does not apply.
+
 ## Validation
 
 - Status: unknown

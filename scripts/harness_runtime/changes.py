@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .contracts import validate_change_evidence
-from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, git, git_value, read_json, render, safe_relative, slugify, utc_now
+from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, git, git_value, is_link_like, read_json, reject_tree_links, remove_owned_tree, render, safe_relative, slugify, utc_now
 from .knowledge import knowledge_fingerprint_scan
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
@@ -48,8 +48,15 @@ def locate_change_evidence(skill_root: Path, change_id: str) -> tuple[str, Path]
     for state in ("active", "parking", "archive"):
         path = change_evidence_dir(skill_root, state, change_id)
         if path.is_dir():
+            if is_link_like(path):
+                raise HarnessError(f"Change evidence directory must be physical: {path}")
             return state, path
     return None, None
+
+def require_physical_change_evidence(path: Path, label: str) -> None:
+    if not path.is_dir() or is_link_like(path):
+        raise HarnessError(f"{label} must be a physical Change evidence directory: {path}")
+    reject_tree_links(path, label)
 
 def summary_metadata(text: str) -> dict[str, Any]:
     metadata: dict[str, Any] = {"modules": [], "paths": [], "tags": [], "decisions": [], "validation": []}
@@ -296,7 +303,7 @@ def change_new(args: argparse.Namespace) -> dict[str, Any]:
         rebuild_change_index(skill_root)
     except Exception:
         if created_target and target.exists():
-            shutil.rmtree(target)
+            remove_owned_tree(target, target.parent, "Failed Change evidence claim")
         current = read_json(record_path, {})
         if current.get("claim_token") == claim_token:
             record_path.unlink(missing_ok=True)
@@ -686,6 +693,7 @@ def change_close(args: argparse.Namespace) -> dict[str, Any]:
     evidence = source if source.exists() else destination
     if not evidence.exists():
         raise HarnessError("Change evidence exists in neither active nor archive state.")
+    require_physical_change_evidence(evidence, "Change close evidence")
     complete, missing = change_evidence_complete(evidence)
     if args.status == "completed":
         if missing:
@@ -710,8 +718,9 @@ def change_close(args: argparse.Namespace) -> dict[str, Any]:
             value["completion_commit"] = commit
     if source.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
+        if destination.exists() or is_link_like(destination):
             raise HarnessError(f"Archive Change directory already exists: {destination}")
+        require_physical_change_evidence(source, "Active Change evidence")
         shutil.move(str(source), str(destination))
     value["evidence_paths"] = [str(destination.relative_to(skill_root)).replace("\\", "/")]
     value["status"] = args.status
@@ -734,9 +743,8 @@ def change_park(args: argparse.Namespace) -> dict[str, Any]:
         raise HarnessError(f"Only a planning or active Change may be parked: {value.get('status')}")
     source = active_change_dir(skill_root, change_id)
     destination = parking_change_dir(skill_root, change_id)
-    if not source.is_dir():
-        raise HarnessError("Active Change evidence is missing.")
-    if destination.exists():
+    require_physical_change_evidence(source, "Active Change evidence")
+    if destination.exists() or is_link_like(destination):
         raise HarnessError(f"Parking Change directory already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))
@@ -771,9 +779,8 @@ def change_resume(args: argparse.Namespace) -> dict[str, Any]:
             value["base_commit"] = context["head"]
     source = parking_change_dir(skill_root, change_id)
     destination = active_change_dir(skill_root, change_id)
-    if not source.is_dir():
-        raise HarnessError("Parked Change evidence is missing.")
-    if destination.exists():
+    require_physical_change_evidence(source, "Parked Change evidence")
+    if destination.exists() or is_link_like(destination):
         raise HarnessError(f"Active Change directory already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source), str(destination))

@@ -29,6 +29,8 @@ does not rewrite stable L1/L2/L3 or global rules.
 3. Resolve conflicts, add compatibility edits, and update canonical business documents as needed.
 4. Record conflicts, human corrections, contract effects, documentation drift, and knowledge signals.
 5. Present combined diff, validation, review, and risks for I2.
+6. After Registry commit, verify and detach Codex/Claude project Harness links, reject unknown
+   directory Junctions, then remove the temporary worktree without `--force`.
 
 ## Outputs
 
@@ -45,9 +47,10 @@ temporary worktree is removed. Shared project knowledge waits for Evolution; aff
 ## Stop And Escalate
 
 Stop for missing completion evidence, nonlinear ranges, unresolved conflict, failed aggregate gate,
-missing I2, or an active shared writer owner.
+missing I2, an active shared writer owner, an unverifiable Harness link target, or an unknown
+directory Junction in the worktree being removed.
 
 ## Rules
 
-Apply HR-01, HR-04, HR-05, HR-06, HR-11, HR-15, HR-19, and HR-22 plus
+Apply HR-01, HR-04, HR-05, HR-06, HR-11, HR-15, HR-19, HR-22, and HR-25 plus
 `references/rules/by-stage/integrate.md`.

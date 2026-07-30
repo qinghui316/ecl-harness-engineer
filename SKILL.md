@@ -138,6 +138,7 @@ not block a Lane.
 | Architecture and mechanical checks | `references/architecture-diagrams.md`, `references/linter-templates.md` |
 | Audit dimensions, weights, and publication gate | `references/audit-rubric.json` |
 | Lane, Registry, contracts, exact commit ranges, I2 | `references/coordination-and-integration.md` |
+| Create, attach, detach, or remove a Git worktree | `references/project-skill-architecture.md`, `references/coordination-and-integration.md` |
 | Five-Change trigger, E1, Judge, publication | `references/evolution.md` |
 | Existing project Harness update | `references/migration.md` |
 | Runtime maintenance or traceback diagnosis | `references/runtime-modules.md` |
@@ -154,6 +155,8 @@ not block a Lane.
 - Integration applies selected `base_commit..completion_commit` ranges, not a long-lived Lane tip.
 - A fingerprint, Judge, validation, or publication failure leaves current Harness content intact.
 - Integration and Evolution share one writer lock; recovery resumes the recorded phase.
+- Before removing a secondary worktree, verify and detach its shared project Harness links. Stop if
+  their target identity or any remaining directory Junction cannot be proven safe.
 - Stop publication when a complete bundle still depends on repository prose or machine-specific
   paths, or when an executable artifact lacks explicit authorization and declared validation.
 

@@ -171,3 +171,15 @@ L2/L3 pages link an evidence-backed reference map, which records inspected commi
 structure, adaptation, boundaries, tests, and citations. The map points to the primary-worktree
 checkout; a secondary worktree follows the same project Harness links and detects source drift without
 a reference command, profile, or runtime loading state.
+
+## 18. Worktree Teardown Safety
+
+```text
+Remove a secondary test worktree that currently exposes the shared project Harness to Codex and
+Claude Code. The physical project Harness must remain available to the primary worktree.
+```
+
+Expected: read the worktree/Integration route, verify both link targets, detach only the two link
+nodes, reject unknown Windows directory Junctions, and then use non-force `git worktree remove`.
+Wrong targets or cleanup failures preserve the worktree and shared Harness for diagnosis and retry.
+An ordinary feature task does not run this teardown flow.

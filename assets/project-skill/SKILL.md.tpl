@@ -14,7 +14,7 @@ Use this project Harness when the current project id is `{{PROJECT_ID}}`. Its co
 2. Read the relevant L2 module or system pages, then follow linked L3 bridges and reference-source
    maps when the task crosses those boundaries.
 3. For explanation, navigation, or read-only source research, continue from project knowledge and
-   project knowledge and cited implementation evidence without running Registry commands.
+   cited implementation evidence without running Registry commands.
 4. Before planning or editing a repository mutation, run `{{CHANGE_COMMAND}} preflight
    --project-root <cwd>` and read the Lane, Registry, and current Change records it names.
 5. Read the current workflow and `references/rules/by-stage/<stage>.md` before making that stage's
@@ -41,7 +41,8 @@ If the detected project id differs, stop and locate the correct project Harness.
 
 Use `references/analysis-contract.md` for a semantic audit or E1 rescan. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
-`references/runtime-modules.md` only to maintain a helper or diagnose a traceback.
+`references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
+Integration workflow before creating, detaching, or removing a worktree.
 
 Rerun preflight after material path, contract, or baseline changes and before publish, close, or
 Integration. Run knowledge scan/check only for suspected drift, a related preflight signal, audit,

@@ -26,7 +26,11 @@ unless repository evidence conflicts with it.
    Registry events/contracts and current implementation evidence before relying on periodic L1/L2/L3 assertions.
 4. Record assumptions; ask at most three high-impact questions in one round, and only when their
    answers materially change implementation or safety.
-5. Create or reuse one Change for structured work and publish its initial scope.
+5. Create or reuse one Change for structured work and publish its initial scope. If the request
+   corrects or continues a terminal Change, read its archived summary, create a new Change, and
+   explain in the new spec or summary which accepted decisions still apply, which assumptions are
+   superseded, and what work remains. Recheck those facts against the current baseline, contracts,
+   and implementation; do not reopen or edit the archived evidence.
 
 ## Outputs
 

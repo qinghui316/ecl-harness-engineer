@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .changes import change_record_path, contract_record_path, load_change_record, load_contract_record
-from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_value, is_within, read_json, safe_relative, stable_hash, utc_now
+from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_value, is_within, read_json, safe_relative, stable_hash, tree_junctions, utc_now
+from .links import detach_worktree_links
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
 from .reviews import validate_integration_review
@@ -145,6 +146,25 @@ def validated_integration_worktree(skill_root: Path, record: dict[str, Any]) -> 
     if record.get("branch") != expected_branch:
         raise HarnessError("Integration Record branch does not match its id.")
     return worktree
+
+def remove_integration_worktree(
+    context: dict[str, Any],
+    skill_root: Path,
+    worktree: Path,
+) -> dict[str, dict[str, str]]:
+    detached = detach_worktree_links(worktree, skill_root)
+    junctions = tree_junctions(worktree)
+    if junctions:
+        relative = [path.relative_to(worktree).as_posix() for path in junctions]
+        raise HarnessError(
+            "Integration worktree still contains directory junctions after Harness detach: "
+            + ", ".join(relative)
+        )
+    result = git(context["project_root"], "worktree", "remove", str(worktree), check=False)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise HarnessError(f"Git could not remove the Integration worktree: {detail}")
+    return detached
 
 @guard_project_skill
 def integrate_start(args: argparse.Namespace) -> dict[str, Any]:
@@ -506,7 +526,7 @@ def integrate_complete(args: argparse.Namespace) -> dict[str, Any]:
 
         if phase == "registry_committed":
             if worktree.exists():
-                git(context["project_root"], "worktree", "remove", str(worktree))
+                remove_integration_worktree(context, skill_root, worktree)
             git(context["project_root"], "branch", "-d", record["branch"], check=False)
             record["landing_phase"] = "cleanup_complete"
             record["status"] = "integrated"
@@ -555,9 +575,13 @@ def integrate_abort(args: argparse.Namespace) -> dict[str, Any]:
     if worktree.exists():
         git(worktree, "merge", "--abort", check=False)
         git(worktree, "cherry-pick", "--abort", check=False)
-        result = git(context["project_root"], "worktree", "remove", str(worktree), check=False)
-        if result.returncode != 0:
-            raise HarnessError("Integration worktree has uncommitted edits; clean it before aborting.")
+        try:
+            remove_integration_worktree(context, skill_root, worktree)
+        except Exception as exc:
+            record["last_error"] = str(exc)
+            record["updated_at"] = utc_now()
+            atomic_write_json(path, record)
+            raise
     if record.get("branch"):
         git(context["project_root"], "branch", "-D", record["branch"], check=False)
     record["status"] = "aborted"

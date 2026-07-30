@@ -9,7 +9,6 @@ import os
 import re
 import secrets
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,8 +20,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .analysis import load_analysis_bundle
-from .changes import contract_record_path, ecl_integrity_findings
-from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git_value, is_within, read_json, run, safe_relative, stable_hash, utc_now
+from .changes import contract_record_path, ecl_integrity_findings, rebuild_change_index
+from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
 from .knowledge import context_source_fingerprints, knowledge_check_internal
@@ -79,12 +78,17 @@ def project_init(args: argparse.Namespace) -> dict[str, Any]:
             "skill_root": str(skill_root), "project_id": context["project_id"],
             "mode": context["mode"], "runtime_links": links, "routes": routes, **installed,
         }
-    except Exception:
+    except Exception as exc:
         restore_route_snapshots(route_snapshots)
         for link in reversed(created_links):
             remove_directory_link(link, skill_root)
         if skill_root.exists():
-            shutil.rmtree(skill_root, ignore_errors=True)
+            try:
+                remove_owned_tree(skill_root, skill_root.parent, "Failed project Harness initialization")
+            except Exception as cleanup_error:
+                raise HarnessError(
+                    f"Project initialization failed and owned cleanup was refused: {cleanup_error}"
+                ) from exc
         raise
 
 @guard_project_skill_read_only
@@ -278,6 +282,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         transaction: dict[str, Any] | None = None
         manifest_path = root / "state" / "manifest.json"
         snapshot_paths = [manifest_path, *sorted(registry_root(root).rglob("*.json"))]
+        if state_rebind:
+            snapshot_paths.append(root / "state" / "changes" / "INDEX.json")
         for lane in records(registry_root(root) / "lanes"):
             branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
             snapshot_paths.append(
@@ -288,7 +294,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         try:
             recover_content_transactions(root, "migration", context["project_id"])
             if candidate.exists():
-                shutil.rmtree(candidate)
+                remove_owned_tree(candidate, candidate.parent, "Migration staging candidate")
             candidate.parent.mkdir(parents=True, exist_ok=True)
             copy_non_state_skill(root, candidate)
             (candidate / "state").mkdir(parents=True, exist_ok=True)
@@ -332,6 +338,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             created_links.extend(new_links)
             routes, route_snapshots = ensure_all_project_routes(context, root)
             normalize_portable_state(root, context)
+            if state_rebind:
+                rebuild_change_index(root)
             manifest = read_json(manifest_path, {})
             if profile is not None:
                 manifest["analysis_status"] = profile.get("analysis_status")
@@ -341,7 +349,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             atomic_write_json(manifest_path, manifest)
             commit_content_transaction(transaction)
             transaction = None
-        except Exception:
+        except Exception as exc:
             restore_route_snapshots(route_snapshots)
             for link in reversed(created_links):
                 remove_directory_link(link, root)
@@ -349,7 +357,12 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                 rollback_content_transaction(transaction)
             restore_file_snapshots(state_snapshots)
             if candidate.exists():
-                shutil.rmtree(candidate, ignore_errors=True)
+                try:
+                    remove_owned_tree(candidate, candidate.parent, "Migration staging candidate")
+                except Exception as cleanup_error:
+                    raise HarnessError(
+                        f"Migration failed and candidate cleanup was refused: {cleanup_error}"
+                    ) from exc
             raise
         finally:
             release_writer(root, "migration", context["project_id"])

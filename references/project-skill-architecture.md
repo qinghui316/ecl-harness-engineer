@@ -43,6 +43,15 @@ the matching physical Harness, and creates only the current worktree links. It r
 identity mismatch, and existing-content collision. `project doctor --repair-links` diagnoses all
 current worktrees and repairs local links without storing a link inventory.
 
+Before removing a secondary worktree, run that worktree's connector in detach mode. The connector
+prevalidates both Codex and Claude paths against the marked physical Harness, removes only matching
+link nodes, and refuses physical content or a different target. Missing links are idempotent. Never
+detach the primary worktree path that physically owns the project Harness.
+
+Integration teardown follows one order: verify the shared target, detach both links, reject any
+remaining unknown Windows directory Junction, then use non-force `git worktree remove`. A failed
+verification or cleanup leaves the worktree available for diagnosis and retry.
+
 ## Portable Manifest
 
 `state/manifest.json` uses schema `2.0`:

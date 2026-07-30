@@ -10,6 +10,7 @@ import re
 import secrets
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -180,11 +181,36 @@ def render(value: str, replacements: dict[str, str]) -> str:
         value = value.replace("{{" + key + "}}", replacement)
     return value
 
-def is_link_like(path: Path) -> bool:
-    if path.is_symlink():
-        return True
+def windows_reparse_directory(path: Path) -> bool:
+    if os.name != "nt":
+        return False
     is_junction = getattr(os.path, "isjunction", None)
-    return bool(is_junction and is_junction(path))
+    if is_junction is not None:
+        try:
+            if is_junction(path):
+                return True
+        except OSError:
+            pass
+    try:
+        metadata = os.lstat(path)
+    except OSError:
+        return False
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    if not (getattr(metadata, "st_file_attributes", 0) & reparse_flag):
+        return False
+    return stat.S_ISDIR(metadata.st_mode) or not path.is_symlink()
+
+def is_link_like(path: Path) -> bool:
+    return path.is_symlink() or windows_reparse_directory(path)
+
+def unlink_directory_link_node(path: Path) -> None:
+    if path.is_symlink():
+        path.unlink()
+        return
+    if windows_reparse_directory(path):
+        os.rmdir(path)
+        return
+    raise HarnessError(f"Refusing to unlink a physical directory as a link: {path}")
 
 def reject_linked_ancestors(base: Path, target: Path, label: str) -> None:
     base_lexical = Path(os.path.abspath(base))
@@ -214,6 +240,36 @@ def reject_tree_links(root: Path, label: str) -> None:
                     raise HarnessError(f"{label} must not contain links: {path}")
                 if entry.is_dir(follow_symlinks=False):
                     pending.append(path)
+
+def tree_junctions(root: Path) -> list[Path]:
+    if not root.is_dir() or is_link_like(root):
+        return [root] if windows_reparse_directory(root) else []
+    found: list[Path] = []
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                if windows_reparse_directory(path):
+                    found.append(path)
+                elif entry.is_dir(follow_symlinks=False):
+                    pending.append(path)
+    return sorted(found, key=lambda item: item.as_posix())
+
+def remove_owned_tree(path: Path, owner_root: Path, label: str) -> None:
+    owner = Path(os.path.abspath(owner_root))
+    target = Path(os.path.abspath(path))
+    try:
+        target.relative_to(owner)
+    except ValueError as exc:
+        raise HarnessError(f"{label} cleanup escapes its owner root: {target}") from exc
+    if not target.exists() and not is_link_like(target):
+        return
+    if not target.is_dir() or is_link_like(target):
+        raise HarnessError(f"{label} cleanup target must be a physical directory: {target}")
+    reject_tree_links(target, label)
+    shutil.rmtree(target)
 
 def file_fingerprint(paths: Iterable[Path], root: Path | None = None) -> str:
     digest = hashlib.sha256()
