@@ -33,6 +33,8 @@ class HarnessCliTests(unittest.TestCase):
         self.cli_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.cli_module)
         self.runtime_analysis = importlib.import_module("harness_runtime.analysis")
+        self.runtime_changes = importlib.import_module("harness_runtime.changes")
+        self.runtime_contracts = importlib.import_module("harness_runtime.contracts")
         self.runtime_core = importlib.import_module("harness_runtime.core")
         self.runtime_evolution = importlib.import_module("harness_runtime.evolution")
         self.runtime_integration = importlib.import_module("harness_runtime.integration")
@@ -1634,7 +1636,12 @@ class HarnessCliTests(unittest.TestCase):
 
         self.cli(project, "change", "reindex")
         tasks = skill_root / "state" / "changes" / "archive" / "indexed-change" / "tasks.md"
-        tasks.write_text(tasks.read_text(encoding="utf-8") + "\nTBD\n", encoding="utf-8")
+        tasks.write_text(
+            tasks.read_text(encoding="utf-8").replace(
+                "validation: fixture validation", "validation: TBD",
+            ),
+            encoding="utf-8",
+        )
         audit_result = self.cli(project, "project", "audit")
         self.assertIn(
             "tampered_change_evidence",
@@ -2227,6 +2234,70 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertTrue(self.cli(project, "knowledge", "scan")["healthy"])
 
+    def test_scoped_preflight_fingerprints_only_related_unique_sources(self) -> None:
+        project = self.root / "scoped-fingerprints"
+        project.mkdir()
+        related = {
+            "direct": "src/direct/change.py",
+            "contract": "src/contract/affected.py",
+            "module": "src/jobs/service.py",
+        }
+        for source in related.values():
+            path = project / source
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"# {source}\n", encoding="utf-8")
+        unrelated_sources = []
+        for index in range(100):
+            source = f"src/unrelated/source-{index}.py"
+            unrelated_sources.append(source)
+            path = project / source
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"# {source}\n", encoding="utf-8")
+
+        skill_root = self.root / "scoped-skill"
+        wiki = skill_root / "references" / "project_wiki"
+        wiki.mkdir(parents=True)
+        items = [
+            {"id": "direct-item", "kind": "bridge", "source_fingerprints": {related["direct"]: "0" * 64}},
+            {"id": "contract-item", "kind": "bridge", "source_fingerprints": {related["contract"]: "0" * 64}},
+            {"id": "job-processing", "kind": "module", "source_fingerprints": {related["module"]: "0" * 64}},
+        ]
+        for index in range(597):
+            source = unrelated_sources[index % len(unrelated_sources)]
+            items.append({
+                "id": f"unrelated-{index}",
+                "kind": "bridge",
+                "source_fingerprints": {source: "0" * 64},
+            })
+        (wiki / "index.json").write_text(json.dumps({"items": items}, indent=2), encoding="utf-8")
+        context = self.runtime_project.project_context(project)
+        current = {"paths": ["src/direct"]}
+        contract = {"affected_paths": ["src/contract"], "owner_module": "job-processing"}
+
+        with mock.patch.object(
+            self.runtime_knowledge,
+            "source_fingerprint",
+            wraps=self.runtime_knowledge.source_fingerprint,
+        ) as fingerprint:
+            impacts, scope = self.runtime_changes.knowledge_drift_impacts(
+                skill_root, context, current, contract,
+            )
+        self.assertEqual(scope, {"candidate_items": 3, "checked_sources": 3})
+        self.assertEqual(fingerprint.call_count, 3)
+        self.assertEqual({item["knowledge_id"] for item in impacts}, {
+            "direct-item", "contract-item", "job-processing",
+        })
+
+        with mock.patch.object(
+            self.runtime_knowledge,
+            "source_fingerprint",
+            wraps=self.runtime_knowledge.source_fingerprint,
+        ) as fingerprint:
+            full = self.runtime_knowledge.knowledge_fingerprint_scan(skill_root, context)
+        self.assertEqual(full["checked"], 600)
+        self.assertEqual(full["unique_sources"], 103)
+        self.assertEqual(fingerprint.call_count, 103)
+
     def test_read_only_knowledge_waits_for_content_publication(self) -> None:
         project = self.create_git_project("read-lock")
         initialized = self.init_project(project, self.write_bundle(project, "read-lock"))
@@ -2426,7 +2497,10 @@ class HarnessCliTests(unittest.TestCase):
         implement = (ROOT / "assets" / "project-skill" / "references" / "workflows" / "implement.md").read_text(encoding="utf-8")
         runtime = (ROOT / "references" / "runtime-modules.md").read_text(encoding="utf-8")
         self.assertIn("explanation, navigation, or read-only source research", entry)
-        self.assertIn("Before planning or editing a repository mutation", entry)
+        self.assertIn("In single-Lane mode, Small Changes", entry)
+        self.assertIn("publish scope", entry)
+        self.assertIn("every repository mutation uses", entry)
+        self.assertIn("Single-Lane Small work does not require", intake)
         self.assertNotIn("preflight before classification", intake)
         self.assertNotIn("preflight` before source search", locate)
         self.assertNotIn("preflight` at stage entry", implement)
@@ -3336,6 +3410,70 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(baseline["canonical_branch"], "main")
         self.assertEqual(baseline["canonical_commit"], main_commit)
 
+    def test_baseline_relation_distinguishes_advancement_from_drift(self) -> None:
+        project = self.create_git_project("baseline-relations")
+        initial = self.git(project, "rev-parse", "HEAD")
+        initialized = self.init_project(project, self.write_bundle(project, "baseline-relations"))
+        advanced = self.commit_routes(project)
+        doctor = self.cli(project, "project", "doctor")
+        self.assertTrue(doctor["healthy"])
+        self.assertEqual(doctor["baseline"]["relation"], "canonical_advanced")
+        self.assertEqual(
+            self.runtime_core.git_baseline_relation(project, initial, advanced),
+            "canonical_advanced",
+        )
+        self.assertEqual(
+            self.runtime_core.git_baseline_relation(project, advanced, initial),
+            "worktree_behind",
+        )
+        self.assertEqual(
+            self.runtime_core.git_baseline_relation(project, advanced, advanced),
+            "equal",
+        )
+        self.assertEqual(
+            self.runtime_core.git_baseline_relation(project, "missing-commit", advanced),
+            "unavailable",
+        )
+
+        divergent_worktree = self.root / "baseline-divergent"
+        self.git(project, "worktree", "add", "-b", "baseline-divergent", str(divergent_worktree), initial)
+        (divergent_worktree / "divergent.txt").write_text("divergent\n", encoding="utf-8")
+        self.git(divergent_worktree, "add", "divergent.txt")
+        self.git(divergent_worktree, "commit", "-m", "create divergent baseline")
+        divergent = self.git(divergent_worktree, "rev-parse", "HEAD")
+        self.assertEqual(
+            self.runtime_core.git_baseline_relation(project, divergent, advanced),
+            "diverged",
+        )
+
+        baseline_path = Path(initialized["skill_root"]) / "state" / "registry" / "baseline.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        baseline["canonical_commit"] = divergent
+        baseline_path.write_text(json.dumps(baseline, indent=2), encoding="utf-8")
+        doctor = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertFalse(doctor["healthy"])
+        self.assertEqual(doctor["baseline"]["relation"], "diverged")
+        self.assertIn("canonical_baseline_diverged", {item["type"] for item in doctor["findings"]})
+
+        baseline["canonical_commit"] = "missing-commit"
+        baseline_path.write_text(json.dumps(baseline, indent=2), encoding="utf-8")
+        doctor = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertFalse(doctor["healthy"])
+        self.assertEqual(doctor["baseline"]["relation"], "unavailable")
+        self.assertIn("canonical_baseline_unavailable", {item["type"] for item in doctor["findings"]})
+
+        non_git = self.root / "baseline-non-git"
+        non_git.mkdir()
+        self.init_project(non_git)
+        self.assertEqual(
+            self.runtime_core.git_baseline_relation(non_git, None, None),
+            "not_applicable",
+        )
+        self.assertEqual(
+            self.cli(non_git, "project", "doctor")["baseline"]["relation"],
+            "not_applicable",
+        )
+
     def test_same_change_id_has_one_global_winner_across_lanes(self) -> None:
         project = self.create_git_project("atomic-change")
         initialized = self.init_project(project, self.write_bundle(project, "atomic-change"))
@@ -3409,6 +3547,86 @@ class HarnessCliTests(unittest.TestCase):
             expected=(2,),
         )
         self.assertIn("terminal", reopened["error"].lower())
+
+    def test_change_evidence_accepts_multiline_tasks_and_project_headings(self) -> None:
+        project = self.root / "flexible-evidence"
+        project.mkdir()
+        initialized = self.init_project(project)
+        skill_root = Path(initialized["skill_root"])
+        self.cli(project, "change", "new", "flexible", "--scope", "validate flexible evidence")
+        self.complete_change_documents(project, "flexible")
+        evidence = skill_root / "state" / "changes" / "active" / "flexible"
+        (evidence / "tasks.md").write_text(
+            "# Tasks: flexible\n\n"
+            "- [x] T001 [AC-001] Implement fixture behavior.\n"
+            "  - owner: fixture team\n"
+            "  - path: src/fixture.py\n"
+            "  - validation: targeted fixture check\n",
+            encoding="utf-8",
+        )
+        (evidence / "reviews" / "review.md").write_text(
+            "# 复审\n\n## 计划结论\n\n- Approved: yes\n\n"
+            "## 验证结果\n\n- 说明：历史示例可以提到 TBD，不表示当前字段未完成。\n",
+            encoding="utf-8",
+        )
+        valid, issues = self.runtime_contracts.validate_change_evidence(evidence)
+        self.assertTrue(valid, issues)
+        closed = self.cli(
+            project, "change", "close", "flexible", "--status", "completed",
+            "--validation", "targeted fixture check passed", "--validation-passed",
+        )
+        self.assertEqual(closed["status"], "closed")
+
+        self.cli(project, "change", "new", "invalid-fields", "--scope", "reject placeholders")
+        self.complete_change_documents(project, "invalid-fields")
+        invalid = skill_root / "state" / "changes" / "active" / "invalid-fields"
+        (invalid / "tasks.md").write_text(
+            "# Tasks: invalid-fields\n\n"
+            "- [x] T001 [AC-001] Implement fixture behavior.\n"
+            "  - owner: TBD\n"
+            "  - path: src/fixture.py\n"
+            "  - validation: command TBD\n",
+            encoding="utf-8",
+        )
+        valid, issues = self.runtime_contracts.validate_change_evidence(invalid)
+        self.assertFalse(valid)
+        self.assertIn("task T001 has no valid owner/path mapping", issues)
+        self.assertIn("task T001 has no valid validation mapping", issues)
+        spec = invalid / "spec.md"
+        spec.write_text(
+            spec.read_text(encoding="utf-8").replace(
+                "AC-001: fixture validation passes.", "AC-001: TBD",
+            ),
+            encoding="utf-8",
+        )
+        valid, issues = self.runtime_contracts.validate_change_evidence(invalid)
+        self.assertFalse(valid)
+        self.assertIn("acceptance criterion AC-001 has no completed value", issues)
+        plan = invalid / "plan.md"
+        plan.write_text(
+            plan.read_text(encoding="utf-8").replace(
+                "- Status: approved", "Historical text mentions Status: approved",
+            ),
+            encoding="utf-8",
+        )
+        review = invalid / "reviews" / "review.md"
+        review.write_text(
+            review.read_text(encoding="utf-8").replace(
+                "- Approved: yes", "An example mentions Approved: yes",
+            ),
+            encoding="utf-8",
+        )
+        valid, issues = self.runtime_contracts.validate_change_evidence(invalid)
+        self.assertFalse(valid)
+        self.assertIn("plan.md does not record an approved plan review", issues)
+        self.assertIn("reviews/review.md does not approve the plan", issues)
+        spec.write_text(
+            spec.read_text(encoding="utf-8") + "\n[NEEDS CLARIFICATION: ownership]\n",
+            encoding="utf-8",
+        )
+        valid, issues = self.runtime_contracts.validate_change_evidence(invalid)
+        self.assertFalse(valid)
+        self.assertIn("spec.md contains unresolved high-impact clarification", issues)
 
     def test_dirty_git_lane_can_resume_a_parked_change(self) -> None:
         project = self.create_git_project("dirty-resume")
@@ -4468,6 +4686,8 @@ class HarnessCliTests(unittest.TestCase):
         related_preflight = self.cli(related, "change", "preflight", "--change-id", "related-work")
         self.assertEqual(related_preflight["action"], "replan")
         self.assertEqual(related_preflight["knowledge"]["status"], "refresh-needed")
+        self.assertGreater(related_preflight["knowledge"]["candidate_items"], 0)
+        self.assertGreater(related_preflight["knowledge"]["checked_sources"], 0)
         self.assertTrue(related_preflight["baseline_impacts"])
         self.assertEqual(
             related_preflight["knowledge"]["fact_priority"][0],
@@ -4477,6 +4697,8 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(unrelated_preflight["baseline_relation"], "canonical_advanced")
         self.assertEqual(unrelated_preflight["action"], "continue")
         self.assertEqual(unrelated_preflight["knowledge"]["status"], "current-for-change-scope")
+        self.assertEqual(unrelated_preflight["knowledge"]["candidate_items"], 0)
+        self.assertEqual(unrelated_preflight["knowledge"]["checked_sources"], 0)
         event = json.loads(next(
             (Path(initialized["skill_root"]) / "state" / "registry" / "baseline-events").glob("*.json")
         ).read_text(encoding="utf-8"))

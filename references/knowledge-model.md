@@ -70,9 +70,11 @@ the running process; never persist them in manifest, Registry, INDEX, or knowled
 - Run them when source drift is suspected, preflight identifies related drift, or audit, migration,
   or E1 needs a mechanical knowledge report. Ordinary explanation, navigation, and source reading
   follow the document links without running a knowledge command.
-- L1/L2/L3 is a periodic AI index and can lag up to four integrated Changes. Every stage preflight
-  reads baseline events and related source drift. When the current Change touches an affected path,
-  module, or contract, return `refresh-needed/replan` rather than silently trusting stale Wiki text.
+- L1/L2/L3 is a periodic AI index and can lag up to four integrated Changes. Structured preflight
+  reads baseline events and fingerprints only the knowledge sources selected by current paths,
+  contract paths, and owner module. When those sources drift, return `refresh-needed/replan` rather
+  than silently trusting stale Wiki text. Full source scans belong to knowledge check, audit,
+  migration, or E1.
 - Resolve current facts in this order: Registry contracts/baseline events, shared current Change
   evidence, repository code/manifests/configuration/tests/interfaces, then L1/L2/L3. An unrelated baseline advancement
   does not force a Lane to stop.

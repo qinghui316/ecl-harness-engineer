@@ -15,8 +15,10 @@ Use this project Harness when the current project id is `{{PROJECT_ID}}`. Its co
    maps when the task crosses those boundaries.
 3. For explanation, navigation, or read-only source research, continue from project knowledge and
    cited implementation evidence without running Registry commands.
-4. Before planning or editing a repository mutation, run `{{CHANGE_COMMAND}} preflight
-   --project-root <cwd>` and read the Lane, Registry, and current Change records it names.
+4. Classify repository mutations before running commands. In single-Lane mode, Small Changes
+   proceed with targeted project verification. In multi-Lane mode, every repository mutation uses
+   a Structured Change so its paths are claimed before `{{CHANGE_COMMAND}} preflight
+   --project-root <cwd>` runs.
 5. Read the current workflow and `references/rules/by-stage/<stage>.md` before making that stage's
    decisions.
 
@@ -24,8 +26,8 @@ If the detected project id differs, stop and locate the correct project Harness.
 
 ## Classify Work
 
-- **Small:** local, low-risk work without contract, architecture, cross-module, release, permission,
-  data, or multi-step validation impact. A formal Change is optional.
+- **Small:** single-Lane, local, low-risk work without contract, architecture, cross-module, release,
+  permission, data, or multi-step validation impact. A formal Change and preflight are optional.
 - **Structured:** create one Change, publish scope and high-impact contracts, approve its plan,
   implement, verify, and close with complete evidence.
 
@@ -44,9 +46,10 @@ Use `references/analysis-contract.md` for a semantic audit or E1 rescan. Use
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
 
-Rerun preflight after material path, contract, or baseline changes and before publish, close, or
-Integration. Run knowledge scan/check only for suspected drift, a related preflight signal, audit,
-migration, or E1; these commands report evidence and never rewrite project knowledge.
+Rerun preflight after material path, contract, or baseline changes, before closing multi-Lane
+Structured work, and before Integration. Run knowledge scan/check only for suspected drift, a
+related preflight signal, audit, migration, or E1; these commands report evidence and never rewrite
+project knowledge.
 
 ## Stage Route
 

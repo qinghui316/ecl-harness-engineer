@@ -16,7 +16,7 @@ endpoint, persistence model, authentication scheme, package manager, or CI provi
 ## Deterministic Commands
 
 - Run `change new` for the bootstrap Structured Change, record its scope and paths, then run
-  `change preflight` before plan approval and again before implementation.
+  `change preflight` before plan approval and again only if paths, contracts, or baseline change.
 - Validate the approved plan and Change artifacts before implementation.
 - Run `python scripts/render_greenfield.py` for the one approved variant into an empty Worker output.
 - Run the new project's declared build, test, lint, typecheck, start, and scenario checks.

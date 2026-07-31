@@ -27,5 +27,8 @@ Not applicable or link the published contract record.
 
 ## Plan Review
 
+Set the status to `approved` only after the approach, impact, risks, and verification are substantive
+and all required semantic placeholders are resolved. The Runtime treats this value as Agent attestation.
+
 - Status: pending
 - Reviewer/evidence: TBD

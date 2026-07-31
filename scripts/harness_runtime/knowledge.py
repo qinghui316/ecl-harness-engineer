@@ -70,7 +70,11 @@ def context_source_fingerprints(context: dict[str, Any], sources: list[str]) -> 
             result[source] = source_fingerprint(path, base)
     return result
 
-def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dict[str, Any]:
+def knowledge_fingerprint_scan(
+    skill_root: Path,
+    context: dict[str, Any],
+    selected_sources: dict[str, set[str]] | None = None,
+) -> dict[str, Any]:
     index_path = skill_root / "references" / "project_wiki" / "index.json"
     index = read_json(index_path, None)
     if not isinstance(index, dict) or not isinstance(index.get("items"), list):
@@ -78,6 +82,7 @@ def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dic
 
     findings: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
+    source_results: dict[str, tuple[str, str | None]] = {}
     checked = 0
 
     def add(finding_type: str, item_id: Any, source: Any, **detail: Any) -> None:
@@ -92,6 +97,9 @@ def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dic
             add("invalid_source", None, None, detail="knowledge index item must be an object")
             continue
         item_id = item.get("id")
+        selected_for_item = None if selected_sources is None else selected_sources.get(str(item_id or ""))
+        if selected_sources is not None and selected_for_item is None:
+            continue
         fingerprints = item.get("source_fingerprints", {})
         if not isinstance(fingerprints, dict):
             add("invalid_fingerprint", item_id, None, detail="source_fingerprints must be an object")
@@ -107,21 +115,28 @@ def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dic
             except HarnessError as exc:
                 add("invalid_source", item_id, raw_source, detail=str(exc))
                 continue
+            if selected_for_item is not None and source not in selected_for_item:
+                continue
             if not isinstance(expected, str) or not FINGERPRINT_PATTERN.fullmatch(expected):
                 add("invalid_fingerprint", item_id, source, expected=expected)
                 continue
-            source_path, source_root = knowledge_source_location(context, source)
-            resolved_root = source_root.resolve()
-            resolved_source = source_path.resolve()
-            if not is_within(resolved_source, resolved_root):
-                add("outside_project", item_id, source, expected=expected)
-                continue
             checked += 1
-            if not source_path.is_file():
+            if source not in source_results:
+                source_path, source_root = knowledge_source_location(context, source)
+                resolved_root = source_root.resolve()
+                resolved_source = source_path.resolve()
+                if not is_within(resolved_source, resolved_root):
+                    source_results[source] = ("outside_project", None)
+                elif not source_path.is_file():
+                    source_results[source] = ("missing", None)
+                else:
+                    source_results[source] = ("current", source_fingerprint(source_path, source_root))
+            status, current = source_results[source]
+            if status == "outside_project":
+                add("outside_project", item_id, source, expected=expected)
+            elif status == "missing":
                 add("missing", item_id, source, expected=expected, current=None)
-                continue
-            current = source_fingerprint(source_path, source_root)
-            if current != expected:
+            elif current != expected:
                 add("changed", item_id, source, expected=expected, current=current)
 
     return {
@@ -129,6 +144,7 @@ def knowledge_fingerprint_scan(skill_root: Path, context: dict[str, Any]) -> dic
         "healthy": not findings,
         "stale": bool(findings),
         "checked": checked,
+        "unique_sources": len(source_results),
         "findings": findings,
     }
 
@@ -299,6 +315,7 @@ def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[
         "healthy": not findings,
         "stale": not fingerprint_scan["healthy"],
         "checked": fingerprint_scan["checked"],
+        "unique_sources": fingerprint_scan["unique_sources"],
         "findings": findings,
         "warnings": warnings,
         "items": len(index.get("items", [])),

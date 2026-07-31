@@ -29,9 +29,12 @@ Create a structured Change when work affects multiple modules/files, API/schema/
 permissions, architecture, release/runtime behavior, user-visible compatibility, plan review, or a
 multi-step validation chain; also create one when uncertainty prevents proving the work is local.
 
-A clearly local copy/comment/formatting or single-file fix may remain Small when it has no boundary,
-runtime, compatibility, or multi-step validation impact. Small work records assumptions and
-verification in the final response and does not count toward Evolution.
+A clearly local copy/comment/formatting or single-file fix may remain Small in single-Lane mode when
+it has no boundary, runtime, compatibility, or multi-step validation impact. Small work records
+assumptions and verification in the final response and does not count toward Evolution.
+
+In multi-Lane mode, every repository mutation is Structured. Without an atomic path claim, one Lane
+cannot prove that another Lane is not concurrently changing the same path.
 
 Decision order:
 
@@ -121,11 +124,13 @@ active -> abandoned -> archive
 
 ## Registry Preflight And Contracts
 
-Pure explanation, navigation, and read-only source research do not require preflight. For repository
-mutation, run it once after scope is understood and before planning or editing. Rerun after material
-path, contract, or baseline changes and before publish, close, or Integration; do not rerun before
-every source read or unchanged stage boundary. Publish project-relative paths. Require a contract
-for API, schema, event, configuration, permission, or module-boundary changes.
+Pure explanation, navigation, read-only source research, and single-Lane Small Changes do not require preflight.
+For Structured Changes, create or reuse one Change, publish its initial scope, then run preflight
+before plan approval or editing. Rerun after material path, contract, or baseline changes, before a
+multi-Lane close, and before Integration; do not rerun before every source read or unchanged stage
+boundary. Multi-Lane mutations and any work with Structured impact publish scope before editing.
+Publish project-relative paths. Require a contract for API, schema, event, configuration,
+permission, or module-boundary changes.
 
 Contracts record kind, stable subject, owner module, operation, affected paths, consumers,
 dependencies, compatibility, migration note, evidence, and status. Preflight identifies overlap,

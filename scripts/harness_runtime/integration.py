@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .changes import change_record_path, contract_record_path, load_change_record, load_contract_record
-from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_value, is_within, read_json, safe_relative, stable_hash, tree_junctions, utc_now
+from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_baseline_relation, git_value, is_within, read_json, safe_relative, stable_hash, tree_junctions, utc_now
 from .links import detach_worktree_links
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
@@ -76,8 +76,11 @@ def refresh_baseline_from_canonical(
     current = context.get("head")
     previous = baseline.get("canonical_commit")
     if current and previous and current != previous:
-        if git(context["project_root"], "merge-base", "--is-ancestor", previous, current, check=False).returncode != 0:
-            raise HarnessError("Canonical branch diverged from the Registry baseline; audit it before Integration.")
+        relation = git_baseline_relation(context["project_root"], previous, current)
+        if relation != "canonical_advanced":
+            raise HarnessError(
+                f"Canonical branch relation to the Registry baseline is {relation}; audit it before Integration."
+            )
         baseline["canonical_commit"] = current
         baseline["updated_at"] = utc_now()
         atomic_write_json(path, baseline)

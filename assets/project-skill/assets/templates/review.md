@@ -9,6 +9,9 @@
 
 ## Plan Review
 
+Set the approval field to `yes` only after completing substantive scope, implementation, findings,
+and validation review. The Runtime validates this attestation mechanically; it does not judge prose quality.
+
 - Approved: no
 - Open high-impact issue: none recorded
 - Spec gaps found from planning: none recorded

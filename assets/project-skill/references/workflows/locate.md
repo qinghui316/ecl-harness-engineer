@@ -14,8 +14,8 @@ allowed for locating code; implementation scope still requires source, contract,
 
 ## Deterministic Commands
 
-- Use the current preflight for repository-mutating work; pure navigation and source research do not
-  require one.
+- Use the current preflight for Structured and multi-Lane repository work; pure navigation, source
+  research, and single-Lane Small Changes do not require one.
 - Use repository-native search, symbol, dependency, and test discovery commands.
 - Run knowledge scan/check only when a selected L2/L3 page appears inconsistent with source.
 

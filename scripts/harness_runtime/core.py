@@ -120,6 +120,23 @@ def git_value(project_root: Path, *args: str) -> str | None:
         return None
     return result.stdout.strip() or None
 
+def git_baseline_relation(project_root: Path, recorded: str | None, current: str | None) -> str:
+    if git(project_root, "rev-parse", "--is-inside-work-tree", check=False).returncode != 0:
+        return "not_applicable"
+    if not recorded or not current:
+        return "unavailable"
+    recorded_commit = git_value(project_root, "rev-parse", "--verify", f"{recorded}^{{commit}}")
+    current_commit = git_value(project_root, "rev-parse", "--verify", f"{current}^{{commit}}")
+    if not recorded_commit or not current_commit:
+        return "unavailable"
+    if recorded_commit == current_commit:
+        return "equal"
+    if git(project_root, "merge-base", "--is-ancestor", recorded_commit, current_commit, check=False).returncode == 0:
+        return "canonical_advanced"
+    if git(project_root, "merge-base", "--is-ancestor", current_commit, recorded_commit, check=False).returncode == 0:
+        return "worktree_behind"
+    return "diverged"
+
 def atomic_write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not content.endswith("\n"):

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .contracts import validate_change_evidence
-from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, git, git_value, is_link_like, read_json, reject_tree_links, remove_owned_tree, render, safe_relative, slugify, utc_now
+from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, git, git_baseline_relation, git_value, is_link_like, read_json, reject_tree_links, remove_owned_tree, render, safe_relative, slugify, utc_now
 from .knowledge import knowledge_fingerprint_scan
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
@@ -416,10 +416,43 @@ def knowledge_drift_impacts(
     context: dict[str, Any],
     current: dict[str, Any],
     current_contract: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     wiki = skill_root / "references" / "project_wiki"
     index = read_json(wiki / "index.json", {})
-    scan = knowledge_fingerprint_scan(skill_root, context)
+    current_paths = [
+        normalize_claim(item)
+        for item in [
+            *current.get("paths", []),
+            *current_contract.get("affected_paths", []),
+        ]
+    ]
+    owner_module = current_contract.get("owner_module") if current_contract else None
+    selected_sources: dict[str, set[str]] = {}
+    for item in index.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("id") or "")
+        fingerprints = item.get("source_fingerprints", {})
+        if not item_id or not isinstance(fingerprints, dict):
+            continue
+        module_related = bool(
+            owner_module
+            and item.get("kind") == "module"
+            and item_id == slugify(str(owner_module))
+        )
+        related_sources = {
+            source for source in fingerprints
+            if isinstance(source, str)
+            and any(path_overlap(path, source) for path in current_paths)
+        }
+        if module_related:
+            related_sources.update(
+                source for source in fingerprints if isinstance(source, str)
+            )
+        if related_sources:
+            selected_sources[item_id] = related_sources
+
+    scan = knowledge_fingerprint_scan(skill_root, context, selected_sources)
     drift_by_item: dict[str, list[str]] = {}
     for finding in scan["findings"]:
         if finding["type"] not in {"changed", "missing"}:
@@ -428,8 +461,6 @@ def knowledge_drift_impacts(
         source = finding.get("source")
         if item_id and isinstance(source, str):
             drift_by_item.setdefault(item_id, []).append(source)
-    current_paths = [normalize_claim(item) for item in current.get("paths", [])]
-    owner_module = current_contract.get("owner_module") if current_contract else None
     impacts = []
     for item in index.get("items", []):
         if not isinstance(item, dict):
@@ -453,7 +484,10 @@ def knowledge_drift_impacts(
                 "related_sources": sorted(related_sources),
                 "reason": "module_owner" if module_related and not related_sources else "path_overlap",
             })
-    return impacts
+    return impacts, {
+        "candidate_items": len(selected_sources),
+        "checked_sources": scan["unique_sources"],
+    }
 
 @guard_project_skill
 def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
@@ -506,18 +540,13 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
     if current and context["mode"] == "multi_lane":
         base = current.get("base_commit")
         canonical = baseline.get("canonical_commit")
-        if base and canonical:
-            if base == canonical:
-                relation = "equal"
-            elif git(context["project_root"], "merge-base", "--is-ancestor", canonical, base, check=False).returncode == 0:
-                relation = "lane_ahead"
-            elif git(context["project_root"], "merge-base", "--is-ancestor", base, canonical, check=False).returncode == 0:
-                relation = "canonical_advanced"
-            else:
-                relation = "diverged"
+        relation = git_baseline_relation(context["project_root"], base, canonical)
     current_contract = load_contract_record(skill_root, change_id) if change_id else {}
     baseline_impacts = baseline_event_impacts(skill_root, context, current, current_contract) if current else []
-    drift_impacts = knowledge_drift_impacts(skill_root, context, current, current_contract) if current else []
+    drift_impacts, drift_scope = (
+        knowledge_drift_impacts(skill_root, context, current, current_contract)
+        if current else ([], {"candidate_items": 0, "checked_sources": 0})
+    )
     refresh_needed = bool(baseline_impacts or drift_impacts)
     return {
         "project_id": context["project_id"], "mode": context["mode"], "lane": lane,
@@ -525,11 +554,12 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
         "historical_overlaps": historical_overlaps,
         "baseline": baseline,
         "baseline_relation": relation,
-        "baseline_advanced": relation in {"canonical_advanced", "diverged"},
+        "baseline_advanced": relation == "canonical_advanced",
         "baseline_impacts": baseline_impacts,
         "knowledge": {
             "model": "periodic_index",
             "status": "refresh-needed" if refresh_needed else "current-for-change-scope",
+            **drift_scope,
             "drift_impacts": drift_impacts,
             "fact_priority": [
                 "registry contracts and baseline events",
@@ -538,7 +568,7 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
                 "L1/L2/L3 periodic index",
             ],
         },
-        "action": "replan" if conflicts or refresh_needed or relation == "diverged" else "continue",
+        "action": "replan" if conflicts or refresh_needed or relation in {"diverged", "unavailable"} else "continue",
     }
 
 def validate_contract(contract: dict[str, Any], change_id: str) -> None:

@@ -366,7 +366,7 @@ def route_replacements(context: dict[str, Any]) -> tuple[dict[str, str], str, st
     connector_guidance = (
         "If this is a newly created worktree and the Skill is not discoverable yet, run:\n\n"
         f"```text\n{connector_command}\n```\n\n"
-        "Then reload the project Harness and run its Registry preflight before planning or implementation. "
+        "Then reload the project Harness; single-Lane Small Changes use targeted verification, while Structured and multi-Lane repository work publish scope and run Registry preflight. "
         "Before removing this secondary worktree, detach its shared Skill links with:\n\n"
         f"```text\n{detach_command}\n```"
         if context["mode"] == "multi_lane"

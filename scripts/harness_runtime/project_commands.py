@@ -21,7 +21,7 @@ from typing import Any, Iterable
 
 from .analysis import load_analysis_bundle
 from .changes import contract_record_path, ecl_integrity_findings, rebuild_change_index
-from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
+from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git_baseline_relation, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
 from .knowledge import context_source_fingerprints, knowledge_check_internal
@@ -461,11 +461,22 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
         except ValueError:
             findings.append({"type": "invalid_lane_timestamp", "lane_id": lane.get("lane_id")})
     baseline = read_json(registry_root(root) / "baseline.json", {})
-    if context.get("branch") == baseline.get("canonical_branch") and context.get("head") != baseline.get("canonical_commit"):
-        findings.append({
-            "type": "canonical_baseline_drift",
-            "recorded": baseline.get("canonical_commit"), "current": context.get("head"),
-        })
+    baseline_relation = "not_applicable"
+    if context.get("mode") == "multi_lane" and context.get("branch") == baseline.get("canonical_branch"):
+        baseline_relation = git_baseline_relation(
+            context["project_root"], baseline.get("canonical_commit"), context.get("head"),
+        )
+        finding_types = {
+            "worktree_behind": "canonical_worktree_behind",
+            "diverged": "canonical_baseline_diverged",
+            "unavailable": "canonical_baseline_unavailable",
+        }
+        if baseline_relation in finding_types:
+            findings.append({
+                "type": finding_types[baseline_relation],
+                "recorded": baseline.get("canonical_commit"),
+                "current": context.get("head"),
+            })
     owner = registry_root(root) / "locks" / "evolution-owner"
     evolution = read_json(root / "state" / "evolution" / "state.json", {})
     if owner.exists() and not evolution.get("pending"):
@@ -513,6 +524,12 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "healthy": not findings,
         "findings": findings,
+        "baseline": {
+            "relation": baseline_relation,
+            "recorded": baseline.get("canonical_commit"),
+            "current": context.get("head"),
+            "canonical_branch": baseline.get("canonical_branch"),
+        },
         "runtime_links": [],
         "repaired_routes": repaired_routes,
     }

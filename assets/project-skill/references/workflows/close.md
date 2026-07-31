@@ -12,6 +12,8 @@ passing validation; Git state and Integration intent do not determine whether th
 
 ## Deterministic Commands
 
+- In multi-Lane mode, rerun `change preflight` for a Structured Change before close. Single-Lane
+  work reruns it only after material path, contract, or baseline changes.
 - Run `check_stage_artifacts.py --stage close`.
 - Run `change close` once to validate evidence and archive the terminal Change.
 - Rebuild the Skill-owned Change INDEX after every terminal close.

@@ -4,7 +4,7 @@
 
 ## HR-01: Read Applicable Current State
 
-Read critical rules and relevant project knowledge for every task. Before planning or editing repository mutations, also read the current workflow and Registry preflight; pure explanation, navigation, and source research do not require preflight.
+Read critical rules and relevant project knowledge for every task. Structured work and every multi-Lane repository mutation read the current workflow and run Registry preflight after publishing initial scope; pure explanation, source research, and single-Lane Small Changes do not require preflight.
 
 **On violation:** Stop and load the applicable knowledge, workflow, and shared state before continuing.
 

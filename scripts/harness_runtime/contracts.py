@@ -9,9 +9,25 @@ SECRET_FIELD_RE = re.compile(
     r"(?:^|_)(?:value|secret|password|passwd|token|api_key|private_key|credential|connection_string)(?:$|_)",
     re.IGNORECASE,
 )
-UNRESOLVED_RE = re.compile(r"\bTBD\b|\[NEEDS CLARIFICATION\s*:", re.IGNORECASE)
+CLARIFICATION_RE = re.compile(r"\[NEEDS CLARIFICATION\s*:", re.IGNORECASE)
 TASK_RE = re.compile(r"^- \[(?P<done>[ xX])\]\s+(?P<task>T\d{3,})\b(?P<body>.*)$")
 AC_RE = re.compile(r"\bAC-\d{3,}\b")
+AC_DEFINITION_RE = re.compile(
+    r"^\s*[-*]\s*(?P<id>AC-\d{3,})\s*:\s*(?P<value>.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def task_field_value(block: str, field: str) -> str | None:
+    match = re.search(
+        rf"(?:^|[;\n])\s*(?:[-*]\s*)?{field}\s*:\s*([^;\n]+)",
+        block,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    value = match.group(1).strip()
+    return None if not value or re.search(r"\bTBD\b", value, re.IGNORECASE) else value
 
 
 def audit_rubric_path(skill_root: Path | None = None) -> Path:
@@ -193,49 +209,57 @@ def validate_change_evidence(path: Path) -> tuple[bool, list[str]]:
         return False, [f"missing {name}" for name in issues]
 
     texts = {name: (path / name).read_text(encoding="utf-8") for name in required}
-    for name, text in texts.items():
-        if UNRESOLVED_RE.search(text):
-            issues.append(f"{name} contains unresolved TBD or clarification")
+    if CLARIFICATION_RE.search(texts["spec.md"]):
+        issues.append("spec.md contains unresolved high-impact clarification")
 
     plan = texts["plan.md"]
     review = texts["reviews/review.md"]
-    if not re.search(r"(?:Status:\s*approved|Approved:\s*yes)", plan, re.IGNORECASE):
+    if not re.search(
+        r"^\s*[-*]\s*(?:Status:\s*approved|Approved:\s*yes)\s*$",
+        plan,
+        re.IGNORECASE | re.MULTILINE,
+    ):
         issues.append("plan.md does not record an approved plan review")
-    if not re.search(r"Approved:\s*yes", review, re.IGNORECASE):
+    if not re.search(
+        r"^\s*[-*]\s*Approved:\s*yes\s*$",
+        review,
+        re.IGNORECASE | re.MULTILINE,
+    ):
         issues.append("reviews/review.md does not approve the plan")
-    spec_acs = set(AC_RE.findall(texts["spec.md"]))
+    acceptance_definitions = list(AC_DEFINITION_RE.finditer(texts["spec.md"]))
+    spec_acs = {match.group("id").upper() for match in acceptance_definitions}
+    for match in acceptance_definitions:
+        value = match.group("value").strip()
+        if not value or re.search(r"\bTBD\b", value, re.IGNORECASE):
+            issues.append(f"acceptance criterion {match.group('id').upper()} has no completed value")
     task_acs: set[str] = set()
-    task_count = 0
+    task_blocks: list[tuple[re.Match[str], list[str]]] = []
     for line in texts["tasks.md"].splitlines():
         match = TASK_RE.match(line.strip())
-        if not match:
-            continue
-        task_count += 1
+        if match:
+            task_blocks.append((match, [match.group("body")]))
+        elif task_blocks:
+            task_blocks[-1][1].append(line)
+    for match, block_lines in task_blocks:
+        block = "\n".join(block_lines)
+        task_id = match.group("task")
         if match.group("done").lower() != "x":
-            issues.append(f"unfinished task {match.group('task')}")
-        body = match.group("body")
-        task_acs.update(AC_RE.findall(body))
-        if "owner/path" not in body.lower() and not ("owner:" in body.lower() and "path:" in body.lower()):
-            issues.append(f"task {match.group('task')} has no owner/path mapping")
-        if "validation" not in body.lower():
-            issues.append(f"task {match.group('task')} has no validation mapping")
-    if not task_count:
+            issues.append(f"unfinished task {task_id}")
+        task_acs.update(item.upper() for item in AC_RE.findall(block))
+        owner_path = task_field_value(block, "owner/path")
+        owner = task_field_value(block, "owner")
+        target_path = task_field_value(block, "path")
+        if not owner_path and not (owner and target_path):
+            issues.append(f"task {task_id} has no valid owner/path mapping")
+        if not task_field_value(block, "validation"):
+            issues.append(f"task {task_id} has no valid validation mapping")
+    if not task_blocks:
         issues.append("tasks.md contains no structured tasks")
     for acceptance in sorted(spec_acs - task_acs):
         issues.append(f"acceptance criterion {acceptance} has no task mapping")
     if not spec_acs:
         issues.append("spec.md contains no acceptance criterion")
 
-    required_review_markers = (
-        "## Code And Validation",
-        "Commands and outcomes:",
-        "Failure attribution:",
-        "## Scope And Contract",
-        "## Knowledge And Evolution Signals",
-    )
-    for marker in required_review_markers:
-        if marker.lower() not in review.lower():
-            issues.append(f"reviews/review.md is missing {marker}")
     return not issues, issues
 
 

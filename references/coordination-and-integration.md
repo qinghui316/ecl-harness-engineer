@@ -78,9 +78,10 @@ to match its filename. Claim a new Change id with exclusive create, then create 
 on failure remove only artifacts owned by that claim. A terminal Change cannot be reopened by
 publish. Dirty worktree content is an Agent scope question, not a Change lifecycle failure.
 
-Compare Change base and canonical baseline by Git ancestry: `equal`, `lane_ahead`,
-`canonical_advanced`, or `diverged`. A plain hash mismatch is not enough to claim canonical
-advancement.
+Compare recorded and current commits by Git ancestry: `equal`, `canonical_advanced`,
+`worktree_behind`, `diverged`, `unavailable`, or `not_applicable`. Normal canonical advancement is
+informational; divergence or an unavailable commit requires repair. A plain hash mismatch is not
+enough to claim drift.
 
 ## Integration
 

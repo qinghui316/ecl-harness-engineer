@@ -32,17 +32,24 @@
 8. High-impact contracts detect same-subject/dependency/path conflicts; unrelated work continues.
 9. Git close archives complete validated evidence without requiring a commit or clean worktree;
    an optional commit boundary remains available for later Integration.
-10. User-started Integration applies exact selected ranges, permits Integrator edits, binds
+10. Single-Lane Small Changes use targeted project validation without Registry preflight. Every
+    multi-Lane mutation is Structured and claims paths atomically; Structured preflight fingerprints
+    only sources related by scoped paths, contracts, or owner module and reads each unique source once.
+11. Change evidence permits project-language review headings and multiline task metadata while
+    still rejecting unresolved high-impact clarification, incomplete tasks, missing AC mapping,
+    empty/TBD acceptance or owner/path/validation fields, or failed plan/review/validation gates.
+12. User-started Integration applies exact selected ranges, permits Integrator edits, binds
     validation/review to the exact candidate commit, waits for I2, and never refreshes Wiki or
     enters Evolution count.
-11. The fifth eligible Change creates one pending window; later Changes queue.
-12. E1-only Evolution stages a complete candidate, independently scores it, has no E2, preserves
+13. The fifth eligible Change creates one pending window; later Changes queue.
+14. E1-only Evolution stages a complete candidate, independently scores it, has no E2, preserves
     Change archive/INDEX/Registry, and atomically keeps/rejects/noops.
-13. Related baseline/knowledge drift returns refresh-needed/replan with Registry/current
-    Change/canonical facts above periodic Wiki.
-14. Non-Git to Git transition preserves project identity and state, rebinds Lane ownership to the
+15. Related baseline/knowledge drift returns refresh-needed/replan with Registry/current
+    Change/canonical facts above periodic Wiki. Normal canonical advancement is informational;
+    behind, diverged, or unverifiable baselines remain explicit findings where applicable.
+16. Non-Git to Git transition preserves project identity and state, rebinds Lane ownership to the
     named branch, attaches current worktrees, and leaves a future-worktree connector.
-15. Init and migrate use one renderer and produce the same project Harness ownership model.
+17. Init and migrate use one renderer and produce the same project Harness ownership model.
 
 ## Adversarial And Recovery Scenarios
 
