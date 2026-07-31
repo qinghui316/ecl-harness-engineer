@@ -116,8 +116,8 @@ Judgment, Deterministic Commands, Actions, Outputs, Exit, Stop And Escalate, and
   Change instead of hiding them.
 - Verify classifies introduced, pre-existing, environmental, and blocked failures and records
   command, working directory, exit result, and acceptance evidence.
-- Close validates complete project Harness evidence, binds Git work to an exact clean completion
-  commit, archives the Change in the Skill, and rebuilds INDEX.
+- Close validates complete project Harness evidence, archives the Change in the Skill, and rebuilds
+  INDEX without requiring Git; an optional boundary can be recorded for later Integration.
 - Integrate applies selected exact commit ranges, permits Integrator corrections, runs aggregate
   validation/review, and waits for I2.
 - Evolve freezes five qualified Changes after E1, performs Promote/Retain/Merge/Retire/Archive-only,

@@ -168,7 +168,7 @@ def ecl_integrity_findings(skill_root: Path) -> list[dict[str, Any]]:
         active_id = lane.get("active_change_id")
         if active_id:
             record = by_id.get(active_id)
-            if not record or record.get("lane_id") != lane.get("lane_id") or record.get("status") not in {"planning", "active", "closing"}:
+            if not record or record.get("lane_id") != lane.get("lane_id") or record.get("status") not in {"planning", "active"}:
                 findings.append({"type": "lane_active_change_mismatch", "lane_id": lane.get("lane_id"), "change_id": active_id})
     index = read_json(changes_root(skill_root) / "INDEX.json", {})
     expected_index = computed_change_index(skill_root)
@@ -251,17 +251,15 @@ def change_new(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
     skill_root = require_skill(context, args)
     change_id = canonical_id(args.change_id, "Change id")
-    if context["mode"] == "multi_lane" and git(context["project_root"], "status", "--porcelain").stdout.strip():
-        raise HarnessError("Git worktree must be clean before creating a Change so base_commit is unambiguous.")
     existing = change_records(skill_root)
     if context["mode"] == "single_lane" and any(item.get("status") in {"planning", "active"} for item in existing):
         raise HarnessError("Single-Lane mode already has an active Change.")
     current_lane_id = lane_id(context)
     if any(
-        item.get("lane_id") == current_lane_id and item.get("status") in {"planning", "active", "closing"}
+        item.get("lane_id") == current_lane_id and item.get("status") in {"planning", "active"}
         for item in existing
     ):
-        raise HarnessError("This Lane already has an active or closing Change.")
+        raise HarnessError("This Lane already has an active Change.")
     target = active_change_dir(skill_root, change_id)
     if target.exists():
         raise HarnessError(f"Active Change directory already exists: {target}")
@@ -284,7 +282,7 @@ def change_new(args: argparse.Namespace) -> dict[str, Any]:
         "contract_path": None,
         "evidence_paths": [str(target.relative_to(skill_root)).replace("\\", "/")],
         "integrated_by": None,
-        "integration_status": "not_integrated",
+        "integration_status": "not_requested",
         "repository_mode": context["mode"],
         "created_at": utc_now(),
         "updated_at": utc_now(),
@@ -466,11 +464,12 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
     change_id = canonical_id(requested_change_id, "Change id") if requested_change_id else None
     current = load_change_record(skill_root, change_id, required=bool(args.change_id)) if change_id else {}
     conflicts = []
+    historical_overlaps = []
     for other in change_records(skill_root):
         if (
             other.get("change_id") == change_id
             or other.get("integrated_by")
-            or other.get("status") not in {"planning", "active", "closing", "completed"}
+            or other.get("status") not in {"planning", "active", "completed"}
         ):
             continue
         overlaps = sorted({
@@ -480,7 +479,8 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
             if path_overlap(left, right)
         })
         if overlaps:
-            conflicts.append({"type": "path", "other_change_id": other.get("change_id"), "details": overlaps})
+            finding = {"type": "path", "other_change_id": other.get("change_id"), "details": overlaps}
+            (historical_overlaps if other.get("status") == "completed" else conflicts).append(finding)
     if context["mode"] == "multi_lane":
         current_contract = load_contract_record(skill_root, change_id) if change_id else {}
         for other in contract_records(skill_root):
@@ -489,17 +489,18 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
                 other.get("change_id") == change_id
                 or other.get("status") in {"retired", "integrated"}
                 or other_change.get("integrated_by")
-                or other_change.get("status") not in {"planning", "active", "closing", "completed"}
+                or other_change.get("status") not in {"planning", "active", "completed"}
             ):
                 continue
             same_subject = current_contract and current_contract.get("subject") == other.get("subject")
             dependency = other.get("subject") in current_contract.get("depends_on", []) if current_contract else False
             reverse_dependency = current_contract.get("subject") in other.get("depends_on", []) if current_contract else False
             if same_subject or dependency or reverse_dependency:
-                conflicts.append({
+                finding = {
                     "type": "contract", "other_change_id": other.get("change_id"),
                     "subject": other.get("subject"), "relationship": "same_subject" if same_subject else "dependency",
-                })
+                }
+                (historical_overlaps if other_change.get("status") == "completed" else conflicts).append(finding)
     baseline = read_json(registry_root(skill_root) / "baseline.json", {})
     relation = "not_applicable"
     if current and context["mode"] == "multi_lane":
@@ -521,6 +522,7 @@ def change_preflight(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "project_id": context["project_id"], "mode": context["mode"], "lane": lane,
         "change": current or None, "conflicts": conflicts,
+        "historical_overlaps": historical_overlaps,
         "baseline": baseline,
         "baseline_relation": relation,
         "baseline_advanced": relation in {"canonical_advanced", "diverged"},
@@ -564,8 +566,8 @@ def change_publish(args: argparse.Namespace) -> dict[str, Any]:
     path = change_record_path(skill_root, change_id)
     value = load_change_record(skill_root, change_id, required=True)
     require_change_owner(context, value)
-    if value.get("status") in TERMINAL_CHANGE_STATUSES | {"closing"}:
-        raise HarnessError(f"Terminal or closing Change cannot be published: {value.get('status')}")
+    if value.get("status") in TERMINAL_CHANGE_STATUSES:
+        raise HarnessError(f"Terminal Change cannot be published: {value.get('status')}")
     if args.scope is not None:
         value["scope"] = args.scope
     if args.paths is not None:
@@ -658,18 +660,26 @@ def evolve_check_internal(skill_root: Path) -> dict[str, Any]:
 def change_evidence_complete(path: Path) -> tuple[bool, list[str]]:
     return validate_change_evidence(path)
 
-def validate_completion_commit(context: dict[str, Any], value: dict[str, Any], commit: str) -> None:
+def validate_completion_commit(context: dict[str, Any], value: dict[str, Any], commit: str) -> str:
     root: Path = context["project_root"]
-    if not git_value(root, "rev-parse", "--verify", f"{commit}^{{commit}}"):
+    resolved = git_value(root, "rev-parse", "--verify", f"{commit}^{{commit}}")
+    if not resolved:
         raise HarnessError(f"Completion commit does not exist: {commit}")
-    head = git_value(root, "rev-parse", "HEAD")
-    if head != commit:
-        raise HarnessError("Completion commit must equal the current Lane HEAD when the Change closes.")
     base = value.get("base_commit")
-    if base and git(root, "merge-base", "--is-ancestor", base, commit, check=False).returncode != 0:
+    if not base:
+        raise HarnessError("Completion commit cannot be recorded because the Change has no Git base commit.")
+    if git(root, "merge-base", "--is-ancestor", base, resolved, check=False).returncode != 0:
         raise HarnessError("Completion commit is not descended from the Change base commit.")
-    if git(root, "status", "--porcelain").stdout.strip():
-        raise HarnessError("Worker worktree must be clean when recording the completion commit.")
+    head = git_value(root, "rev-parse", "HEAD")
+    if not head or git(root, "merge-base", "--is-ancestor", resolved, head, check=False).returncode != 0:
+        raise HarnessError("Completion commit is not reachable from the current Lane HEAD.")
+    commits = [line for line in git(root, "rev-list", "--reverse", f"{base}..{resolved}").stdout.splitlines() if line]
+    if not commits:
+        raise HarnessError("Completion commit produces an empty Change range.")
+    for candidate in commits:
+        if len(git(root, "rev-list", "--parents", "-n", "1", candidate).stdout.split()) > 2:
+            raise HarnessError(f"Completion range contains merge commit {candidate}; use a linear Change range.")
+    return resolved
 
 @guard_project_skill
 def change_close(args: argparse.Namespace) -> dict[str, Any]:
@@ -700,22 +710,10 @@ def change_close(args: argparse.Namespace) -> dict[str, Any]:
             raise HarnessError(f"Completed Change evidence is incomplete: {'; '.join(missing)}")
         if not (args.validation or value.get("validation")) or not (args.validation_passed or value.get("validation_passed")):
             raise HarnessError("Completed Change requires passing validation evidence.")
-        if context["mode"] == "multi_lane":
-            commit = args.completion_commit or value.get("completion_commit")
-            if not commit:
-                value["status"] = "closing"
-                value["evidence_complete"] = complete
-                value["updated_at"] = utc_now()
-                atomic_write_json(path, value)
-                rebuild_change_index(skill_root)
-                return {
-                    "status": "prepared_for_completion_commit",
-                    "change": value,
-                    "next": "Commit the business implementation, then rerun close with the exact clean HEAD via --completion-commit.",
-                    "missing_evidence": missing,
-                }
-            validate_completion_commit(context, value, commit)
-            value["completion_commit"] = commit
+        if args.completion_commit:
+            if context["mode"] != "multi_lane":
+                raise HarnessError("Completion commit metadata is only available for Git-backed Changes.")
+            value["completion_commit"] = validate_completion_commit(context, value, args.completion_commit)
     if source.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists() or is_link_like(destination):
@@ -730,7 +728,12 @@ def change_close(args: argparse.Namespace) -> dict[str, Any]:
     ensure_lane(skill_root, context, None)
     rebuild_change_index(skill_root)
     evolution = evolve_check_internal(skill_root)
-    return {"status": "closed", "change": value, "evolution": evolution}
+    return {
+        "status": "closed",
+        "change": value,
+        "integration_boundary": "recorded" if value.get("completion_commit") else "not_recorded",
+        "evolution": evolution,
+    }
 
 @guard_project_skill
 def change_park(args: argparse.Namespace) -> dict[str, Any]:
@@ -768,13 +771,11 @@ def change_resume(args: argparse.Namespace) -> dict[str, Any]:
     active_on_lane = [
         item for item in change_records(skill_root)
         if item.get("lane_id") == current_lane_id
-        and item.get("status") in {"planning", "active", "closing"}
+        and item.get("status") in {"planning", "active"}
     ]
     if active_on_lane:
-        raise HarnessError("This Lane already has an active or closing Change.")
+        raise HarnessError("This Lane already has an active Change.")
     if context["mode"] == "multi_lane":
-        if git(context["project_root"], "status", "--porcelain").stdout.strip():
-            raise HarnessError("Git worktree must be clean before a parked Change can resume on this Lane.")
         if not value.get("base_commit"):
             value["base_commit"] = context["head"]
     source = parking_change_dir(skill_root, change_id)

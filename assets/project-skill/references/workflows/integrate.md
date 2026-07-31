@@ -2,7 +2,7 @@
 
 ## Inputs
 
-- User-selected completed Changes, canonical baseline, exact completion commits, and contracts.
+- User-selected completed Changes, canonical baseline, exact commit boundaries, and contracts.
 - Current Integration records, Registry conflicts, aggregate checks, and review requirements.
 
 ## Agent Judgment
@@ -13,7 +13,8 @@ does not rewrite stable L1/L2/L3 or global rules.
 
 ## Deterministic Commands
 
-- Run `integrate start` to create the record and temporary worktree.
+- Run `integrate start`, supplying `--completion-commit <change-id>=<sha>` for each selected Change
+  that did not record an optional boundary at close.
 - Use `integrate status --resume` after resolving a recorded cherry-pick conflict.
 - Run aggregate project verification and independent review against one exact candidate commit.
 - Have an independent reviewer write the `assets/templates/integration-review.json` shape, bound
@@ -46,7 +47,7 @@ temporary worktree is removed. Shared project knowledge waits for Evolution; aff
 
 ## Stop And Escalate
 
-Stop for missing completion evidence, nonlinear ranges, unresolved conflict, failed aggregate gate,
+Stop for a selected Change without an exact commit boundary, nonlinear ranges, unresolved conflict, failed aggregate gate,
 missing I2, an active shared writer owner, an unverifiable Harness link target, or an unknown
 directory Junction in the worktree being removed.
 

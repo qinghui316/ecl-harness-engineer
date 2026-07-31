@@ -41,8 +41,8 @@ environmental validation, parks, resumes, and completes. What evidence and gates
 
 Expected: intake classification, at most three high-impact questions, WHAT/WHY spec, HOW plan,
 spec-gap feedback, plan review, AC-task-validation traceability, environmental failure attribution,
-park/resume, review, summary, exact completion binding, and generated INDEX. Evidence stays in
-project Harness `state/changes`, not business Git.
+park/resume, review, summary, optional close-time commit metadata, Integration-time exact ranges,
+and generated INDEX. Evidence stays in project Harness `state/changes`, not business Git.
 
 ## 5. Selective History
 

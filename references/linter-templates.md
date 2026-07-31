@@ -69,7 +69,7 @@ Validate:
 - required `summary/spec/plan/tasks/reviews/review` evidence;
 - resolved clarification and approved plan;
 - AC-to-task/owner/path/validation mapping;
-- completed tasks, review coverage, validation result, and completion commit;
+- completed tasks, review coverage, validation result, and optional Integration notes;
 - Change directory, Registry status, record identity, and INDEX agreement;
 - active/parking/archive state and generated INDEX freshness.
 

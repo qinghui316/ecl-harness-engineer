@@ -14,7 +14,7 @@ Detect an evidence-limited project
 -> approve spec, plan, tasks, and validation
 -> render one selected variant into an empty Worker output
 -> adapt source, tests, commands, documentation, and CI to the accepted plan
--> verify and close with an exact completion commit
+-> verify and close complete Change evidence
 -> Integration + I2 in Git multi-Lane mode
 ```
 
@@ -54,7 +54,7 @@ The Structured Change records:
   environment, documentation, and CI.
 - Tasks mapping each acceptance criterion to owner, path, and validation.
 - Review of architecture, security, commands, tests, environment, and project files.
-- A clean completion commit containing only accepted business-project artifacts.
+- Optional Integration notes when the user intends to land the Change through Integration.
 
 The project Harness owns Change evidence. Application source, project documentation, manifests,
 task scripts, and CI belong to the project repository.
@@ -205,7 +205,7 @@ Before close:
 4. No secret value, guessed address, credential, service, or public contract was introduced.
 5. Project documentation names only commands and behavior that exist.
 6. Spec, plan approval, AC/task mapping, review, and summary pass the ECL gate.
-7. Git-backed work records the exact clean completion commit before Integration.
+7. A later Integration request supplies an exact commit boundary when one was not recorded at close.
 
 ## Failure Handling
 

@@ -30,11 +30,11 @@
 - Commands and outcomes: TBD
 - Failure attribution: introduced | pre-existing | environmental | blocked | none
 
-## Integration Readiness
+## Optional Integration Notes
 
-- Completion commit: TBD
+- Integration requested: no
+- Commit boundary: not recorded
 - Dependencies: none recorded
-- Ready: no
 
 ## Knowledge And Evolution Signals
 

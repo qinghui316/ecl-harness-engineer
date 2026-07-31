@@ -82,10 +82,10 @@ Check:
   clarification gates are represented.
 - spec keeps WHAT/WHY; plan keeps HOW and records discovered spec gaps.
 - Plan review gates implementation; tasks trace AC -> owner/path -> validation.
-- Review covers plan, code, validation, contract, Integration, knowledge, and entropy.
-- park/resume/prepare-close/close/search/context/reindex preserve history and rebuild INDEX.
-- Git close binds complete Skill evidence to an exact clean implementation commit; Change evidence
-  itself does not enter business Git.
+- Review covers plan, code, validation, contract, optional Integration notes, knowledge, and entropy.
+- park/resume/close/search/context/reindex preserve history and rebuild INDEX.
+- Close depends on complete evidence and passing validation, not Git cleanliness. Integration alone
+  requires an exact selected commit range; Change evidence itself does not enter business Git.
 - Failures are classified and repeated failures become evidence rather than immediate permanent
   rules.
 

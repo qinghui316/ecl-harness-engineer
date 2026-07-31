@@ -11,7 +11,7 @@
   },
   {
     "id": "parallel-integration-evolution",
-    "prompt": "Two worktrees have independent completed Changes that touch a shared API contract. Preflight them, integrate the compatible exact completion commits after independent review and I2, then describe what happens when the fifth qualified Change triggers Harness evolution.",
+    "prompt": "Two worktrees have independent completed Changes that touch a shared API contract. Preflight them, establish compatible exact commit ranges when Integration is requested, complete independent review and I2, then describe what happens when the fifth qualified Change triggers Harness evolution.",
     "expected": "Both worktrees resolve one project Harness and separate Lane/Change records; related contract or baseline drift pauses only affected work; Integration uses exact ranges and a candidate-SHA-bound reviewer report from a different identity before I2; it does not update Wiki or count as a Change; E1 claims one Evolution owner and a candidate-fingerprint-bound independent Judge gates transactional publication with no E2 and no dynamic-state loss."
   },
   {

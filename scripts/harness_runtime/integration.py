@@ -88,6 +88,8 @@ def exact_change_commits(project_root: Path, change: dict[str, Any]) -> list[str
     completion = change.get("completion_commit")
     if not base or not completion:
         raise HarnessError(f"Change has no exact base/completion range: {change.get('change_id')}")
+    if git(project_root, "cat-file", "-e", f"{base}^{{commit}}", check=False).returncode != 0:
+        raise HarnessError(f"Base commit is unavailable for {change.get('change_id')}: {base}")
     if git(project_root, "cat-file", "-e", f"{completion}^{{commit}}", check=False).returncode != 0:
         raise HarnessError(f"Completion commit is unavailable: {completion}")
     if git(project_root, "merge-base", "--is-ancestor", base, completion, check=False).returncode != 0:
@@ -103,6 +105,20 @@ def exact_change_commits(project_root: Path, change: dict[str, Any]) -> list[str
                 f"Change {change.get('change_id')} contains merge commit {commit}; use a linear Change range."
             )
     return commits
+
+def parse_completion_commit_overrides(values: list[str], change_ids: set[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for value in values:
+        change_id, separator, commit = value.partition("=")
+        if not separator or not commit.strip():
+            raise HarnessError("Integration completion commits must use <change-id>=<sha>.")
+        identifier = canonical_id(change_id.strip(), "Integration completion Change id")
+        if identifier not in change_ids:
+            raise HarnessError(f"Completion commit was provided for an unselected Change: {identifier}")
+        if identifier in overrides:
+            raise HarnessError(f"Completion commit was provided more than once for Change: {identifier}")
+        overrides[identifier] = commit.strip()
+    return overrides
 
 def order_changes_for_integration(skill_root: Path, selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id = {item["change_id"]: item for item in selected}
@@ -179,20 +195,44 @@ def integrate_start(args: argparse.Namespace) -> dict[str, Any]:
     change_ids = [canonical_id(item, "Change id") for item in args.change_ids]
     if len(set(change_ids)) != len(change_ids):
         raise HarnessError("Integration Change ids must be unique.")
+    overrides = parse_completion_commit_overrides(args.completion_commit, set(change_ids))
     selected = []
     for change_id in change_ids:
         value = load_change_record(skill_root, change_id, required=True)
         if (
             not value
             or value.get("status") != "completed"
-            or not value.get("completion_commit")
             or not value.get("validation_passed")
             or not value.get("evidence_complete")
         ):
             raise HarnessError(f"Change is not integration-ready: {change_id}")
         if value.get("integrated_by"):
             raise HarnessError(f"Change is already integrated: {change_id}")
-        selected.append(value)
+        stored_commit = value.get("completion_commit")
+        override = overrides.get(change_id)
+        stored_resolved = (
+            git_value(context["project_root"], "rev-parse", "--verify", f"{stored_commit}^{{commit}}")
+            if stored_commit else None
+        )
+        override_resolved = (
+            git_value(context["project_root"], "rev-parse", "--verify", f"{override}^{{commit}}")
+            if override else None
+        )
+        if stored_commit and not stored_resolved:
+            raise HarnessError(f"Recorded completion commit is unavailable for Change: {change_id}")
+        if override and not override_resolved:
+            raise HarnessError(f"Completion commit is unavailable for Change {change_id}: {override}")
+        if stored_resolved and override_resolved and stored_resolved != override_resolved:
+            raise HarnessError(f"Completion commit conflicts with the boundary recorded for Change: {change_id}")
+        completion = stored_resolved or override_resolved
+        if not completion:
+            raise HarnessError(
+                f"Change has no Integration commit boundary: {change_id}. "
+                "Provide --completion-commit <change-id>=<sha> when starting Integration."
+            )
+        selected_value = dict(value)
+        selected_value["completion_commit"] = completion
+        selected.append(selected_value)
     selected = order_changes_for_integration(skill_root, selected)
     baseline = refresh_baseline_from_canonical(skill_root, context)
     base_commit = baseline.get("canonical_commit") or context["head"]

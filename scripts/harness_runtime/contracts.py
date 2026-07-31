@@ -203,9 +203,6 @@ def validate_change_evidence(path: Path) -> tuple[bool, list[str]]:
         issues.append("plan.md does not record an approved plan review")
     if not re.search(r"Approved:\s*yes", review, re.IGNORECASE):
         issues.append("reviews/review.md does not approve the plan")
-    if not re.search(r"Ready:\s*yes", review, re.IGNORECASE):
-        issues.append("reviews/review.md does not mark Integration readiness")
-
     spec_acs = set(AC_RE.findall(texts["spec.md"]))
     task_acs: set[str] = set()
     task_count = 0

@@ -28,7 +28,7 @@ Integration, or Evolution without entering business Git.
 
 A Lane record contains `lane_id`, `branch`, `head_commit`, `active_change_id`, `status`, and
 `updated_at`. One long-lived Lane may complete Changes sequentially. A parked Change may transfer to
-another clean Lane through resume; preserve its existing Git base, or bind the current HEAD when a
+another Lane through resume; preserve its existing Git base, or bind the current HEAD when a
 non-Git Change first enters Git.
 
 ## Change Record
@@ -49,10 +49,10 @@ evidence-complete Changes are evolution-eligible.
 Terminal records and archives remain historical evidence. Describe any follow-up relationship in
 the new Change documents rather than rewriting the archived record.
 
-In Git mode, close is deliberately two-stage. The first close validates project Harness evidence and
-sets `closing`. The Worker commits the business implementation, then reruns close with the exact
-clean HEAD and passing validation. The CLI binds that commit to the Change record, moves Skill
-evidence to archive, and rebuilds INDEX. Change evidence itself never enters business Git.
+Close is one-stage and does not require Git cleanliness or a commit. An existing linear completion
+commit may be recorded as optional metadata. Integration later obtains an exact boundary from that
+field or from its own `--completion-commit <change-id>=<sha>` input. Change evidence itself never
+enters business Git.
 
 ## Contract Record
 
@@ -68,13 +68,15 @@ or module boundary. Record:
 
 Preflight detects path overlap, same-subject contract overlap, dependency on a changing subject, and
 baseline advancement. It reports facts and required action; it does not auto-stop an unrelated
-Lane.
+Lane. Planning and active Changes hold blocking claims. A completed, non-integrated overlap is
+reported separately as historical context so it can inform review without reserving paths or
+contracts forever.
 
 Treat every external Change, contract, and Integration id as untrusted input. Canonicalize and
 validate it before deriving a path, reject separators/traversal, and require every loaded record id
 to match its filename. Claim a new Change id with exclusive create, then create branch artifacts;
-on failure remove only artifacts owned by that claim. Git Change creation requires a clean
-worktree, and a terminal or closing Change cannot be reopened by publish.
+on failure remove only artifacts owned by that claim. A terminal Change cannot be reopened by
+publish. Dirty worktree content is an Agent scope question, not a Change lifecycle failure.
 
 Compare Change base and canonical baseline by Git ancestry: `equal`, `lane_ahead`,
 `canonical_advanced`, or `diverged`. A plain hash mismatch is not enough to claim canonical
@@ -85,7 +87,8 @@ advancement.
 Integration begins only after a user requests it.
 
 1. Create an Integration Record from selected completed Change ids.
-2. Verify each exact completion commit and dependency.
+2. Resolve each exact completion commit from optional Change metadata or Integration input, then
+   verify the boundary and dependencies.
 3. Create a temporary worktree from the Registry canonical baseline.
 4. For each Change, verify a linear `base_commit..completion_commit` range and cherry-pick that
    exact range in dependency order. Never merge the full tip of a long-lived Lane.

@@ -490,7 +490,8 @@ class HarnessCliTests(unittest.TestCase):
             f"# Review: {change_id}\n\n## Plan Review\n\n- Approved: yes\n\n"
             "## Scope And Contract\n\n- Scope matches spec: yes\n- Contract conflicts resolved: not applicable\n\n"
             "## Code And Validation\n\n- Findings: none\n- Commands and outcomes: fixture validation passed\n"
-            "- Failure attribution: none\n\n## Integration Readiness\n\n- Ready: yes\n\n"
+            "- Failure attribution: none\n\n## Optional Integration Notes\n\n"
+            "- Integration requested: no\n- Commit boundary: not recorded\n- Dependencies: none recorded\n\n"
             "## Knowledge And Evolution Signals\n\n- Project-map impact: none\n",
             encoding="utf-8",
         )
@@ -504,19 +505,7 @@ class HarnessCliTests(unittest.TestCase):
         self.cli(worktree, "change", "new", change_id, "--scope", f"Implement {change_id}")
         self.complete_change_documents(worktree, change_id)
         (worktree / filename).write_text(f"{change_id}\n", encoding="utf-8")
-        prepared = self.cli(
-            worktree,
-            "change",
-            "close",
-            change_id,
-            "--status",
-            "completed",
-            "--validation",
-            "fixture test passed",
-            "--validation-passed",
-        )
-        self.assertEqual(prepared["status"], "prepared_for_completion_commit")
-        self.git(worktree, "add", ".")
+        self.git(worktree, "add", filename)
         self.git(worktree, "commit", "-m", f"complete {change_id}")
         commit = self.git(worktree, "rev-parse", "HEAD")
         closed = self.cli(
@@ -528,6 +517,8 @@ class HarnessCliTests(unittest.TestCase):
             "completed",
             "--completion-commit",
             commit,
+            "--validation",
+            "fixture test passed",
             "--validation-passed",
         )
         self.assertEqual(closed["status"], "closed")
@@ -2777,6 +2768,89 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual({item["change_id"] for item in index["changes"]}, {"contract-a", "contract-b"})
         self.assertFalse((project / "harness").exists())
 
+    def test_completed_change_overlap_is_advisory(self) -> None:
+        project = self.create_git_project("historical-overlap")
+        initialized = self.init_project(project, self.write_bundle(project, "historical-overlap"))
+        baseline = self.commit_routes(project)
+        lane_a = self.root / "historical-overlap-a"
+        lane_b = self.root / "historical-overlap-b"
+        self.git(project, "worktree", "add", "-b", "historical-overlap-a", str(lane_a), baseline)
+        self.git(project, "worktree", "add", "-b", "historical-overlap-b", str(lane_b), baseline)
+        self.run_connector(lane_a)
+        self.run_connector(lane_b)
+        contract = {
+            "kind": "api", "subject": "jobs.v1.submit", "operation": "change",
+            "owner_module": "job-processing", "compatibility": "backward-compatible",
+            "status": "proposed", "affected_paths": ["src/jobs/service.py"],
+            "consumers": [], "depends_on": [],
+        }
+        contract_a = self.root / "historical-contract-a.json"
+        contract_b = self.root / "historical-contract-b.json"
+        contract_a.write_text(json.dumps(contract), encoding="utf-8")
+        contract_b.write_text(json.dumps(contract), encoding="utf-8")
+
+        self.cli(lane_a, "change", "new", "historical-a", "--scope", "first API change")
+        self.cli(
+            lane_a, "change", "publish", "historical-a", "--status", "active",
+            "--paths", "src/jobs/service.py", "--contract", str(contract_a),
+        )
+        self.complete_change_documents(lane_a, "historical-a")
+        self.cli(
+            lane_a, "change", "close", "historical-a", "--status", "completed",
+            "--validation", "fixture passed", "--validation-passed",
+        )
+        self.cli(lane_b, "change", "new", "historical-b", "--scope", "second API change")
+        self.cli(
+            lane_b, "change", "publish", "historical-b", "--status", "active",
+            "--paths", "src/jobs/service.py", "--contract", str(contract_b),
+        )
+        preflight = self.cli(lane_b, "change", "preflight", "--change-id", "historical-b")
+        self.assertEqual(preflight["action"], "continue")
+        self.assertEqual(preflight["conflicts"], [])
+        self.assertEqual({item["type"] for item in preflight["historical_overlaps"]}, {"path", "contract"})
+        record = json.loads((
+            Path(initialized["skill_root"]) / "state" / "registry" / "changes" / "historical-a.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(record["integration_status"], "not_requested")
+
+    def test_integration_late_binds_completion_commit_without_rewriting_change(self) -> None:
+        project = self.create_git_project("late-bound-integration")
+        initialized = self.init_project(project, self.write_bundle(project, "late-bound-integration"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "late-bound-integration-lane"
+        self.git(project, "worktree", "add", "-b", "late-bound-integration", str(lane), baseline)
+        self.run_connector(lane)
+        self.cli(lane, "change", "new", "late-bound", "--scope", "late-bound delivery")
+        self.complete_change_documents(lane, "late-bound")
+        (lane / "late-bound.txt").write_text("late boundary\n", encoding="utf-8")
+        closed = self.cli(
+            lane, "change", "close", "late-bound", "--status", "completed",
+            "--validation", "fixture passed", "--validation-passed",
+        )
+        self.assertEqual(closed["integration_boundary"], "not_recorded")
+        missing = self.cli(
+            project, "integrate", "start", "late-bound-missing", "late-bound", expected=(2,),
+        )
+        self.assertIn("no Integration commit boundary", missing["error"])
+
+        self.git(lane, "add", "late-bound.txt")
+        self.git(lane, "commit", "-m", "complete late-bound change")
+        completion = self.git(lane, "rev-parse", "HEAD")
+        started = self.cli(
+            project, "integrate", "start", "late-bound-ready", "late-bound",
+            "--completion-commit", f"late-bound={completion}",
+        )
+        self.assertEqual(started["completion_commits"], [completion])
+        change = json.loads((
+            Path(initialized["skill_root"]) / "state" / "registry" / "changes" / "late-bound.json"
+        ).read_text(encoding="utf-8"))
+        self.assertIsNone(change["completion_commit"])
+        integration = json.loads((
+            Path(initialized["skill_root"]) / "state" / "registry" / "integrations" / "late-bound-ready.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(integration["completion_commits"], [completion])
+        self.cli(project, "integrate", "abort", "late-bound-ready")
+
     def test_integration_does_not_refresh_project_wiki(self) -> None:
         project = self.create_git_project("integration-project")
         initialized = self.init_project(project, self.write_bundle(project, "integration"))
@@ -3301,11 +3375,24 @@ class HarnessCliTests(unittest.TestCase):
         self.assertTrue(shared_artifact.is_dir())
         self.assertFalse(any((lane / "harness" / "changes").exists() for lane in lanes))
 
-    def test_dirty_git_change_new_and_terminal_publish_are_rejected(self) -> None:
+    def test_git_change_close_matches_mature_non_git_lifecycle(self) -> None:
         project = self.create_git_project("dirty-change")
-        self.init_project(project, self.write_bundle(project, "dirty-change"))
-        dirty = self.cli(project, "change", "new", "dirty", expected=(2,))
-        self.assertIn("clean", dirty["error"].lower())
+        initialized = self.init_project(project, self.write_bundle(project, "dirty-change"))
+        created = self.cli(project, "change", "new", "dirty", "--scope", "work with local edits")
+        self.assertEqual(created["status"], "created")
+        self.complete_change_documents(project, "dirty")
+        (project / "unrelated.tmp").write_text("uncommitted work\n", encoding="utf-8")
+        closed = self.cli(
+            project, "change", "close", "dirty", "--status", "completed",
+            "--validation", "fixture passed", "--validation-passed",
+        )
+        self.assertEqual(closed["status"], "closed")
+        self.assertEqual(closed["integration_boundary"], "not_recorded")
+        record = json.loads((
+            Path(initialized["skill_root"]) / "state" / "registry" / "changes" / "dirty.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(record["integration_status"], "not_requested")
+        self.assertIsNone(record["completion_commit"])
 
         non_git = self.root / "terminal-change"
         non_git.mkdir()
@@ -3323,7 +3410,7 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertIn("terminal", reopened["error"].lower())
 
-    def test_dirty_git_lane_cannot_resume_a_parked_change(self) -> None:
+    def test_dirty_git_lane_can_resume_a_parked_change(self) -> None:
         project = self.create_git_project("dirty-resume")
         self.init_project(project, self.write_bundle(project, "dirty-resume"))
         self.commit_routes(project)
@@ -3332,10 +3419,36 @@ class HarnessCliTests(unittest.TestCase):
         dirty = project / "unrelated.tmp"
         dirty.write_text("unrelated work\n", encoding="utf-8")
 
-        rejected = self.cli(project, "change", "resume", "parked", expected=(2,))
-        self.assertIn("clean", rejected["error"].lower())
-        dirty.unlink()
-        self.assertEqual(self.cli(project, "change", "resume", "parked")["status"], "resumed")
+        resumed = self.cli(project, "change", "resume", "parked")
+        self.assertEqual(resumed["status"], "resumed")
+        self.assertTrue(dirty.is_file())
+
+    def test_optional_close_commit_is_linear_and_does_not_require_clean_head(self) -> None:
+        project = self.create_git_project("optional-close-boundary")
+        self.init_project(project, self.write_bundle(project, "optional-close-boundary"))
+        baseline = self.commit_routes(project)
+        self.cli(project, "change", "new", "optional-boundary", "--scope", "record optional boundary")
+        self.complete_change_documents(project, "optional-boundary")
+        empty = self.cli(
+            project, "change", "close", "optional-boundary", "--status", "completed",
+            "--completion-commit", baseline, "--validation", "fixture passed",
+            "--validation-passed", expected=(2,),
+        )
+        self.assertIn("empty Change range", empty["error"])
+
+        (project / "optional-boundary.txt").write_text("boundary\n", encoding="utf-8")
+        self.git(project, "add", "optional-boundary.txt")
+        self.git(project, "commit", "-m", "add optional boundary")
+        completion = self.git(project, "rev-parse", "HEAD")
+        (project / "unrelated.tmp").write_text("leave dirty\n", encoding="utf-8")
+        closed = self.cli(
+            project, "change", "close", "optional-boundary", "--status", "completed",
+            "--completion-commit", completion, "--validation", "fixture passed",
+            "--validation-passed",
+        )
+        self.assertEqual(closed["integration_boundary"], "recorded")
+        self.assertEqual(closed["change"]["completion_commit"], completion)
+        self.assertTrue((project / "unrelated.tmp").is_file())
 
     def test_change_lifecycle_and_index_live_only_in_project_skill(self) -> None:
         project = self.root / "skill-owned-changes"
@@ -4315,7 +4428,7 @@ class HarnessCliTests(unittest.TestCase):
             "misc-one/note.txt",
         )
 
-        prepared = self.cli(
+        closed = self.cli(
             producer,
             "change",
             "close",
@@ -4326,22 +4439,15 @@ class HarnessCliTests(unittest.TestCase):
             "producer tests passed",
             "--validation-passed",
         )
-        self.assertEqual(prepared["status"], "prepared_for_completion_commit")
+        self.assertEqual(closed["status"], "closed")
+        self.assertEqual(closed["integration_boundary"], "not_recorded")
         self.git(producer, "add", ".")
         self.git(producer, "commit", "-m", "complete api change")
         completion = self.git(producer, "rev-parse", "HEAD")
         self.cli(
-            producer,
-            "change",
-            "close",
-            "api-change",
-            "--status",
-            "completed",
-            "--completion-commit",
-            completion,
-            "--validation-passed",
+            project, "integrate", "start", "api-integration", "api-change",
+            "--completion-commit", f"api-change={completion}",
         )
-        self.cli(project, "integrate", "start", "api-integration", "api-change")
         api_candidate = self.integration_candidate(Path(initialized["skill_root"]), "api-integration")
         api_review = self.write_integration_review(
             Path(initialized["skill_root"]), "api-integration", api_candidate,
@@ -4471,17 +4577,13 @@ class HarnessCliTests(unittest.TestCase):
             existing[0], "change", "publish", "upgrade-history",
             "--paths", "upgrade-history.txt",
         )
-        prepared = self.cli(
-            existing[0], "change", "close", "upgrade-history", "--status", "completed",
-            "--validation", "transition validation passed", "--validation-passed",
-        )
-        self.assertEqual(prepared["status"], "prepared_for_completion_commit")
         self.git(existing[0], "add", "upgrade-history.txt")
         self.git(existing[0], "commit", "-m", "complete portable upgrade change")
         completion = self.git(existing[0], "rev-parse", "HEAD")
         self.cli(
             existing[0], "change", "close", "upgrade-history",
-            "--status", "completed", "--completion-commit", completion, "--validation-passed",
+            "--status", "completed", "--completion-commit", completion,
+            "--validation", "transition validation passed", "--validation-passed",
         )
         integrated = self.cli(
             project, "integrate", "start", "upgrade-integration", "upgrade-history",
@@ -4495,6 +4597,35 @@ class HarnessCliTests(unittest.TestCase):
         self.run_connector(future)
         self.assertTrue(os.path.samefile(future / ".agents" / "skills" / skill_root.name, skill_root))
         self.assertTrue(os.path.samefile(future / ".claude" / "skills" / skill_root.name, skill_root))
+
+    def test_migrate_restores_legacy_closing_change_without_rewriting_evidence(self) -> None:
+        project = self.create_git_project("closing-migration")
+        bundle = self.write_bundle(project, "closing-migration")
+        initialized = self.init_project(project, bundle)
+        skill_root = Path(initialized["skill_root"])
+        self.cli(project, "change", "new", "legacy-closing", "--scope", "resume after migration")
+        self.complete_change_documents(project, "legacy-closing")
+        evidence = skill_root / "state" / "changes" / "active" / "legacy-closing"
+        before = self.tree_hashes(evidence)
+        record_path = skill_root / "state" / "registry" / "changes" / "legacy-closing.json"
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        record["status"] = "closing"
+        record["integration_status"] = "not_integrated"
+        record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+        migrated = self.cli(
+            project, "project", "migrate", "--analysis-bundle", str(bundle),
+        )
+        self.assertEqual(migrated["status"], "migration_applied")
+        restored = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(restored["status"], "active")
+        self.assertEqual(restored["integration_status"], "not_requested")
+        self.assertEqual(before, self.tree_hashes(evidence))
+        lane = json.loads(next(
+            (skill_root / "state" / "registry" / "lanes").glob("*.json")
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(lane["active_change_id"], "legacy-closing")
+        self.assertTrue(self.cli(project, "project", "audit")["ecl"]["healthy"])
 
     def test_project_marker_rejects_mismatched_manifest_identity(self) -> None:
         project = self.root / "upgrade-invalid-owner"

@@ -102,13 +102,13 @@ and plan review is approved.
 new -> active
 active -> parking
 parking -> active
-active -> closing -> completed -> archive
+active -> completed -> archive
 active -> blocked -> archive
 active -> abandoned -> archive
 ```
 
 - Every Change has a globally unique canonical ID before artifacts are created.
-- Every worktree has one Lane; a Lane has at most one active or closing Change.
+- Every worktree has one Lane; a Lane has at most one active Change.
 - Different Lanes may work concurrently.
 - New claims use exclusive create so simultaneous identical IDs have one winner.
 - A terminal Change cannot be reopened by publish.
@@ -150,20 +150,17 @@ When Change evidence or shared facts change at a stage boundary:
 Hook/check tooling may validate but never auto-write Change docs, move state, or rebuild current
 facts without the explicit lifecycle command.
 
-## Git Close
+## Change Close And Git Boundaries
 
-Git close is two-stage because code identity must be exact while Change evidence remains outside
-business Git.
+Close is one-stage in Git and non-Git projects. Complete summary/spec/plan/tasks/review and passing
+validation evidence, then run `change close`. The CLI moves Skill evidence to archive, rebuilds
+INDEX, and runs the Evolution threshold check without requiring a commit or clean worktree.
 
-1. Complete summary/spec/plan/tasks/review and validation evidence.
-2. Run `change prepare-close`; it validates shared evidence and sets `closing`.
-3. Commit the business implementation and obtain a clean exact HEAD.
-4. Run `change close --completion-commit <head> --validation-passed`.
-5. CLI verifies ancestry and clean HEAD, binds completion commit to the Registry record, moves Skill
-   evidence to archive, rebuilds INDEX, and runs Evolution threshold check.
-
-For non-Git projects, terminal close is one-stage. Blocked and abandoned Changes archive complete
-available evidence but never become evolution-eligible.
+`--completion-commit` may record an existing linear commit boundary, but it is optional. When the
+user later selects a Change for Integration, `integrate start` requires an exact boundary from that
+metadata or `--completion-commit <change-id>=<sha>`. A Change without an isolatable range remains
+valid history and Evolution evidence. Blocked and abandoned Changes archive available evidence but
+never become evolution-eligible.
 
 ## INDEX And Historical Context
 
@@ -241,7 +238,7 @@ ledger or full changelog.
 ```text
 harness-change new|preflight|publish|status
 harness-change park|resume
-harness-change prepare-close|close
+harness-change close
 harness-change search|context|reindex
 harness-evolve check|status|stage|mark-complete
 ```

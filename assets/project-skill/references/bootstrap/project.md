@@ -21,9 +21,9 @@ authentication, service, security, and public-contract uncertainty blocks implem
 - `plan.md` owns selected layout, dependency direction, entrypoint, commands, environment, tests,
   documentation, and CI; it requires approval before implementation.
 - `tasks.md` maps every acceptance criterion to owner/path and validation.
-- `review.md` covers architecture, code, security, commands, environment, contract, Integration,
-  knowledge, and documentation entropy.
-- Git completion binds one clean business-project commit to the Change evidence.
+- `review.md` covers architecture, code, security, commands, environment, contract, optional
+  Integration notes, knowledge, and documentation entropy.
+- Optional Integration notes record whether a later exact commit boundary will be needed.
 
 Prefer this dependency direction unless the approved plan proves a better project boundary:
 
@@ -56,5 +56,5 @@ variable names, sensitivity, and unknowns. Helpers are idempotent, time-bounded,
 clean up only resources they created.
 
 Before close, run the declared primary scenario and gates, verify dependency direction, reject
-secret values and guessed runtime facts, complete all ECL evidence, and bind the exact completion
-commit. Multi-Lane projects continue through Integration and I2.
+secret values and guessed runtime facts, and complete all ECL evidence. When the user requests
+Integration, establish an exact commit boundary and continue through I2.

@@ -44,12 +44,6 @@ Workers and ordinary Integration publish evidence but do not rewrite shared L1/L
 
 **On violation:** Move provisional facts to Change or Registry evidence and restore the stable shared owner.
 
-## HR-14: Bind Evidence To An Exact Completion Commit
-
-A Git Change closes in two steps so complete shared Skill evidence is bound to the exact clean implementation HEAD.
-
-**On violation:** Complete shared evidence, commit the implementation, then record that exact clean HEAD.
-
 ## HR-15: Integrate Only Selected Commit Ranges
 
 Apply each selected linear base_commit..completion_commit range; never merge a long-lived Lane tip as a whole.

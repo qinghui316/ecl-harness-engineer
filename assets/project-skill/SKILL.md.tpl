@@ -33,7 +33,7 @@ If the detected project id differs, stop and locate the correct project Harness.
 
 ```text
 {{PROJECT_COMMAND}} audit|doctor --project-root <path>
-{{CHANGE_COMMAND}} new|preflight|publish|status|park|resume|prepare-close|close|search|context|reindex --project-root <path>
+{{CHANGE_COMMAND}} new|preflight|publish|status|park|resume|close|search|context|reindex --project-root <path>
 {{INTEGRATE_COMMAND}} start|status|complete|abort --project-root <path>
 {{EVOLVE_COMMAND}} check|status|stage|mark-complete --project-root <path>
 {{KNOWLEDGE_COMMAND}} scan|check --project-root <path>

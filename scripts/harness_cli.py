@@ -74,12 +74,6 @@ def build_parser() -> argparse.ArgumentParser:
     close.add_argument("--completion-commit")
     close.add_argument("--validation", action="append")
     close.add_argument("--validation-passed", action="store_true")
-    prepare_close = change_actions.add_parser("prepare-close")
-    add_common(prepare_close)
-    prepare_close.add_argument("change_id")
-    prepare_close.add_argument("--validation", action="append")
-    prepare_close.add_argument("--validation-passed", action="store_true")
-    prepare_close.set_defaults(status="completed", completion_commit=None)
     park = change_actions.add_parser("park")
     add_common(park)
     park.add_argument("change_id")
@@ -90,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(search)
     search.add_argument("--query")
     search.add_argument("--status", action="append", choices=[
-        "planning", "active", "parking", "closing", "completed", "blocked", "abandoned",
+        "planning", "active", "parking", "completed", "blocked", "abandoned",
     ])
     context = change_actions.add_parser("context")
     add_common(context)
@@ -108,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(start)
     start.add_argument("integration_id")
     start.add_argument("change_ids", nargs="+")
+    start.add_argument("--completion-commit", action="append", default=[])
     integration_status = integrate_actions.add_parser("status")
     add_common(integration_status)
     integration_status.add_argument("--integration-id")
@@ -164,7 +159,6 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         ("change", "new"): change_new,
         ("change", "preflight"): change_preflight,
         ("change", "publish"): change_publish,
-        ("change", "prepare-close"): change_close,
         ("change", "close"): change_close,
         ("change", "park"): change_park,
         ("change", "resume"): change_resume,

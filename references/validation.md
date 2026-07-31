@@ -26,12 +26,12 @@
    its current Harness Python interpreter independently.
 4. Shared Skill owns `active|parking|archive` Change evidence and generated INDEX; repository does
    not receive Change files.
-5. park/resume/prepare-close/close/search/context/reindex preserve complete mature ECL behavior.
+5. park/resume/close/search/context/reindex preserve complete mature ECL behavior.
 6. Two worktrees create distinct active Changes against one shared INDEX and Registry.
 7. Concurrent identical Change IDs have one winner and clean owned-artifact rollback.
 8. High-impact contracts detect same-subject/dependency/path conflicts; unrelated work continues.
-9. Git close binds complete shared evidence to exact clean completion HEAD without requiring
-   evidence in Git.
+9. Git close archives complete validated evidence without requiring a commit or clean worktree;
+   an optional commit boundary remains available for later Integration.
 10. User-started Integration applies exact selected ranges, permits Integrator edits, binds
     validation/review to the exact candidate commit, waits for I2, and never refreshes Wiki or
     enters Evolution count.

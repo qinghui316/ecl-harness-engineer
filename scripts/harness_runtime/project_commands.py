@@ -162,7 +162,8 @@ def portable_lane_id(project_id: str, branch: str | None) -> str:
     return "lane-single" if not branch else f"lane-{stable_hash(f'{project_id}:{branch}', 10)}"
 
 
-def normalize_portable_state(root: Path, context: dict[str, Any]) -> None:
+def normalize_portable_state(root: Path, context: dict[str, Any]) -> bool:
+    index_rebuild_required = False
     manifest_path = root / "state" / "manifest.json"
     manifest = read_json(manifest_path, {})
     atomic_write_json(manifest_path, portable_manifest(manifest, context))
@@ -194,6 +195,13 @@ def normalize_portable_state(root: Path, context: dict[str, Any]) -> None:
     for path in sorted((registry_root(root) / "changes").glob("*.json")):
         change = read_json(path, {})
         changed = False
+        if change.get("status") == "closing":
+            change["status"] = "active"
+            changed = True
+            index_rebuild_required = True
+        if change.get("integration_status") == "not_integrated" and not change.get("integrated_by"):
+            change["integration_status"] = "not_requested"
+            changed = True
         if change.get("status") not in {"completed", "blocked", "abandoned"}:
             change["lane_id"] = lane_map.get(str(change.get("lane_id")), change.get("lane_id"))
             if context.get("mode") == "multi_lane" and not change.get("base_commit"):
@@ -215,6 +223,7 @@ def normalize_portable_state(root: Path, context: dict[str, Any]) -> None:
         integration_id = record.get("integration_id") or path.stem
         record["worktree"] = f"state/integrations/{integration_id}"
         atomic_write_json(path, record)
+    return index_rebuild_required
 
 @guard_project_skill
 def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
@@ -337,8 +346,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             links, new_links = ensure_runtime_links(context, args, root)
             created_links.extend(new_links)
             routes, route_snapshots = ensure_all_project_routes(context, root)
-            normalize_portable_state(root, context)
-            if state_rebind:
+            lifecycle_changed = normalize_portable_state(root, context)
+            if state_rebind or lifecycle_changed:
                 rebuild_change_index(root)
             manifest = read_json(manifest_path, {})
             if profile is not None:

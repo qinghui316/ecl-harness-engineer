@@ -20,7 +20,8 @@ endpoint, persistence model, authentication scheme, package manager, or CI provi
 - Validate the approved plan and Change artifacts before implementation.
 - Run `python scripts/render_greenfield.py` for the one approved variant into an empty Worker output.
 - Run the new project's declared build, test, lint, typecheck, start, and scenario checks.
-- Run `change prepare-close`, commit business-project files, then bind the exact completion commit.
+- Close complete evidence after project verification; establish a commit boundary only if the user
+  requests Integration.
 
 ## Actions
 
@@ -34,7 +35,7 @@ endpoint, persistence model, authentication scheme, package manager, or CI provi
 ## Outputs
 
 - Business source, tests, project commands, and evidence-supported documentation/CI.
-- Complete Change evidence and exact completion commit in Git mode.
+- Complete Change evidence and optional Integration notes.
 - Canonical project evidence suitable for a later project Harness refresh.
 
 ## Exit
@@ -49,5 +50,5 @@ contract ambiguity, failed plan review, or validation that contradicts completio
 
 ## Rules
 
-Apply HR-01 through HR-04, HR-14, HR-18, HR-23, and HR-24 plus
+Apply HR-01 through HR-04, HR-18, HR-23, and HR-24 plus
 `references/rules/by-stage/bootstrap-project.md`.
