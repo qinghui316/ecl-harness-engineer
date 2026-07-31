@@ -840,7 +840,7 @@ class HarnessCliTests(unittest.TestCase):
         for item in prompts:
             self.assertTrue(item["prompt"].strip())
             self.assertTrue(item["expected"].strip())
-        self.assertIn("architecture.json", (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn("Architecture Map", (ROOT / "README.md").read_text(encoding="utf-8"))
         migration = (ROOT / "references" / "migration.md").read_text(encoding="utf-8")
         for bundle_file in (
             "project-profile.json", "architecture.json", "audit.json", "creation-delta.json",
