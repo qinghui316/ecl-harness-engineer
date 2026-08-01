@@ -4,16 +4,18 @@
 
 - Frozen five-Change window, compact Registry summaries, selected Change/review evidence, and
   Integration signals.
-- Current project knowledge, workflows, rules, templates, checks, relevant drift findings, and
+- The complete generated knowledge catalog and indexed current/target/decision/guide documents,
+  plus workflows, rules, templates, checks, relevant drift findings, and
   canonical evidence only when the proposal affects project semantics.
 - `references/analysis-contract.md`, which defines focused delta and full-refresh bundle boundaries.
 
 ## Agent Judgment
 
 Classify accumulated experience as Promote, Retain, Merge, Retire, or Archive-only. Distinguish
-project knowledge from Harness process rules. Default to focused Evolution. Require a full refresh
-only when purpose, modules, L1/L2/L3, reference maps, architecture, commands, environment, or
-related knowledge drift changes. Do not promote unintegrated implementation facts or generic
+renderer-owned current facts from Agent-owned project documents and Harness process rules. Default
+to focused Evolution for Agent-owned L1/L2/L3. Require a full refresh only when purpose, generated
+module/reference maps, architecture, commands, environment, or related current-fact drift changes.
+Do not promote unintegrated implementation facts or generic
 article advice without project evidence.
 
 ## Deterministic Commands
@@ -35,7 +37,8 @@ article advice without project evidence.
 ## Actions
 
 1. Freeze the five ids; queue later Changes for the next window.
-2. Select focused delta by default; select a four-file refresh only for semantic project knowledge.
+2. Select focused delta by default for Agent-owned documents and behavior; select a four-file
+   refresh only for renderer-owned current project facts.
 3. Propose only evidence-backed knowledge, workflow, rule, template, check, and entropy changes.
 4. Remove duplicate current facts, retire stale guidance, and retain detailed history in archive.
 5. Stage and validate the complete project Harness candidate, preserve

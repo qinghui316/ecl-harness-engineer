@@ -68,20 +68,26 @@ Exclude Lane status, active Changes, archive ledgers, full directory trees, and 
 narrative. Preserve every project-level navigation link an Agent needs by default; move module
 detail to L2/L3 instead of truncating the map. L1 is a periodic map, not the newest fact owner.
 
-## L2 Modules And Systems
+## L2 Systems And Designs
 
 Create module pages only when manifests, imports, entrypoints, tests, interfaces, or contracts
-prove a coherent owner. Each page includes responsibility, roots, entrypoints,
+prove a coherent owner. L2 also holds accepted target architecture and important design/domain
+documents. Each page includes responsibility, roots, entrypoints,
 interfaces/data owners, dependencies, tests, commands, boundaries, citations, and source
 fingerprints. A top-level directory name alone is never enough.
+
+Use indexed ECL frontmatter for Agent-owned current, target, decision, and guide documents. The
+semantic layer comes from impact and reading depth, not a filename or fixed subdirectory. Never
+present an unimplemented target as current architecture.
 
 Render command, environment, and verification system pages with detail supported by project evidence.
 Unknown values stay explicit. Do not invent a technology, service, port, readiness endpoint, or
 command merely to fill a page.
 
-## L3 Semantic Bridges
+## L3 Contracts And Semantic Bridges
 
-Create a bridge only for a proven translation boundary:
+Use L3 for precise interfaces, schema, events, call flows, implementation standards, and proven
+translation boundaries. Create a bridge only for a proven translation boundary:
 
 - product terminology to code owner;
 - API/schema/event/config field to module;

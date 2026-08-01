@@ -65,6 +65,9 @@ Scale L1 to the project's complexity without a fixed byte or line limit. Exclude
 lists, complete directory trees, and history. Keep all project-level navigation needed by default,
 and move descriptive implementation detail to L2/L3.
 
+The generated `project_wiki/catalog.md` complements L1 by grouping every indexed current, target,
+decision, and guide document by L1/L2/L3, module, and Owner.
+
 ## L2 Module
 
 ```markdown
@@ -158,6 +161,27 @@ Statuses are configured/candidate/executed. A candidate is visibly not a project
 
 Every durable row needs source code, manifest/configuration, an integrated contract, a test, or
 explicit user evidence.
+
+## Agent-Owned Formal Document
+
+Use an arbitrary meaningful path below `references/project_wiki/` and declare its semantic owner:
+
+```yaml
+---
+ecl:
+  id: durable-document-id
+  layer: L2
+  kind: target
+  status: accepted
+  owner: owning-domain
+  modules: [module-id]
+  evidence: [user:accepted direction]
+  managed_by: agent
+---
+```
+
+Search the generated index before choosing Create, Merge, Replace, Retire, or Archive-only. A full
+refresh preserves Agent-owned pages and may not silently reclaim an explicit id/path takeover.
 
 ## Workflow
 

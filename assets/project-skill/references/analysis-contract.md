@@ -1,8 +1,9 @@
 # Project Rescan And Analysis Contract
 
-Use this contract during read-only audit and accepted full-refresh E1 Evolution. Focused E1 updates
-rules, workflows, templates, checks, helpers, or the project Harness route through
-`creation-delta.json` without rebuilding project knowledge. Agent judgment analyzes project
+Use this contract during read-only audit, focused knowledge publication, and accepted E1 Evolution.
+Focused migrate/E1 updates Agent-owned project documents, rules, workflows, templates, checks,
+helpers, or the project Harness route through `creation-delta.json` without rebuilding
+renderer-owned current facts. Agent judgment analyzes project
 semantics; `scripts/harness_cli.py` validates and publishes deterministic artifacts.
 
 ## Evidence Funnel
@@ -18,18 +19,20 @@ evidence may use `https:`, `user:`, `contract:`, or `registry:` identifiers.
 
 ## Focused Evolution Bundle
 
-When accumulated Change evidence does not alter purpose, modules, L1/L2/L3, reference maps,
-architecture, commands, or environment, create only:
+When accumulated evidence changes Agent-owned documents or Harness behavior without requiring a
+whole-project semantic rescan, create only:
 
 ```text
 creation-delta.json             # mode: evolution-focused
 artifacts/                      # only sources named by creation-delta
 ```
 
-Focused artifacts may create, replace, merge, or retire only Harness-owned routes, rules,
-workflows, templates, checks, and helpers. Retirement declares `validation: retired`. A focused
-bundle cannot write project Wiki or analysis owners and does not run the evidence extractor or a
-full source-fingerprint scan.
+Focused artifacts may create, replace, merge, or retire Agent-owned Markdown below
+`references/project_wiki/**`, other references, routes, rules, workflows, templates, checks, and
+helpers. Agent-owned Wiki pages declare ECL frontmatter with id, semantic layer, kind, status,
+Owner, modules, evidence, and `managed_by: agent`. Retirement declares `validation: retired`.
+Generated overview/catalog/index, derived rule views, local state, and Runtime remain protected.
+A focused bundle does not run the evidence extractor or a full source-fingerprint scan.
 
 ## Four-File Full Refresh Bundle
 
@@ -97,8 +100,10 @@ measurable and owned `before` and `after` objects.
 `creation-delta.json` contains mode, decisions, and artifacts. Decisions use
 retain/move/merge/retire/archive-only/create with source, owner, projection, and validation.
 Artifacts require path, create/replace/merge action, bundle-relative source, owner, validation, and
-non-empty evidence. Targets are limited to project Harness workflows, selected bootstrap reference,
-rules, checks, helpers, and templates. Executables require explicit authorization.
+non-empty evidence. UTF-8 references and assets are open semantic owners; scripts remain limited to
+checks/helpers and require explicit executable authorization. Project Wiki document evidence and
+Owner must match its frontmatter. Runtime, state, generated Wiki views, and derived rule views are
+protected.
 
 ## Publication Gate
 

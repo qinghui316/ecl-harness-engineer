@@ -70,9 +70,11 @@ Before terminal publication, reject `rejected/noop` if current non-state Harness
 from the owner fingerprint, and reject `keep` if it does not differ. A kept result increments
 `manifest.skill_revision`.
 
-Default to a focused `creation-delta.json` candidate for rules, workflows, templates, checks,
-helpers, and routes. Require the complete four-file analysis bundle only when L1/L2/L3,
-architecture, reference maps, commands, environment, or related knowledge drift changes. Stage
+Default to a focused `creation-delta.json` candidate for Agent-owned L1/L2/L3 documents, rules,
+workflows, templates, checks, helpers, and routes. Read every indexed catalog entry during the
+Experience Retention Scan. Require the complete four-file analysis bundle only when renderer-owned
+current facts, architecture, reference maps, commands, environment, or related knowledge drift
+changes. Stage
 validates the selected bundle directly; standalone project audit remains diagnostic.
 
 Stage a complete non-state Skill candidate. Recompute its fingerprint immediately before mutation

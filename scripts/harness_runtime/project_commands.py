@@ -24,11 +24,11 @@ from .changes import contract_record_path, ecl_integrity_findings, rebuild_chang
 from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git, git_baseline_relation, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
-from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints, knowledge_check_internal
+from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints, knowledge_check_internal, rebuild_project_wiki_index
 from .links import connector_route, copy_runtime, copy_scaffold, ensure_all_project_routes, ensure_runtime_links, generated_command_routes, remove_directory_link, restore_route_snapshots, same_target, worktree_route_findings
 from .project import assign_project_identity, ensure_state, initial_manifest, project_context, require_skill, skill_root_for, worktree_roots
 from .registry import records, registry_root
-from .rendering import install_analysis_bundle
+from .rendering import apply_creation_delta, install_analysis_bundle, load_focused_creation_bundle
 from .transactions import acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, content_transaction_store, git_repository_findings, guard_project_skill, guard_project_skill_read_only, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, writer_lock_path
 
 def project_init(args: argparse.Namespace) -> dict[str, Any]:
@@ -245,8 +245,15 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         }
     root = skill_root_for(context, args)
     profile = audit = delta = architecture = bundle = None
+    focused_delta = None
     if getattr(args, "analysis_bundle", None):
-        profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
+        requested_bundle = Path(args.analysis_bundle).expanduser().resolve()
+        full_names = ("project-profile.json", "audit.json", "creation-delta.json", "architecture.json")
+        if all((requested_bundle / name).is_file() for name in full_names):
+            profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
+        else:
+            bundle = requested_bundle
+            focused_delta = load_focused_creation_bundle(bundle, "migrate-focused")
     if not (root / "state" / "manifest.json").exists():
         raise HarnessError(
             "Project routes identify a Harness that is not present on this machine. Place the matching project Harness at the marked Skill path before migrating."
@@ -288,7 +295,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             "artifacts": init_result.get("artifacts"),
             "rules": init_result.get("rules"),
         }
-    if profile is not None or portable_upgrade or state_rebind:
+    if profile is not None or focused_delta is not None or portable_upgrade or state_rebind:
         acquire_writer(root, "migration", context["project_id"])
         transaction: dict[str, Any] | None = None
         manifest_path = root / "state" / "manifest.json"
@@ -327,6 +334,20 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                     bool(getattr(args, "allow_executable_artifacts", False)),
                     fingerprint_snapshot,
                 )
+            elif focused_delta is not None:
+                applied = {
+                    "mode": "focused",
+                    "knowledge": {"refreshed": False},
+                    "artifacts": apply_creation_delta(
+                        candidate,
+                        bundle,
+                        focused_delta,
+                        context,
+                        bool(getattr(args, "allow_executable_artifacts", False)),
+                        allow_retire=True,
+                    ),
+                    "rules": {"affected_only": True},
+                }
             else:
                 applied = {"portable_state_upgrade": portable_upgrade, "lane_rebound": state_rebind}
                 if state_rebind:
@@ -339,7 +360,14 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                                 context, sources, fingerprint_snapshot,
                             )
                     atomic_write_json(index_path, index)
-            candidate_check = knowledge_check_internal(candidate, context, fingerprint_snapshot)
+            if profile is None:
+                rebuild_project_wiki_index(candidate, context, snapshot=fingerprint_snapshot)
+            candidate_check = knowledge_check_internal(
+                candidate,
+                context,
+                fingerprint_snapshot,
+                include_fingerprints=focused_delta is None,
+            )
             if not candidate_check["healthy"]:
                 raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
             transaction = apply_content_transaction(

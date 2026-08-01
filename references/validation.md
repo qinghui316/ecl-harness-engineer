@@ -7,8 +7,10 @@
 - Every Codex/Claude worktree link resolves to that same directory.
 - Manifest, Change INDEX, Registry, Integration, and Evolution records match schemas and identities;
   none persist machine-specific absolute paths.
-- L1 contains complete project-level navigation without duplicated detail or a fixed size cap; no
-  empty/speculative L2/L3; citations and fingerprints resolve.
+- L1 and the generated catalog contain complete project-level navigation without duplicated detail
+  or a fixed size cap; Agent-owned current/target/decision/guide frontmatter matches the index;
+  there are no orphan, empty, duplicate, unreachable, or uncited entries; citations and current
+  source fingerprints resolve.
 - Rule IDs are unique and generated Markdown exactly matches `red_lines.yaml`.
 - Every workflow contains Inputs, Agent Judgment, Deterministic Commands, Actions, Outputs, Exit,
   Stop And Escalate, and Rule IDs.
@@ -49,7 +51,8 @@
     behind, diverged, or unverifiable baselines remain explicit findings where applicable.
 16. Non-Git to Git transition preserves project identity and state, rebinds Lane ownership to the
     named branch, attaches current worktrees, and leaves a future-worktree connector.
-17. Init and migrate use one renderer and produce the same project Harness ownership model.
+17. Init and full migrate use one renderer; focused migrate publishes bounded Agent-owned documents
+    without full analysis; both produce one merged index/catalog and the same ownership model.
 
 ## Adversarial And Recovery Scenarios
 

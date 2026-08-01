@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .analysis import DISPLAY_TEXT_FIELDS, evidence_values, reference_project_sources, semantic_display_text, validate_project_evidence
-from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, file_fingerprint, is_within, read_json, run, safe_relative, slugify, stable_hash, utc_now
-from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints
+from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, file_fingerprint, is_within, read_json, reject_linked_ancestors, run, safe_relative, slugify, stable_hash, utc_now
+from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints, discover_agent_knowledge, parse_agent_knowledge_frontmatter, rebuild_project_wiki_index
 from .project import primary_worktree_root
 
 REQUIRED_WORKFLOW_PATHS = {
@@ -122,11 +122,31 @@ def render_project_wiki(
     for directory in ("modules", "systems", "bridges", "reference_projects/maps"):
         (wiki / directory).mkdir(parents=True, exist_ok=True)
     previous = read_json(wiki / "index.json", {})
+    agent_items = discover_agent_knowledge(skill_root, context, fingerprint_snapshot)
+    agent_by_id = {item["id"]: item for item in agent_items}
+    agent_by_path = {item["path"]: item for item in agent_items}
+    if len(agent_by_id) != len(agent_items) or len(agent_by_path) != len(agent_items):
+        raise HarnessError("Agent-owned project knowledge contains a duplicate id or path.")
+
+    def agent_owns(identifier: str, relative: Path | str) -> bool:
+        path = Path(relative).as_posix()
+        by_id = agent_by_id.get(identifier)
+        by_path = agent_by_path.get(path)
+        if not by_id and not by_path:
+            return False
+        if by_id is by_path and by_id is not None:
+            return True
+        raise HarnessError(
+            f"Agent-owned knowledge conflicts with renderer output id/path: {identifier} / {path}"
+        )
+
     for item in previous.get("items", []):
         if item.get("generated_by") != "project-profile":
             continue
         relative = item.get("path")
         if not isinstance(relative, str) or relative == "overview.md":
+            continue
+        if item.get("id") in agent_by_id or relative in agent_by_path:
             continue
         target = wiki / relative
         if target.is_file() and is_within(target, wiki):
@@ -251,6 +271,8 @@ def render_project_wiki(
             "## Evidence", "", *[f"- `{value}`" for value in sources],
         ]
         relative = Path("modules") / f"{module['id']}.md"
+        if agent_owns(module["id"], relative):
+            continue
         atomic_write_text(wiki / relative, "\n".join(content))
         index_items.append({
             "id": module["id"], "layer": "L2", "kind": "module", "path": relative.as_posix(),
@@ -357,6 +379,8 @@ def render_project_wiki(
         systems.append(("verification", "verification.md", lines, sources))
     for identifier, filename, lines, sources in systems:
         relative = Path("systems") / filename
+        if agent_owns(identifier, relative):
+            continue
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": identifier, "layer": "L2", "kind": "system", "path": relative.as_posix(),
@@ -393,6 +417,8 @@ def render_project_wiki(
                 f"{', '.join(f'`{value}`' for value in evidence_values(mapping))}{reference_note} |"
             )
         relative = Path("bridges") / f"{bridge['id']}.md"
+        if agent_owns(bridge["id"], relative):
+            continue
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": bridge["id"], "layer": "L3", "kind": "bridge", "path": relative.as_posix(),
@@ -410,6 +436,8 @@ def render_project_wiki(
         sources = evidence_values(code_path)
         identifier = f"critical-flow-{slugify(str(code_path.get('name', 'flow')))}"
         relative = Path("bridges") / f"{identifier}.md"
+        if agent_owns(identifier, relative):
+            continue
         lines = [
             f"# {code_path.get('name', 'Critical Flow')}", "",
             "This sequence is an evidence-backed semantic/runtime bridge.", "",
@@ -507,6 +535,8 @@ def render_project_wiki(
                 *[f"- `{value}`" for value in reference_sources],
             ])
             relative = Path("reference_projects") / "maps" / f"{reference_id}.md"
+            if agent_owns(f"reference-{reference_id}", relative):
+                continue
             atomic_write_text(wiki / relative, "\n".join(map_lines))
             index_items.append({
                 "id": f"reference-{reference_id}", "layer": "reference", "kind": "reference-map",
@@ -516,15 +546,16 @@ def render_project_wiki(
                 "generated_by": "project-profile", "updated_at": utc_now(),
             })
         reference_index_relative = Path("reference_projects") / "index.md"
-        atomic_write_text(wiki / reference_index_relative, "\n".join(reference_index_lines))
-        reference_index_sources = list(dict.fromkeys(reference_index_sources))
-        index_items.append({
-            "id": "reference-projects", "layer": "index", "kind": "reference-index",
-            "path": reference_index_relative.as_posix(), "sources": reference_index_sources,
-            "source_fingerprints": context_source_fingerprints(context, reference_index_sources, fingerprint_snapshot),
-            "content_fingerprint": file_fingerprint([wiki / reference_index_relative], wiki),
-            "generated_by": "project-profile", "updated_at": utc_now(),
-        })
+        if not agent_owns("reference-projects", reference_index_relative):
+            atomic_write_text(wiki / reference_index_relative, "\n".join(reference_index_lines))
+            reference_index_sources = list(dict.fromkeys(reference_index_sources))
+            index_items.append({
+                "id": "reference-projects", "layer": "index", "kind": "reference-index",
+                "path": reference_index_relative.as_posix(), "sources": reference_index_sources,
+                "source_fingerprints": context_source_fingerprints(context, reference_index_sources, fingerprint_snapshot),
+                "content_fingerprint": file_fingerprint([wiki / reference_index_relative], wiki),
+                "generated_by": "project-profile", "updated_at": utc_now(),
+            })
 
     overview_sources: list[str] = []
     overview_items = [
@@ -557,7 +588,18 @@ def render_project_wiki(
             *index_items,
         ],
     }
-    atomic_write_json(wiki / "index.json", index)
+    preserved_generated = [
+        item for item in previous.get("items", [])
+        if isinstance(item, dict)
+        and item.get("generated_by") not in {"project-profile", "agent"}
+        and item.get("managed_by") != "agent"
+    ]
+    rebuild_project_wiki_index(
+        skill_root,
+        context,
+        [*index["items"], *preserved_generated],
+        fingerprint_snapshot,
+    )
     return {
         "analysis_status": profile.get("analysis_status"),
         "modules": len(modules),
@@ -579,10 +621,22 @@ def render_architecture_system(
     target = wiki / "systems" / "architecture.md"
     index_path = wiki / "index.json"
     index = read_json(index_path, {"schema_version": SCHEMA_VERSION, "items": []})
+    agent_items = discover_agent_knowledge(skill_root, context, fingerprint_snapshot)
+    by_id = next((item for item in agent_items if item["id"] == "architecture"), None)
+    by_path = next((item for item in agent_items if item["path"] == "systems/architecture.md"), None)
+    if by_id or by_path:
+        if by_id is not by_path or by_id is None:
+            raise HarnessError("Agent-owned architecture knowledge conflicts with the renderer id or path.")
+        index["items"] = [
+            item for item in index.get("items", [])
+            if item.get("id") != "architecture" and item.get("path") != "systems/architecture.md"
+        ]
+        rebuild_project_wiki_index(skill_root, context, index["items"], fingerprint_snapshot)
+        return True
     index["items"] = [item for item in index.get("items", []) if item.get("id") != "architecture"]
     if not meaningful:
         target.unlink(missing_ok=True)
-        atomic_write_json(index_path, index)
+        rebuild_project_wiki_index(skill_root, context, index["items"], fingerprint_snapshot)
         return False
 
     evidence = list(dict.fromkeys([
@@ -635,22 +689,65 @@ def render_architecture_system(
         "content_fingerprint": file_fingerprint([target], wiki),
         "generated_by": "architecture-analysis", "updated_at": utc_now(),
     })
-    atomic_write_json(index_path, index)
+    rebuild_project_wiki_index(skill_root, context, index["items"], fingerprint_snapshot)
     return True
 
+PROTECTED_ARTIFACT_PATHS = {
+    "state/manifest.json",
+    "references/project_wiki/index.json",
+    "references/project_wiki/catalog.md",
+    "references/project_wiki/overview.md",
+    "references/rules/critical.md",
+    "references/audit-rubric.json",
+}
+PROTECTED_ARTIFACT_PREFIXES = (
+    "state/",
+    "scripts/harness_runtime/",
+    "references/rules/by-stage/",
+)
+
+
 def allowed_artifact_target(relative: str) -> bool:
+    normalized = relative.replace("\\", "/").casefold()
+    if normalized in {value.casefold() for value in PROTECTED_ARTIFACT_PATHS}:
+        return False
+    if any(normalized.startswith(prefix.casefold()) for prefix in PROTECTED_ARTIFACT_PREFIXES):
+        return False
     if relative == "SKILL.md":
         return True
     if relative == "references/rules/red_lines.yaml":
         return True
-    directory_prefixes = (
-        "references/workflows/",
-        "references/bootstrap/",
-        "scripts/checks/",
-        "scripts/helpers/",
-        "assets/templates/",
-    )
-    return any(relative.startswith(prefix) for prefix in directory_prefixes)
+    suffix = Path(relative).suffix.lower()
+    if normalized.startswith("references/"):
+        return suffix in {".md", ".json", ".yaml", ".yml"}
+    if normalized.startswith("assets/"):
+        return bool(Path(relative).name)
+    if normalized.startswith(("scripts/checks/", "scripts/helpers/")):
+        return suffix in {".py", ".ps1", ".sh", ".mjs"}
+    return False
+
+
+def reject_linked_artifact_target(skill_root: Path, relative: str) -> Path:
+    target = skill_root / relative
+    reject_linked_ancestors(skill_root, target, "Creation delta target")
+    if not is_within(target.resolve(), skill_root):
+        raise HarnessError(f"Creation delta target resolves outside the project Harness: {relative}")
+    return target
+
+
+def validate_text_artifact(path: Path, relative: str) -> str:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise HarnessError(f"Project Harness artifact must be UTF-8 text: {relative}") from exc
+    if "\x00" in content or any(ord(character) < 9 for character in content):
+        raise HarnessError(f"Project Harness artifact contains binary control bytes: {relative}")
+    if Path(relative).suffix.lower() == ".json":
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise HarnessError(f"JSON artifact is invalid: {relative}: {exc}") from exc
+    return content
 
 def artifact_validation_command(skill_root: Path, declaration: str) -> list[str]:
     try:
@@ -765,6 +862,7 @@ def apply_creation_delta(
     applied: list[str] = []
     skipped: list[dict[str, str]] = []
     validated_artifacts: list[dict[str, Any]] = []
+    knowledge_changed = False
     for artifact in delta.get("artifacts", []):
         if not isinstance(artifact, dict):
             raise HarnessError("Each creation-delta artifact must be an object.")
@@ -781,10 +879,11 @@ def apply_creation_delta(
         if action not in {"create", "replace", "merge", "retire"}:
             raise HarnessError(f"Unsupported creation-delta action: {action}")
         if not allowed_artifact_target(target_relative):
-            raise HarnessError(f"Creation delta cannot write outside project Harness semantic owners: {target_relative}")
+            raise HarnessError(f"Creation delta cannot write a protected or unsupported project Harness path: {target_relative}")
+        target = reject_linked_artifact_target(skill_root, target_relative)
         if action == "retire":
             if not allow_retire:
-                raise HarnessError("Artifact retirement is only supported by a focused Evolution candidate.")
+                raise HarnessError("Artifact retirement is only supported by a focused publication candidate.")
             if target_relative in {"SKILL.md", "references/rules/red_lines.yaml"}:
                 raise HarnessError(f"Focused Evolution cannot retire a required project Harness owner: {target_relative}")
             if target_relative in REQUIRED_WORKFLOW_PATHS:
@@ -796,11 +895,19 @@ def apply_creation_delta(
                 raise HarnessError(f"Retired artifact {target_relative} must declare validation: retired")
             evidence = evidence_values(artifact)
             validate_project_evidence(context["project_root"], evidence, f"artifact {target_relative}")
-            target = skill_root / target_relative
             if not target.is_file() or target.is_symlink():
                 raise HarnessError(f"Focused Evolution retire target must be a physical file: {target_relative}")
+            if target_relative.startswith("references/project_wiki/"):
+                index = read_json(skill_root / "references" / "project_wiki" / "index.json", {"items": []})
+                item = next(
+                    (entry for entry in index.get("items", []) if entry.get("path") == target_relative.removeprefix("references/project_wiki/")),
+                    None,
+                )
+                if not item or item.get("managed_by") != "agent":
+                    raise HarnessError("Focused retirement may remove only Agent-owned project knowledge.")
             target.unlink()
             applied.append(target_relative)
+            knowledge_changed = knowledge_changed or target_relative.startswith("references/project_wiki/")
             artifact["evidence"] = evidence
             validated_artifacts.append(artifact)
             continue
@@ -810,6 +917,13 @@ def apply_creation_delta(
             if not isinstance(artifact.get(field), str) or not artifact[field].strip():
                 raise HarnessError(f"Artifact {target_relative} requires {field}.")
         declaration = artifact["validation"].strip()
+        if target_relative.startswith(("scripts/checks/", "scripts/helpers/")):
+            if not allow_executable_artifacts:
+                raise HarnessError(
+                    f"Executable artifact {target_relative} requires explicit user authorization."
+                )
+            if declaration in {"text-present", "workflow-contract", "rule-source"}:
+                raise HarnessError(f"Executable artifact {target_relative} requires an executable validation command.")
         if target_relative == "references/rules/red_lines.yaml" and declaration != "rule-source":
             raise HarnessError("The rule source must declare validation: rule-source")
         if target_relative.startswith("references/workflows/") and declaration != "workflow-contract":
@@ -820,18 +934,55 @@ def apply_creation_delta(
         source = (bundle / source_relative).resolve()
         if not is_within(source, bundle) or not source.is_file() or source.is_symlink():
             raise HarnessError(f"Artifact source is missing, outside the bundle, or a symlink: {source_relative}")
-        target = skill_root / target_relative
         if action == "create" and target.exists():
             raise HarnessError(f"Creation delta create target already exists: {target_relative}")
         if action in {"replace", "merge"} and not target.exists():
             raise HarnessError(f"Creation delta {action} target does not exist: {target_relative}")
-        if target.suffix.lower() not in TEXT_SUFFIXES and target.name != "red_lines.yaml":
+        if (
+            not target_relative.startswith("assets/")
+            and target.suffix.lower() not in TEXT_SUFFIXES
+            and target.name != "red_lines.yaml"
+        ):
             raise HarnessError(f"Only text project Harness artifacts are supported: {target_relative}")
-        content = source.read_text(encoding="utf-8")
+        content = validate_text_artifact(source, target_relative)
+        if target_relative.startswith("references/project_wiki/"):
+            if target.suffix.lower() != ".md":
+                raise HarnessError("Indexed project knowledge must be a Markdown document with ECL frontmatter.")
+            metadata = parse_agent_knowledge_frontmatter(source)
+            if metadata is None:
+                raise HarnessError(f"Agent-owned project knowledge requires ECL frontmatter: {target_relative}")
+            if metadata["owner"] != artifact["owner"].strip():
+                raise HarnessError(
+                    f"Artifact owner and project knowledge owner disagree for {target_relative}."
+                )
+            if set(metadata["evidence"]) != set(evidence):
+                raise HarnessError(
+                    f"Artifact evidence and project knowledge frontmatter evidence disagree for {target_relative}."
+                )
+            existing_index = read_json(
+                skill_root / "references" / "project_wiki" / "index.json", {"items": []},
+            )
+            existing_item = next(
+                (
+                    entry for entry in existing_index.get("items", [])
+                    if entry.get("path") == target_relative.removeprefix("references/project_wiki/")
+                ),
+                None,
+            )
+            if (
+                existing_item
+                and existing_item.get("managed_by") == "agent"
+                and existing_item.get("owner") != metadata["owner"]
+            ):
+                raise HarnessError(f"Agent-owned knowledge owner conflict for {target_relative}.")
         atomic_write_text(target, content)
         applied.append(target_relative)
+        knowledge_changed = knowledge_changed or target_relative.startswith("references/project_wiki/")
         artifact["evidence"] = evidence
         validated_artifacts.append(artifact)
+    knowledge_index = None
+    if knowledge_changed:
+        knowledge_index = rebuild_project_wiki_index(skill_root, context)
     validations = run_artifact_validations(
         skill_root,
         validated_artifacts,
@@ -842,7 +993,26 @@ def apply_creation_delta(
         "skipped": skipped,
         "validations": validations,
         "merge_semantics": "full-candidate replacement",
+        "knowledge_index_updated": knowledge_changed,
+        "knowledge_items": len(knowledge_index.get("items", [])) if knowledge_index else None,
     }
+
+
+def load_focused_creation_bundle(bundle: Path, mode: str) -> dict[str, Any]:
+    if not bundle.is_dir():
+        raise HarnessError(f"Focused bundle is not a directory: {bundle}")
+    delta = read_json(bundle / "creation-delta.json", None)
+    if not isinstance(delta, dict):
+        raise HarnessError("Focused bundle requires creation-delta.json.")
+    if delta.get("schema_version") != SCHEMA_VERSION or delta.get("mode") != mode:
+        raise HarnessError(
+            f"Focused creation-delta.json requires schema_version 1.0 and mode {mode}."
+        )
+    decisions = delta.get("decisions", [])
+    artifacts = delta.get("artifacts", [])
+    if not isinstance(decisions, list) or not isinstance(artifacts, list) or not artifacts:
+        raise HarnessError("Focused bundle requires decision and artifact arrays plus at least one artifact mutation.")
+    return delta
 
 def persist_analysis(
     skill_root: Path,

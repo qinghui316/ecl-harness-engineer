@@ -12,6 +12,8 @@ validator and renderer.
 - Current project Harness manifest, content, and dynamic state.
 - A complete self-contained four-file bundle for semantic refresh:
   `project-profile.json`, `architecture.json`, `audit.json`, and `creation-delta.json`.
+- Or a focused `creation-delta.json` plus `artifacts/` with `mode: migrate-focused` when the user
+  explicitly requests immediate Agent-owned documentation or another bounded Harness update.
 - Explicit authorization for executable creation-delta artifacts.
 
 Manifest `1.0` bootstrap state may receive the portable path upgrade without semantic invention. A
@@ -34,10 +36,11 @@ complete `1.0` Harness must provide a new complete bundle; otherwise return
 
 ## Transaction
 
-1. Validate route identity, current state, bundle schema/evidence, artifact allowlist, and path/link
+1. Validate route identity, current state, bundle schema/evidence, protected paths, and path/link
    boundaries.
 2. Build a non-state candidate and mirror the current Harness runtime into it.
-3. Apply the complete bundle when semantic refresh is required.
+3. Apply the complete bundle when semantic refresh is required, or only the focused delta without
+   extractor/audit/Wiki regeneration when publishing Agent-owned content.
 4. Regenerate rules and knowledge index; run candidate checks.
 5. Acquire the shared writer and publish through the recoverable content transaction.
 6. Normalize manifest, baseline, Lane, Change owner, and Integration records to portable schema

@@ -11,8 +11,9 @@ Use this project Harness when the current project id is `{{PROJECT_ID}}`. Its co
 ## Start
 
 1. Read `references/rules/critical.md` and `references/project_wiki/overview.md`.
-2. Read the relevant L2 module or system pages, then follow linked L3 bridges and reference-source
-   maps when the task crosses those boundaries.
+2. Use the generated `references/project_wiki/catalog.md` to select relevant L2/L3 current,
+   target, decision, or guide documents by module and Owner. Follow linked reference-source maps
+   only when the task crosses those boundaries.
 3. For explanation, navigation, or read-only source research, continue from project knowledge and
    cited implementation evidence without running Registry commands.
 4. Classify repository mutations before running commands. In single-Lane mode, Small Changes
@@ -41,8 +42,9 @@ If the detected project id differs, stop and locate the correct project Harness.
 {{KNOWLEDGE_COMMAND}} scan|check --project-root <path>
 ```
 
-Use `references/analysis-contract.md` for a semantic audit or a full-refresh E1. Focused E1 work
-uses only the affected Harness owners described by `references/workflows/evolve.md`. Use
+Use `references/analysis-contract.md` for a semantic audit, focused document migration, or E1.
+Focused work uses only the affected Agent-owned documents or Harness owners described by
+`references/workflows/evolve.md`. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
@@ -91,8 +93,8 @@ Integration applies selected exact completion ranges. The user confirms I2 only 
 validation and candidate-bound independent review.
 
 Every fifth eligible Change creates an Evolution window. After E1, default to a focused update of
-affected rules, workflows, templates, checks, helpers, or routes. Build a complete semantic rescan
-only when project knowledge or architecture changed. A candidate applies only when its bound Judge
+Agent-owned project documents, affected rules, workflows, templates, checks, helpers, or routes.
+Build a complete semantic rescan only when renderer-owned current facts or architecture changed. A candidate applies only when its bound Judge
 report and validation satisfy `references/audit-rubric.json`; there is no E2.
 
 ## Rule Source

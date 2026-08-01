@@ -26,7 +26,7 @@ from .contracts import load_audit_rubric
 from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, is_link_like, read_json, reject_tree_links, remove_owned_tree, utc_now
 from .knowledge import SourceFingerprintSnapshot, canonical_knowledge_finding_type, knowledge_check_internal
 from .project import project_context, require_skill
-from .rendering import apply_creation_delta, install_analysis_bundle
+from .rendering import apply_creation_delta, install_analysis_bundle, load_focused_creation_bundle
 from .reviews import validate_evolution_judge
 from .transactions import CONTENT_TRANSACTION_PATHS, acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
 
@@ -145,18 +145,7 @@ def _local_evidence_sources(*values: Any) -> list[str]:
 
 
 def load_focused_evolution_bundle(bundle: Path) -> dict[str, Any]:
-    delta = read_json(bundle / "creation-delta.json", None)
-    if not isinstance(delta, dict):
-        raise HarnessError("Focused Evolution bundle requires creation-delta.json.")
-    if delta.get("schema_version") != SCHEMA_VERSION or delta.get("mode") != "evolution-focused":
-        raise HarnessError(
-            "Focused Evolution creation-delta.json requires schema_version 1.0 and mode evolution-focused."
-        )
-    decisions = delta.get("decisions", [])
-    artifacts = delta.get("artifacts", [])
-    if not isinstance(decisions, list) or not isinstance(artifacts, list) or not artifacts:
-        raise HarnessError("Focused Evolution requires decision and artifact arrays plus at least one artifact mutation.")
-    return delta
+    return load_focused_creation_bundle(bundle, "evolution-focused")
 
 
 def load_evolution_bundle(

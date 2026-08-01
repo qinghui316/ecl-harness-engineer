@@ -64,9 +64,9 @@ Integration finalization and Evolution publication must not overlap; acquire the
 
 ## HR-21: Keep Knowledge Inspection Read Only
 
-Knowledge scan and check only report drift. Stable Wiki application is restricted to initialization, migration, or an accepted full-refresh E1 Evolution candidate.
+Knowledge scan and check only report drift. Stable renderer-owned current facts change through initialization or full refresh; Agent-owned current, target, decision, and guide documents publish through focused migrate or accepted E1 with indexed frontmatter.
 
-**On violation:** Stop the inspection, preserve current Wiki content, and move the proposed update into the authorized full analysis bundle flow.
+**On violation:** Stop the inspection, preserve current Wiki content, and move the proposed update into the appropriate focused or full publication flow.
 
 ## HR-22: Prioritize Current Facts Over Periodic Wiki
 

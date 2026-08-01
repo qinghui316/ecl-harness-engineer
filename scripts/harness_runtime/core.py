@@ -27,7 +27,9 @@ MANIFEST_SCHEMA_VERSION = "2.0"
 
 EVOLUTION_THRESHOLD = 5
 
-TEXT_SUFFIXES = {".md", ".json", ".txt", ".tsv", ".tpl", ".py", ".ps1", ".sh", ".mjs"}
+TEXT_SUFFIXES = {
+    ".md", ".json", ".yaml", ".yml", ".txt", ".tsv", ".tpl", ".py", ".ps1", ".sh", ".mjs",
+}
 
 REQUIRED_CHANGE_FILES = {
     "summary.md", "spec.md", "plan.md", "tasks.md", "reviews/review.md",

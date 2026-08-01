@@ -654,6 +654,34 @@ class HarnessCliTests(unittest.TestCase):
         (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
         return bundle
 
+    def agent_knowledge_document(
+        self,
+        identifier: str,
+        *,
+        title: str,
+        kind: str = "target",
+        status: str = "accepted",
+        owner: str = "project-architecture",
+        evidence: tuple[str, ...] = ("user:accepted project direction",),
+    ) -> str:
+        evidence_lines = "\n".join(f"    - {item}" for item in evidence)
+        return (
+            "---\n"
+            "ecl:\n"
+            f"  id: {identifier}\n"
+            "  layer: L2\n"
+            f"  kind: {kind}\n"
+            f"  status: {status}\n"
+            f"  owner: {owner}\n"
+            "  modules: [job-processing]\n"
+            "  evidence:\n"
+            f"{evidence_lines}\n"
+            "  managed_by: agent\n"
+            "---\n\n"
+            f"# {title}\n\n"
+            "This formal project document keeps its semantic state separate from current implementation facts.\n"
+        )
+
     def prepare_integration(self, name: str) -> tuple[Path, Path, Path, str]:
         project = self.create_git_project(name)
         initialized = self.init_project(project, self.write_bundle(project, f"{name}-bundle"))
@@ -932,7 +960,8 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("references/analysis-contract.md", generated_entry)
         self.assertIn("references/bootstrap/project.md", generated_entry)
         self.assertIn("references/runtime-modules.md", generated_entry)
-        self.assertIn("relevant L2 module or system pages", generated_entry)
+        self.assertIn("project_wiki/catalog.md", generated_entry)
+        self.assertIn("target, decision, or guide documents", generated_entry)
         self.assertIn("Read the current workflow", generated_entry)
         self.assertRegex(generated_entry, r"reference-source\s+maps")
         self.assertIn("references/rules/by-stage/<stage>.md", generated_entry)
@@ -1132,7 +1161,15 @@ class HarnessCliTests(unittest.TestCase):
         self.assertNotIn("oversized_l1", {item["type"] for item in checked["findings"]})
 
         brief = wiki / "modules" / "brief.md"
-        brief.write_text("# Brief\n\nUseful.\n", encoding="utf-8")
+        brief.write_text(
+            "---\necl:\n  id: brief\n  layer: L2\n  kind: guide\n  status: accepted\n"
+            "  owner: brief-owner\n  modules: [brief]\n  evidence: [user:accepted brief]\n"
+            "  managed_by: agent\n---\n\n# Brief\n\nUseful.\n",
+            encoding="utf-8",
+        )
+        self.runtime_knowledge.rebuild_project_wiki_index(
+            skill_root, self.runtime_project.project_context(project),
+        )
         checked = self.cli(project, "knowledge", "check")
         self.assertNotIn(
             str(brief),
@@ -1142,7 +1179,7 @@ class HarnessCliTests(unittest.TestCase):
         placeholder.write_text("# Placeholder\n", encoding="utf-8")
         rejected = self.cli(project, "knowledge", "check", expected=(1,))
         self.assertIn(
-            str(placeholder),
+            "modules/placeholder.md",
             {item.get("path") for item in rejected["findings"] if item["type"] == "empty_knowledge_entry"},
         )
 
@@ -2533,6 +2570,202 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertEqual(result["applied"], ["scripts/checks/obsolete_check.py"])
         self.assertFalse(target.exists())
+
+    def test_open_agent_knowledge_is_indexed_and_preserved_by_full_refresh(self) -> None:
+        project = self.create_git_project("open-agent-knowledge")
+        initialized = self.init_project(project, self.write_bundle(project, "open-agent-knowledge"))
+        skill_root = Path(initialized["skill_root"])
+        bundle = self.root / "open-agent-knowledge-focused"
+        artifacts = bundle / "artifacts"
+        artifacts.mkdir(parents=True)
+        target_source = artifacts / "office-v2.md"
+        target_source.write_text(
+            self.agent_knowledge_document("office-v2-target", title="Office V2 Target Architecture"),
+            encoding="utf-8",
+        )
+        takeover_source = artifacts / "job-processing.md"
+        takeover_source.write_text(
+            self.agent_knowledge_document(
+                "job-processing",
+                title="Agent-Owned Job Processing",
+                kind="current",
+                status="implemented",
+                owner="job-processing",
+                evidence=("src/jobs/service.py",),
+            ),
+            encoding="utf-8",
+        )
+        delta = {
+            "schema_version": "1.0",
+            "mode": "migrate-focused",
+            "decisions": [],
+            "artifacts": [
+                {
+                    "path": "references/project_wiki/roadmaps/office/v2.md",
+                    "action": "create",
+                    "source": "artifacts/office-v2.md",
+                    "owner": "project-architecture",
+                    "validation": "text-present",
+                    "evidence": ["user:accepted project direction"],
+                },
+                {
+                    "path": "references/project_wiki/modules/job-processing.md",
+                    "action": "replace",
+                    "source": "artifacts/job-processing.md",
+                    "owner": "job-processing",
+                    "validation": "text-present",
+                    "evidence": ["src/jobs/service.py"],
+                },
+            ],
+        }
+        (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
+        migrated = self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
+        self.assertEqual(migrated["applied"]["mode"], "focused")
+        index = json.loads((skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8"))
+        by_id = {item["id"]: item for item in index["items"]}
+        self.assertEqual(by_id["office-v2-target"]["path"], "roadmaps/office/v2.md")
+        self.assertEqual(by_id["job-processing"]["managed_by"], "agent")
+        catalog = (skill_root / "references/project_wiki/catalog.md").read_text(encoding="utf-8")
+        self.assertIn("roadmaps/office/v2.md", catalog)
+        self.assertIn("target", catalog)
+
+        refresh = self.write_bundle(project, "open-agent-knowledge-refresh")
+        self.cli(project, "project", "migrate", "--analysis-bundle", str(refresh))
+        self.assertEqual(target_source.read_text(encoding="utf-8"), (
+            skill_root / "references/project_wiki/roadmaps/office/v2.md"
+        ).read_text(encoding="utf-8"))
+        self.assertIn(
+            "Agent-Owned Job Processing",
+            (skill_root / "references/project_wiki/modules/job-processing.md").read_text(encoding="utf-8"),
+        )
+
+    def test_focused_migrate_updates_agent_knowledge_without_full_analysis(self) -> None:
+        project = self.create_git_project("focused-document-migrate")
+        initialized = self.init_project(project, self.write_bundle(project, "focused-document-migrate"))
+        skill_root = Path(initialized["skill_root"])
+        bundle = self.root / "focused-document-migrate-bundle"
+        artifacts = bundle / "artifacts"
+        artifacts.mkdir(parents=True)
+        source = artifacts / "decision.md"
+        source.write_text(
+            self.agent_knowledge_document(
+                "queue-decision",
+                title="Queue Decision",
+                kind="decision",
+                owner="job-processing",
+            ),
+            encoding="utf-8",
+        )
+        delta = {
+            "schema_version": "1.0",
+            "mode": "migrate-focused",
+            "decisions": [],
+            "artifacts": [{
+                "path": "references/project_wiki/decisions/queue.md",
+                "action": "create",
+                "source": "artifacts/decision.md",
+                "owner": "job-processing",
+                "validation": "text-present",
+                "evidence": ["user:accepted project direction"],
+            }],
+        }
+        (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
+        with mock.patch.object(
+            self.runtime_project_commands,
+            "install_analysis_bundle",
+            side_effect=AssertionError("focused migrate must not install a full analysis bundle"),
+        ), mock.patch.object(
+            self.runtime_knowledge,
+            "knowledge_fingerprint_scan",
+            side_effect=AssertionError("focused migrate must not scan all project fingerprints"),
+        ):
+            result = self.dispatch(project, "project", "migrate", "--analysis-bundle", str(bundle))
+        self.assertEqual(result["applied"]["mode"], "focused")
+        self.assertTrue((skill_root / "references/project_wiki/decisions/queue.md").is_file())
+
+        retire_bundle = self.root / "focused-document-retire-bundle"
+        retire_bundle.mkdir()
+        retire_delta = {
+            "schema_version": "1.0",
+            "mode": "migrate-focused",
+            "decisions": [],
+            "artifacts": [{
+                "path": "references/project_wiki/decisions/queue.md",
+                "action": "retire",
+                "owner": "job-processing",
+                "validation": "retired",
+                "evidence": ["user:accepted project direction"],
+            }],
+        }
+        (retire_bundle / "creation-delta.json").write_text(
+            json.dumps(retire_delta, indent=2), encoding="utf-8",
+        )
+        retired = self.cli(project, "project", "migrate", "--analysis-bundle", str(retire_bundle))
+        self.assertEqual(retired["applied"]["mode"], "focused")
+        self.assertFalse((skill_root / "references/project_wiki/decisions/queue.md").exists())
+        retired_index = json.loads((skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8"))
+        self.assertNotIn("queue-decision", {item["id"] for item in retired_index["items"]})
+
+    def test_open_knowledge_rejects_protected_paths_and_reports_entropy(self) -> None:
+        project = self.create_git_project("open-knowledge-safety")
+        initialized = self.init_project(project, self.write_bundle(project, "open-knowledge-safety"))
+        skill_root = Path(initialized["skill_root"])
+        self.assertFalse(self.runtime_rendering.allowed_artifact_target("references/project_wiki/index.json"))
+        self.assertFalse(self.runtime_rendering.allowed_artifact_target("scripts/harness_runtime/core.py"))
+        self.assertTrue(self.runtime_rendering.allowed_artifact_target("references/designs/target.yaml"))
+
+        invalid_bundle = self.root / "invalid-target-classification"
+        invalid_artifacts = invalid_bundle / "artifacts"
+        invalid_artifacts.mkdir(parents=True)
+        invalid_source = invalid_artifacts / "implemented-target.md"
+        invalid_source.write_text(
+            self.agent_knowledge_document(
+                "implemented-target",
+                title="Implemented Target",
+                kind="target",
+                status="implemented",
+                evidence=("src/jobs/service.py",),
+            ),
+            encoding="utf-8",
+        )
+        invalid_delta = {
+            "schema_version": "1.0",
+            "mode": "migrate-focused",
+            "decisions": [],
+            "artifacts": [{
+                "path": "references/project_wiki/targets/implemented.md",
+                "action": "create",
+                "source": "artifacts/implemented-target.md",
+                "owner": "project-architecture",
+                "validation": "text-present",
+                "evidence": ["src/jobs/service.py"],
+            }],
+        }
+        (invalid_bundle / "creation-delta.json").write_text(
+            json.dumps(invalid_delta, indent=2), encoding="utf-8",
+        )
+        invalid = self.cli(
+            project, "project", "migrate", "--analysis-bundle", str(invalid_bundle), expected=(2,),
+        )
+        self.assertIn("current_target_classification_conflict", invalid["error"])
+
+        orphan = skill_root / "references/project_wiki/custom/orphan.md"
+        orphan.parent.mkdir(parents=True)
+        orphan.write_text("# Orphan\n\nUnindexed project knowledge.\n", encoding="utf-8")
+        source = skill_root / "references/project_wiki/modules/job-processing.md"
+        duplicate = skill_root / "references/project_wiki/custom/duplicate.md"
+        duplicate.write_bytes(source.read_bytes())
+        index_path = skill_root / "references/project_wiki/index.json"
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        duplicate_item = dict(next(item for item in index["items"] if item["id"] == "job-processing"))
+        duplicate_item["id"] = "job-processing-copy"
+        duplicate_item["path"] = "custom/duplicate.md"
+        index["items"].append(duplicate_item)
+        index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
+        checked = self.cli(project, "knowledge", "check", expected=(1,))
+        types = {item["type"] for item in checked["findings"]}
+        self.assertIn("orphan_knowledge_document", types)
+        self.assertIn("duplicate_knowledge_content", types)
 
     def test_fingerprint_finding_types_share_canonical_audit_names(self) -> None:
         aliases = {
@@ -4344,7 +4577,7 @@ class HarnessCliTests(unittest.TestCase):
             str(unsafe_bundle),
             expected=(2,),
         )
-        self.assertIn("cannot write outside", unsafe["error"])
+        self.assertIn("protected or unsupported", unsafe["error"])
 
         project = self.create_git_project("migration-rollback")
         initialized = self.init_project(

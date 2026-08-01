@@ -107,7 +107,8 @@ existing failures, and the next Change or repair action.
 The project Harness owns:
 
 - short `SKILL.md` routing and critical/stage rule views;
-- L1 overview, evidenced L2 module/system maps, and proven L3 bridges;
+- L1 overview/catalog, evidenced renderer-owned current maps, and Agent-owned L1/L2/L3 current,
+  target, decision, and guide documents;
 - Change active/parking/archive evidence and generated `INDEX.json`;
 - Lane, path, contract, baseline, Integration, and lock records;
 - five-qualified-Change E1 Evolution evidence and transactional publication;
@@ -134,7 +135,7 @@ not block a Lane.
 | --- | --- |
 | ECL intake, plan, tasks, validation, close, archive, INDEX | `references/ecl-harness.md` |
 | Environment, commands, services, readiness, variables | `references/environment-detection-guide.md`, `references/environment-config-guide.md` |
-| L1/L2/L3, citations, entropy, reference-source maps | `references/knowledge-model.md`, `references/documentation-templates.md` |
+| L1/L2/L3, current/target/decision documents, catalog, citations, entropy, reference-source maps | `references/knowledge-model.md`, `references/documentation-templates.md` |
 | Architecture and mechanical checks | `references/architecture-diagrams.md`, `references/linter-templates.md` |
 | Audit dimensions, weights, and publication gate | `references/audit-rubric.json` |
 | Lane, Registry, contracts, exact commit ranges, I2 | `references/coordination-and-integration.md` |

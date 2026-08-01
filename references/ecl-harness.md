@@ -214,8 +214,9 @@ At five, create pending but do not block ordinary work. After E1:
 1. Atomically claim one evolution owner and freeze five IDs; later Changes queue.
 2. Read INDEX and summaries first, then only necessary details and Integration signals.
 3. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only.
-4. Default to a focused delta for rules, workflows, templates, checks, helpers, or routes; build a
-   complete rescan only when project knowledge or architecture changes.
+4. Default to a focused delta for Agent-owned project documents, rules, workflows, templates,
+   checks, helpers, or routes; build a complete rescan only when renderer-owned current facts or
+   architecture changes.
 5. Prefer improving an existing owner over adding a file/rule/workflow.
 6. Stage a complete frozen candidate and run affected Harness checks plus necessary project gates.
 7. Request an independent judge that did not author the proposal.
