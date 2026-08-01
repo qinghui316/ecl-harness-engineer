@@ -42,6 +42,7 @@ class HarnessCliTests(unittest.TestCase):
         self.runtime_links = importlib.import_module("harness_runtime.links")
         self.runtime_project = importlib.import_module("harness_runtime.project")
         self.runtime_project_commands = importlib.import_module("harness_runtime.project_commands")
+        self.runtime_rendering = importlib.import_module("harness_runtime.rendering")
         self.runtime_transactions = importlib.import_module("harness_runtime.transactions")
 
     def tearDown(self) -> None:
@@ -615,6 +616,43 @@ class HarnessCliTests(unittest.TestCase):
                 str(bundle),
             )
         return project, skill_root, bundle
+
+    def write_focused_evolution_bundle(
+        self,
+        skill_root: Path,
+        name: str,
+    ) -> Path:
+        bundle = self.root / f"{name}-focused-bundle"
+        artifacts = bundle / "artifacts"
+        artifacts.mkdir(parents=True)
+        current = skill_root / "references" / "workflows" / "evolve.md"
+        replacement = artifacts / "evolve.md"
+        replacement.write_text(
+            current.read_text(encoding="utf-8")
+            + "\nFocused Evolution validates only the affected Harness owners.\n",
+            encoding="utf-8",
+        )
+        delta = {
+            "schema_version": "1.0",
+            "mode": "evolution-focused",
+            "decisions": [{
+                "source": "registry:change/change-1",
+                "action": "merge",
+                "owner": "project Harness evolve workflow",
+                "projection": "references/workflows/evolve.md",
+                "validation": "workflow-contract",
+            }],
+            "artifacts": [{
+                "path": "references/workflows/evolve.md",
+                "action": "replace",
+                "source": "artifacts/evolve.md",
+                "owner": "project Harness evolve workflow",
+                "validation": "workflow-contract",
+                "evidence": ["registry:change/change-1"],
+            }],
+        }
+        (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
+        return bundle
 
     def prepare_integration(self, name: str) -> tuple[Path, Path, Path, str]:
         project = self.create_git_project(name)
@@ -2380,8 +2418,8 @@ class HarnessCliTests(unittest.TestCase):
 
         with mock.patch.object(
             self.runtime_knowledge,
-            "source_fingerprint",
-            wraps=self.runtime_knowledge.source_fingerprint,
+            "_content_fingerprint",
+            wraps=self.runtime_knowledge._content_fingerprint,
         ) as fingerprint:
             impacts, scope = self.runtime_changes.knowledge_drift_impacts(
                 skill_root, context, current, contract,
@@ -2394,13 +2432,172 @@ class HarnessCliTests(unittest.TestCase):
 
         with mock.patch.object(
             self.runtime_knowledge,
-            "source_fingerprint",
-            wraps=self.runtime_knowledge.source_fingerprint,
+            "_content_fingerprint",
+            wraps=self.runtime_knowledge._content_fingerprint,
         ) as fingerprint:
             full = self.runtime_knowledge.knowledge_fingerprint_scan(skill_root, context)
         self.assertEqual(full["checked"], 600)
         self.assertEqual(full["unique_sources"], 103)
         self.assertEqual(fingerprint.call_count, 103)
+
+    def test_git_fingerprint_snapshot_batches_clean_sources_by_repository(self) -> None:
+        project = self.create_git_project("batched-fingerprint-snapshot")
+        sources = []
+        for index in range(600):
+            source = f"src/batch/source-{index}.py"
+            path = project / source
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"VALUE = {index}\n", encoding="utf-8")
+            sources.append(source)
+        self.git(project, "add", ".")
+        self.git(project, "commit", "-m", "add fingerprint sources")
+        context = self.runtime_project.project_context(project)
+        with mock.patch.object(
+            self.runtime_knowledge,
+            "git",
+            wraps=self.runtime_knowledge.git,
+        ) as git_call:
+            snapshot = self.runtime_knowledge.SourceFingerprintSnapshot(context)
+            snapshot.prime(sources)
+        self.assertEqual(len(snapshot.local_sources()), 600)
+        self.assertTrue(all(snapshot.result(source)[0] == "current" for source in sources))
+        self.assertLessEqual(git_call.call_count, 25)
+
+    def test_focused_evolution_stages_without_full_rescan_and_publishes(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("focused-evolution", stage=False)
+        bundle = self.write_focused_evolution_bundle(skill_root, "focused-evolution")
+        with mock.patch.object(
+            self.runtime_evolution,
+            "install_analysis_bundle",
+            side_effect=AssertionError("focused Evolution must not render a full analysis bundle"),
+        ), mock.patch.object(
+            self.runtime_knowledge,
+            "knowledge_fingerprint_scan",
+            side_effect=AssertionError("focused Evolution must not scan all project fingerprints"),
+        ):
+            staged = self.dispatch(
+                project,
+                "evolve", "stage",
+                "--proposal-id", "accepted-knowledge",
+                "--owner", "independent-judge",
+                "--analysis-bundle", str(bundle),
+            )
+        self.assertEqual(staged["mode"], "focused")
+        self.assertEqual(staged["next_action"], "independent_judge")
+        self.assertEqual(staged["changed_paths"], ["references/workflows/evolve.md"])
+        candidate = Path(staged["candidate"])
+        self.assertIn(
+            "Focused Evolution validates only the affected Harness owners.",
+            (candidate / "references" / "workflows" / "evolve.md").read_text(encoding="utf-8"),
+        )
+        judge = self.write_evolution_judge(skill_root)
+        completed = self.cli(
+            project,
+            "evolve", "mark-complete",
+            "--proposal-id", "accepted-knowledge",
+            "--owner", "independent-judge",
+            "--candidate-id", "accepted-knowledge",
+            "--judge-report", str(judge),
+            "--status", "keep",
+        )
+        self.assertEqual(completed["status"], "keep")
+        self.assertIn(
+            "Focused Evolution validates only the affected Harness owners.",
+            (skill_root / "references" / "workflows" / "evolve.md").read_text(encoding="utf-8"),
+        )
+
+    def test_focused_evolution_can_retire_an_optional_semantic_artifact(self) -> None:
+        project = self.root / "focused-retire"
+        project.mkdir()
+        initialized = self.init_project(project)
+        skill_root = Path(initialized["skill_root"])
+        target = skill_root / "scripts" / "checks" / "obsolete_check.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("print('obsolete')\n", encoding="utf-8")
+        bundle = self.root / "focused-retire-bundle"
+        bundle.mkdir()
+        delta = {
+            "schema_version": "1.0",
+            "mode": "evolution-focused",
+            "decisions": [],
+            "artifacts": [{
+                "path": "scripts/checks/obsolete_check.py",
+                "action": "retire",
+                "owner": "project checks",
+                "validation": "retired",
+                "evidence": ["registry:change/obsolete-check"],
+            }],
+        }
+        result = self.runtime_rendering.apply_creation_delta(
+            skill_root, bundle, delta, self.runtime_project.project_context(project), allow_retire=True,
+        )
+        self.assertEqual(result["applied"], ["scripts/checks/obsolete_check.py"])
+        self.assertFalse(target.exists())
+
+    def test_fingerprint_finding_types_share_canonical_audit_names(self) -> None:
+        aliases = {
+            "changed": "knowledge_drift",
+            "missing": "missing_knowledge_source",
+            "invalid_source": "invalid_knowledge_source",
+            "outside_project": "external_knowledge_source",
+            "invalid_fingerprint": "invalid_knowledge_fingerprint",
+        }
+        for raw, canonical in aliases.items():
+            self.assertEqual(self.runtime_knowledge.canonical_knowledge_finding_type(raw), canonical)
+            self.assertEqual(self.runtime_knowledge.canonical_knowledge_finding_type(canonical), canonical)
+
+    def test_evolution_rejects_project_evidence_changed_after_staging(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("source-changed-after-stage")
+        judge = self.write_evolution_judge(skill_root)
+        metadata_path = (
+            skill_root / "state" / "evolution" / "staging" / "accepted-knowledge" / "state" / "candidate.json"
+        )
+        original_metadata = metadata_path.read_bytes()
+        metadata = json.loads(original_metadata)
+        metadata["source_snapshot"] = {
+            "sources": [],
+            "digest": self.runtime_knowledge.SourceFingerprintSnapshot(
+                self.runtime_project.project_context(project),
+            ).digest([]),
+        }
+        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        tampered = self.cli(
+            project,
+            "evolve", "mark-complete",
+            "--proposal-id", "accepted-knowledge",
+            "--owner", "independent-judge",
+            "--candidate-id", "accepted-knowledge",
+            "--judge-report", str(judge),
+            "--status", "keep",
+            expected=(2,),
+        )
+        self.assertIn("metadata was modified", tampered["error"].lower())
+        metadata_path.write_bytes(original_metadata)
+        source = project / "src" / "jobs" / "service.py"
+        original_judge = self.runtime_evolution.evolution_judge_report
+
+        def review_then_change_source(*args):
+            report = original_judge(*args)
+            source.write_text(source.read_text(encoding="utf-8") + "\n# changed after review\n", encoding="utf-8")
+            return report
+
+        with mock.patch.object(
+            self.runtime_evolution,
+            "evolution_judge_report",
+            side_effect=review_then_change_source,
+        ):
+            with self.assertRaises(self.cli_module.HarnessError) as rejected:
+                self.dispatch(
+                    project,
+                    "evolve", "mark-complete",
+                    "--proposal-id", "accepted-knowledge",
+                    "--owner", "independent-judge",
+                    "--candidate-id", "accepted-knowledge",
+                    "--judge-report", str(judge),
+                    "--status", "keep",
+                )
+        self.assertIn("evidence changed", str(rejected.exception).lower())
+        self.assertTrue((skill_root / "state" / "registry" / "locks" / "evolution-owner").exists())
 
     def test_read_only_knowledge_waits_for_content_publication(self) -> None:
         project = self.create_git_project("read-lock")
@@ -3623,7 +3820,11 @@ class HarnessCliTests(unittest.TestCase):
         rubric_path.write_text(json.dumps(rubric, indent=2) + "\n", encoding="utf-8")
         metadata_path = candidate / "state" / "candidate.json"
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        metadata["candidate_fingerprint"] = self.runtime_evolution.harness_content_fingerprint(candidate)
+        content_fingerprint = self.runtime_evolution.harness_content_fingerprint(candidate)
+        metadata["candidate_content_fingerprint"] = content_fingerprint
+        metadata["candidate_fingerprint"] = self.runtime_evolution.candidate_binding_fingerprint(
+            content_fingerprint, metadata["source_snapshot"]["digest"],
+        )
         metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         judge = self.write_evolution_judge(skill_root)
         rejected = self.cli(

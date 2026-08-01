@@ -24,7 +24,7 @@ from .changes import contract_record_path, ecl_integrity_findings, rebuild_chang
 from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git, git_baseline_relation, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
-from .knowledge import context_source_fingerprints, knowledge_check_internal
+from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints, knowledge_check_internal
 from .links import connector_route, copy_runtime, copy_scaffold, ensure_all_project_routes, ensure_runtime_links, generated_command_routes, remove_directory_link, restore_route_snapshots, same_target, worktree_route_findings
 from .project import assign_project_identity, ensure_state, initial_manifest, project_context, require_skill, skill_root_for, worktree_roots
 from .registry import records, registry_root
@@ -56,6 +56,7 @@ def project_init(args: argparse.Namespace) -> dict[str, Any]:
         copy_scaffold(skill_root, replacements)
         launchers = copy_runtime(skill_root)
         ensure_state(skill_root, context, getattr(args, "canonical_branch", None))
+        fingerprint_snapshot = SourceFingerprintSnapshot(context)
         installed = install_analysis_bundle(
             skill_root,
             context,
@@ -65,6 +66,7 @@ def project_init(args: argparse.Namespace) -> dict[str, Any]:
             architecture,
             bundle,
             bool(getattr(args, "allow_executable_artifacts", False)),
+            fingerprint_snapshot,
         )
         links, new_links = ensure_runtime_links(context, args, skill_root)
         created_links.extend(new_links)
@@ -312,6 +314,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                 portable_manifest(read_json(manifest_path, {}), context),
             )
             launchers = copy_runtime(candidate)
+            fingerprint_snapshot = SourceFingerprintSnapshot(context)
             if profile is not None and audit is not None and delta is not None and architecture is not None:
                 applied = install_analysis_bundle(
                     candidate,
@@ -322,6 +325,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                     architecture,
                     bundle,
                     bool(getattr(args, "allow_executable_artifacts", False)),
+                    fingerprint_snapshot,
                 )
             else:
                 applied = {"portable_state_upgrade": portable_upgrade, "lane_rebound": state_rebind}
@@ -331,9 +335,11 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                     for item in index.get("items", []):
                         sources = item.get("sources", [])
                         if isinstance(sources, list):
-                            item["source_fingerprints"] = context_source_fingerprints(context, sources)
+                            item["source_fingerprints"] = context_source_fingerprints(
+                                context, sources, fingerprint_snapshot,
+                            )
                     atomic_write_json(index_path, index)
-            candidate_check = knowledge_check_internal(candidate, context)
+            candidate_check = knowledge_check_internal(candidate, context, fingerprint_snapshot)
             if not candidate_check["healthy"]:
                 raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
             transaction = apply_content_transaction(

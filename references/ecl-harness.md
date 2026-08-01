@@ -213,11 +213,11 @@ At five, create pending but do not block ordinary work. After E1:
 
 1. Atomically claim one evolution owner and freeze five IDs; later Changes queue.
 2. Read INDEX and summaries first, then only necessary details and Integration signals.
-3. Rescan current canonical project evidence into profile/audit/delta.
-4. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only.
+3. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only.
+4. Default to a focused delta for rules, workflows, templates, checks, helpers, or routes; build a
+   complete rescan only when project knowledge or architecture changes.
 5. Prefer improving an existing owner over adding a file/rule/workflow.
-6. Stage a complete candidate and validate rules, Wiki, stage artifacts, doctor, checks, and required
-   project gates.
+6. Stage a complete frozen candidate and run affected Harness checks plus necessary project gates.
 7. Request an independent judge that did not author the proposal.
 8. Apply only for score >= 80, no hard issue, and passing validation/full test.
 9. Record keep/rejected/noop, mark evaluated IDs, preserve archive/INDEX/Registry, and clear pending.

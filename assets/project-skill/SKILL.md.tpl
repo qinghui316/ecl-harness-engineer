@@ -41,7 +41,8 @@ If the detected project id differs, stop and locate the correct project Harness.
 {{KNOWLEDGE_COMMAND}} scan|check --project-root <path>
 ```
 
-Use `references/analysis-contract.md` for a semantic audit or E1 rescan. Use
+Use `references/analysis-contract.md` for a semantic audit or a full-refresh E1. Focused E1 work
+uses only the affected Harness owners described by `references/workflows/evolve.md`. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
@@ -89,9 +90,10 @@ accepted spec or plan.
 Integration applies selected exact completion ranges. The user confirms I2 only after aggregate
 validation and candidate-bound independent review.
 
-Every fifth eligible Change creates an Evolution window. After E1, the owner rescans canonical
-evidence and accumulated experience. A candidate applies only when its bound Judge report and
-validation satisfy `references/audit-rubric.json`; there is no E2.
+Every fifth eligible Change creates an Evolution window. After E1, default to a focused update of
+affected rules, workflows, templates, checks, helpers, or routes. Build a complete semantic rescan
+only when project knowledge or architecture changed. A candidate applies only when its bound Judge
+report and validation satisfy `references/audit-rubric.json`; there is no E2.
 
 ## Rule Source
 

@@ -24,9 +24,9 @@ from .analysis import load_analysis_bundle
 from .changes import evolve_check_internal, evolve_check_locked
 from .contracts import load_audit_rubric
 from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, is_link_like, read_json, reject_tree_links, remove_owned_tree, utc_now
-from .knowledge import knowledge_check_internal
+from .knowledge import SourceFingerprintSnapshot, canonical_knowledge_finding_type, knowledge_check_internal
 from .project import project_context, require_skill
-from .rendering import install_analysis_bundle
+from .rendering import apply_creation_delta, install_analysis_bundle
 from .reviews import validate_evolution_judge
 from .transactions import CONTENT_TRANSACTION_PATHS, acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
 
@@ -59,6 +59,12 @@ def harness_content_fingerprint(skill_root: Path) -> str:
                 for block in iter(lambda: handle.read(64 * 1024), b""):
                     digest.update(block)
     return digest.hexdigest()
+
+
+def candidate_binding_fingerprint(content_fingerprint: str, source_snapshot_digest: str) -> str:
+    return hashlib.sha256(
+        f"{content_fingerprint}\0{source_snapshot_digest}".encode("ascii")
+    ).hexdigest()
 
 def evolution_owner_record(skill_root: Path) -> dict[str, Any]:
     return read_json(
@@ -117,6 +123,94 @@ def require_evolution_proposal(path: Path) -> None:
             "Evolution proposal requires a title and at least one Promote/Retain/Merge/Retire/Archive-only decision."
         )
 
+
+def _local_evidence_sources(*values: Any) -> list[str]:
+    sources: list[str] = []
+
+    def walk(value: Any, field: str | None = None) -> None:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                walk(nested, key)
+        elif isinstance(value, list):
+            for nested in value:
+                walk(nested, field)
+        elif isinstance(value, str) and field == "evidence":
+            normalized = value.strip().replace("\\", "/")
+            if normalized and not normalized.startswith(("http://", "https://", "user:", "contract:", "registry:")):
+                sources.append(normalized)
+
+    for value in values:
+        walk(value)
+    return list(dict.fromkeys(sources))
+
+
+def load_focused_evolution_bundle(bundle: Path) -> dict[str, Any]:
+    delta = read_json(bundle / "creation-delta.json", None)
+    if not isinstance(delta, dict):
+        raise HarnessError("Focused Evolution bundle requires creation-delta.json.")
+    if delta.get("schema_version") != SCHEMA_VERSION or delta.get("mode") != "evolution-focused":
+        raise HarnessError(
+            "Focused Evolution creation-delta.json requires schema_version 1.0 and mode evolution-focused."
+        )
+    decisions = delta.get("decisions", [])
+    artifacts = delta.get("artifacts", [])
+    if not isinstance(decisions, list) or not isinstance(artifacts, list) or not artifacts:
+        raise HarnessError("Focused Evolution requires decision and artifact arrays plus at least one artifact mutation.")
+    return delta
+
+
+def load_evolution_bundle(
+    args: argparse.Namespace,
+    context: dict[str, Any],
+) -> tuple[str, dict[str, Any] | None, dict[str, Any] | None, dict[str, Any], dict[str, Any] | None, Path]:
+    bundle = Path(args.analysis_bundle).expanduser().resolve()
+    if not bundle.is_dir():
+        raise HarnessError(f"Evolution bundle is not a directory: {bundle}")
+    full_names = ("project-profile.json", "audit.json", "creation-delta.json", "architecture.json")
+    if all((bundle / name).is_file() for name in full_names):
+        profile, audit, delta, architecture, loaded = load_analysis_bundle(args, context)
+        if loaded is None or profile.get("analysis_status") != "complete":
+            raise HarnessError("Full Evolution staging requires a complete analysis bundle.")
+        return "full", profile, audit, delta, architecture, loaded
+    delta = load_focused_evolution_bundle(bundle)
+    return "focused", None, None, delta, None, bundle
+
+
+def verify_source_snapshot(context: dict[str, Any], metadata: dict[str, Any]) -> None:
+    binding = metadata.get("source_snapshot", {})
+    sources = binding.get("sources", []) if isinstance(binding, dict) else []
+    expected = binding.get("digest") if isinstance(binding, dict) else None
+    if not sources and not expected:
+        return
+    if not isinstance(sources, list) or not all(isinstance(source, str) for source in sources) or not expected:
+        raise HarnessError("Staged Evolution candidate has invalid source snapshot metadata.")
+    current = SourceFingerprintSnapshot(context)
+    if current.digest(sources) != expected:
+        raise HarnessError("Project evidence changed after Evolution candidate validation; restage the candidate.")
+
+
+def verify_candidate_binding(
+    candidate: Path,
+    context: dict[str, Any],
+    metadata: dict[str, Any],
+    base_fingerprint: str,
+) -> str:
+    if metadata.get("binding_version") != "source-snapshot-v1":
+        raise HarnessError("Staged Evolution candidate is missing its source-bound integrity metadata.")
+    content_fingerprint = harness_content_fingerprint(candidate)
+    if content_fingerprint != metadata.get("candidate_content_fingerprint"):
+        raise HarnessError("Staged Evolution candidate was modified after validation.")
+    source_binding = metadata.get("source_snapshot")
+    source_digest = source_binding.get("digest") if isinstance(source_binding, dict) else None
+    if not isinstance(source_digest, str) or candidate_binding_fingerprint(
+        content_fingerprint, source_digest,
+    ) != metadata.get("candidate_fingerprint"):
+        raise HarnessError("Staged Evolution candidate metadata was modified after validation.")
+    if content_fingerprint == base_fingerprint:
+        raise HarnessError("keep requires a candidate that changes Harness content.")
+    verify_source_snapshot(context, metadata)
+    return content_fingerprint
+
 @guard_project_skill
 def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
@@ -126,26 +220,31 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
     proposal_id = canonical_id(args.proposal_id, "Evolution proposal id")
     proposal = skill_root / "state" / "evolution" / "proposals" / f"{proposal_id}.md"
     require_evolution_proposal(proposal)
-    profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
-    if bundle is None or profile.get("analysis_status") != "complete":
-        raise HarnessError("Evolution staging requires a complete analysis bundle.")
-    current_knowledge = knowledge_check_internal(skill_root, context)
-    current_types = {
-        item["type"] for item in [*current_knowledge.get("findings", []), *current_knowledge.get("warnings", [])]
-    }
-    classified_types = {item.get("type") for item in audit.get("knowledge_findings", [])}
-    missing_classifications = sorted(current_types - classified_types)
-    if missing_classifications:
-        raise HarnessError(
-            "Evolution audit must classify every current knowledge finding before staging: "
-            + ", ".join(missing_classifications)
-        )
-    entropy_types = {
-        "duplicate_current_fact_candidates", "archive_ledger_leakage",
-        "multiple_current_state_owners", "roadmap_current_state_conflict",
-    }
-    if current_types & entropy_types and not audit.get("entropy_report"):
-        raise HarnessError("Evolution audit requires a before/after entropy_report for current entropy findings.")
+    mode, profile, audit, delta, architecture, bundle = load_evolution_bundle(args, context)
+    source_snapshot = SourceFingerprintSnapshot(context)
+    source_snapshot.prime(_local_evidence_sources(profile, audit, delta, architecture))
+    if mode == "full":
+        current_knowledge = knowledge_check_internal(skill_root, context, source_snapshot)
+        current_types = {
+            canonical_knowledge_finding_type(item["type"])
+            for item in [*current_knowledge.get("findings", []), *current_knowledge.get("warnings", [])]
+        }
+        classified_types = {
+            canonical_knowledge_finding_type(item.get("type"))
+            for item in (audit or {}).get("knowledge_findings", [])
+        }
+        missing_classifications = sorted(current_types - classified_types)
+        if missing_classifications:
+            raise HarnessError(
+                "Evolution audit must classify every current knowledge finding before staging: "
+                + ", ".join(missing_classifications)
+            )
+        entropy_types = {
+            "duplicate_current_fact_candidates", "archive_ledger_leakage",
+            "multiple_current_state_owners", "roadmap_current_state_conflict",
+        }
+        if current_types & entropy_types and not (audit or {}).get("entropy_report"):
+            raise HarnessError("Evolution audit requires a before/after entropy_report for current entropy findings.")
     staging_root = skill_root / "state" / "evolution" / "staging"
     candidate = staging_root / proposal_id
     if candidate.exists():
@@ -155,25 +254,52 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
     (candidate / "state").mkdir(parents=True, exist_ok=True)
     atomic_write_json(candidate / "state" / "manifest.json", read_json(skill_root / "state" / "manifest.json", {}))
     try:
-        installed = install_analysis_bundle(
+        if mode == "full":
+            installed = install_analysis_bundle(
+                candidate,
+                context,
+                profile or {},
+                audit or {},
+                delta,
+                architecture or {},
+                bundle,
+                bool(getattr(args, "allow_executable_artifacts", False)),
+                source_snapshot,
+            )
+        else:
+            artifacts = apply_creation_delta(
+                candidate,
+                bundle,
+                delta,
+                context,
+                bool(getattr(args, "allow_executable_artifacts", False)),
+                allow_retire=True,
+            )
+            installed = {
+                "knowledge": {"refreshed": False},
+                "artifacts": artifacts,
+                "rules": {"affected_only": True},
+            }
+        protect_audit_rubric(skill_root, candidate)
+        check = knowledge_check_internal(
             candidate,
             context,
-            profile,
-            audit,
-            delta,
-            architecture,
-            bundle,
-            bool(getattr(args, "allow_executable_artifacts", False)),
+            source_snapshot,
+            include_fingerprints=mode == "full",
         )
-        protect_audit_rubric(skill_root, candidate)
-        check = knowledge_check_internal(candidate, context)
         if not check["healthy"]:
             raise HarnessError(f"Evolution candidate knowledge validation failed: {check['findings']}")
+        bound_sources = source_snapshot.local_sources()
+        source_digest = source_snapshot.digest(bound_sources)
+        verification_snapshot = SourceFingerprintSnapshot(context)
+        if verification_snapshot.digest(bound_sources) != source_digest:
+            raise HarnessError("Project evidence changed while staging the Evolution candidate; retry staging.")
     except Exception:
         if candidate.exists():
             remove_owned_tree(candidate, staging_root, "Evolution candidate")
         raise
-    candidate_fingerprint = harness_content_fingerprint(candidate)
+    candidate_content_fingerprint = harness_content_fingerprint(candidate)
+    candidate_fingerprint = candidate_binding_fingerprint(candidate_content_fingerprint, source_digest)
     atomic_write_json(
         candidate / "state" / "candidate.json",
         {
@@ -181,16 +307,29 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
             "proposal_id": proposal_id,
             "owner": owner.get("owner"),
             "base_fingerprint": owner.get("base_fingerprint"),
+            "binding_version": "source-snapshot-v1",
+            "candidate_content_fingerprint": candidate_content_fingerprint,
             "candidate_fingerprint": candidate_fingerprint,
+            "mode": mode,
+            "source_snapshot": {"sources": bound_sources, "digest": source_digest},
             "created_at": utc_now(),
         },
     )
+    changed_paths = list(installed.get("artifacts", {}).get("applied", []))
+    if "references/rules/red_lines.yaml" in changed_paths:
+        changed_paths.extend(["references/rules/critical.md", "references/rules/by-stage"])
+    if mode == "full":
+        changed_paths.extend(["references/project_wiki", "state/analysis"])
     return {
         "status": "candidate_staged",
+        "mode": mode,
         "proposal_id": proposal_id,
         "candidate": str(candidate),
         "base_fingerprint": owner.get("base_fingerprint"),
         "candidate_fingerprint": candidate_fingerprint,
+        "source_snapshot_digest": source_digest,
+        "changed_paths": list(dict.fromkeys(changed_paths)),
+        "next_action": "independent_judge",
         **installed,
     }
 
@@ -317,11 +456,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
             if metadata.get("base_fingerprint") != base_fingerprint:
                 raise HarnessError("Staged candidate was built from a different Harness baseline.")
             protect_audit_rubric(skill_root, candidate)
-            candidate_fingerprint = harness_content_fingerprint(candidate)
-            if candidate_fingerprint != metadata.get("candidate_fingerprint"):
-                raise HarnessError("Staged Evolution candidate was modified after validation.")
-            if candidate_fingerprint == base_fingerprint:
-                raise HarnessError("keep requires a candidate that changes Harness content.")
+            verify_candidate_binding(candidate, context, metadata, base_fingerprint)
 
         judge: dict[str, Any] | None = None
         if args.judge_report:
@@ -362,6 +497,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         transaction: dict[str, Any] | None = None
         try:
             if candidate is not None and candidate_id is not None:
+                verify_candidate_binding(candidate, context, metadata, base_fingerprint)
                 recover_content_transactions(skill_root, "evolution", candidate_id)
                 transaction = apply_content_transaction(
                     skill_root,
@@ -370,7 +506,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
                     candidate_id,
                     state_snapshot_paths=(state_path, pending_path, results_path, manifest_path),
                 )
-                if harness_content_fingerprint(skill_root) != metadata.get("candidate_fingerprint"):
+                if harness_content_fingerprint(skill_root) != metadata.get("candidate_content_fingerprint"):
                     raise HarnessError("Published candidate fingerprint does not match the validated candidate.")
             atomic_append_tsv(
                 results_path,

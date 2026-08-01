@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,23 @@ from .transactions import guard_project_skill_read_only
 
 NON_LOCAL_EVIDENCE_PREFIXES = ("http://", "https://", "user:", "contract:", "registry:")
 FINGERPRINT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+FINGERPRINT_FINDING_TYPES = {
+    "changed": "knowledge_drift",
+    "knowledge_drift": "knowledge_drift",
+    "missing": "missing_knowledge_source",
+    "missing_knowledge_source": "missing_knowledge_source",
+    "invalid_source": "invalid_knowledge_source",
+    "invalid_knowledge_source": "invalid_knowledge_source",
+    "outside_project": "external_knowledge_source",
+    "external_knowledge_source": "external_knowledge_source",
+    "invalid_fingerprint": "invalid_knowledge_fingerprint",
+    "invalid_knowledge_fingerprint": "invalid_knowledge_fingerprint",
+}
+
+
+def canonical_knowledge_finding_type(value: Any) -> str:
+    text = str(value or "").strip()
+    return FINGERPRINT_FINDING_TYPES.get(text, text)
 
 def knowledge_source_location(context: dict[str, Any], source: str) -> tuple[Path, Path]:
     if source.startswith(".agents/reference-projects/"):
@@ -49,8 +67,12 @@ def source_fingerprint(path: Path, source_root: Path) -> str:
                     payload = relative.encode("utf-8") + b"\0git:" + blob.encode("ascii")
                     return hashlib.sha256(payload).hexdigest()
 
-    relative = resolved_path.relative_to(resolved_root).as_posix()
-    content = resolved_path.read_bytes()
+    return _content_fingerprint(resolved_path, resolved_root)
+
+
+def _content_fingerprint(path: Path, source_root: Path) -> str:
+    relative = path.resolve().relative_to(source_root.resolve()).as_posix()
+    content = path.read_bytes()
     if b"\0" not in content[:8192]:
         try:
             text = content.decode("utf-8")
@@ -60,20 +82,146 @@ def source_fingerprint(path: Path, source_root: Path) -> str:
             content = text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
     return hashlib.sha256(relative.encode("utf-8") + b"\0" + content).hexdigest()
 
-def context_source_fingerprints(context: dict[str, Any], sources: list[str]) -> dict[str, str]:
+
+class SourceFingerprintSnapshot:
+    """Command-scoped source identities, batched by evidence Git root."""
+
+    def __init__(self, context: dict[str, Any]):
+        self.context = context
+        self._results: dict[str, tuple[str, str | None]] = {}
+        self._git_roots: dict[Path, Path | None] = {}
+
+    def _git_root(self, source_root: Path) -> Path | None:
+        resolved = source_root.resolve()
+        if resolved not in self._git_roots:
+            value = git_value(resolved, "rev-parse", "--show-toplevel")
+            root = Path(value).resolve() if value else None
+            self._git_roots[resolved] = root if root and is_within(resolved, root) else None
+        return self._git_roots[resolved]
+
+    @staticmethod
+    def _chunks(values: list[str], size: int = 50) -> list[list[str]]:
+        return [values[index:index + size] for index in range(0, len(values), size)]
+
+    def _prime_git_group(
+        self,
+        git_root: Path,
+        records: list[tuple[str, Path, Path, str]],
+    ) -> None:
+        relatives = [relative for _, _, _, relative in records]
+        index_blobs: dict[str, str] = {}
+        dirty: set[str] = set()
+        bulk_ok = True
+        for chunk in self._chunks(relatives):
+            listed = git(git_root, "ls-files", "--stage", "-z", "--", *chunk, check=False)
+            changed = git(git_root, "diff-files", "--name-only", "-z", "--", *chunk, check=False)
+            if listed.returncode != 0 or changed.returncode != 0:
+                bulk_ok = False
+                break
+            for entry in listed.stdout.split("\0"):
+                if not entry or "\t" not in entry:
+                    continue
+                metadata, path = entry.split("\t", 1)
+                fields = metadata.split()
+                if len(fields) == 3 and fields[2] == "0" and re.fullmatch(r"[0-9a-f]{40,64}", fields[1]):
+                    index_blobs[path] = fields[1]
+            dirty.update(path for path in changed.stdout.split("\0") if path)
+
+        for source, path, source_root, relative in records:
+            if bulk_ok and relative in index_blobs and relative not in dirty:
+                payload = relative.encode("utf-8") + b"\0git:" + index_blobs[relative].encode("ascii")
+                self._results[source] = ("current", hashlib.sha256(payload).hexdigest())
+                continue
+            if bulk_ok and relative in index_blobs:
+                hashed = git(
+                    git_root, "hash-object", f"--path={relative}", str(path.resolve()), check=False,
+                )
+                blob = hashed.stdout.strip()
+                if hashed.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", blob):
+                    payload = relative.encode("utf-8") + b"\0git:" + blob.encode("ascii")
+                    self._results[source] = ("current", hashlib.sha256(payload).hexdigest())
+                    continue
+            fingerprint = (
+                _content_fingerprint(path, source_root)
+                if bulk_ok
+                else source_fingerprint(path, source_root)
+            )
+            self._results[source] = ("current", fingerprint)
+
+    def prime(self, sources: list[str] | set[str] | tuple[str, ...]) -> None:
+        groups: dict[Path, list[tuple[str, Path, Path, str]]] = {}
+        pending_content: list[tuple[str, Path, Path]] = []
+        for raw_source in dict.fromkeys(sources):
+            if not isinstance(raw_source, str) or raw_source.startswith(NON_LOCAL_EVIDENCE_PREFIXES):
+                continue
+            source = safe_relative(raw_source, "knowledge fingerprint source")
+            if source in self._results:
+                continue
+            source_path, source_root = knowledge_source_location(self.context, source)
+            resolved_root = source_root.resolve()
+            resolved_source = source_path.resolve()
+            if not is_within(resolved_source, resolved_root):
+                self._results[source] = ("outside_project", None)
+                continue
+            if not source_path.is_file():
+                self._results[source] = ("missing", None)
+                continue
+            git_root = self._git_root(source_root)
+            if git_root and is_within(resolved_source, git_root):
+                relative = resolved_source.relative_to(git_root).as_posix()
+                groups.setdefault(git_root, []).append((source, source_path, source_root, relative))
+            else:
+                pending_content.append((source, source_path, source_root))
+
+        for git_root, records in groups.items():
+            self._prime_git_group(git_root, records)
+        for source, path, source_root in pending_content:
+            self._results[source] = ("current", _content_fingerprint(path, source_root))
+
+    def result(self, source: str) -> tuple[str, str | None]:
+        normalized = safe_relative(source, "knowledge fingerprint source")
+        self.prime([normalized])
+        return self._results[normalized]
+
+    def local_sources(self) -> list[str]:
+        return sorted(self._results)
+
+    def digest(self, sources: list[str] | None = None) -> str:
+        selected = sorted(dict.fromkeys(sources or self.local_sources()))
+        self.prime(selected)
+        payload = [
+            [source, self._results[source][0], self._results[source][1]]
+            for source in selected
+        ]
+        return hashlib.sha256(
+            json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+
+
+def context_source_fingerprints(
+    context: dict[str, Any],
+    sources: list[str],
+    snapshot: SourceFingerprintSnapshot | None = None,
+) -> dict[str, str]:
+    active = snapshot or SourceFingerprintSnapshot(context)
+    local_sources = [
+        safe_relative(source, "knowledge fingerprint source")
+        for source in sources
+        if isinstance(source, str) and not source.startswith(NON_LOCAL_EVIDENCE_PREFIXES)
+    ]
+    active.prime(local_sources)
     result: dict[str, str] = {}
-    for source in sources:
-        if source.startswith(NON_LOCAL_EVIDENCE_PREFIXES):
-            continue
-        path, base = knowledge_source_location(context, source)
-        if path.is_file():
-            result[source] = source_fingerprint(path, base)
+    for source in local_sources:
+        status, fingerprint = active.result(source)
+        if status == "current" and fingerprint:
+            result[source] = fingerprint
     return result
 
 def knowledge_fingerprint_scan(
     skill_root: Path,
     context: dict[str, Any],
     selected_sources: dict[str, set[str]] | None = None,
+    snapshot: SourceFingerprintSnapshot | None = None,
 ) -> dict[str, Any]:
     index_path = skill_root / "references" / "project_wiki" / "index.json"
     index = read_json(index_path, None)
@@ -82,7 +230,7 @@ def knowledge_fingerprint_scan(
 
     findings: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
-    source_results: dict[str, tuple[str, str | None]] = {}
+    comparisons: list[tuple[Any, str, str]] = []
     checked = 0
 
     def add(finding_type: str, item_id: Any, source: Any, **detail: Any) -> None:
@@ -121,17 +269,13 @@ def knowledge_fingerprint_scan(
                 add("invalid_fingerprint", item_id, source, expected=expected)
                 continue
             checked += 1
-            if source not in source_results:
-                source_path, source_root = knowledge_source_location(context, source)
-                resolved_root = source_root.resolve()
-                resolved_source = source_path.resolve()
-                if not is_within(resolved_source, resolved_root):
-                    source_results[source] = ("outside_project", None)
-                elif not source_path.is_file():
-                    source_results[source] = ("missing", None)
-                else:
-                    source_results[source] = ("current", source_fingerprint(source_path, source_root))
-            status, current = source_results[source]
+            comparisons.append((item_id, source, expected))
+
+    active = snapshot or SourceFingerprintSnapshot(context)
+    active.prime([source for _, source, _ in comparisons])
+    unique_sources = {source for _, source, _ in comparisons}
+    for item_id, source, expected in comparisons:
+            status, current = active.result(source)
             if status == "outside_project":
                 add("outside_project", item_id, source, expected=expected)
             elif status == "missing":
@@ -144,7 +288,7 @@ def knowledge_fingerprint_scan(
         "healthy": not findings,
         "stale": bool(findings),
         "checked": checked,
-        "unique_sources": len(source_results),
+        "unique_sources": len(unique_sources),
         "findings": findings,
     }
 
@@ -170,19 +314,21 @@ def knowledge_scan(args: argparse.Namespace) -> dict[str, Any]:
     skill_root = require_skill(context, args)
     return knowledge_fingerprint_scan(skill_root, context)
 
-def knowledge_check_internal(skill_root: Path, context: dict[str, Any]) -> dict[str, Any]:
-    fingerprint_scan = knowledge_fingerprint_scan(skill_root, context)
-    fingerprint_types = {
-        "changed": "knowledge_drift",
-        "missing": "missing_knowledge_source",
-        "invalid_source": "invalid_knowledge_source",
-        "outside_project": "external_knowledge_source",
-        "invalid_fingerprint": "invalid_knowledge_fingerprint",
+def knowledge_check_internal(
+    skill_root: Path,
+    context: dict[str, Any],
+    snapshot: SourceFingerprintSnapshot | None = None,
+    include_fingerprints: bool = True,
+) -> dict[str, Any]:
+    fingerprint_scan = knowledge_fingerprint_scan(
+        skill_root, context, snapshot=snapshot,
+    ) if include_fingerprints else {
+        "healthy": True, "stale": False, "checked": 0, "unique_sources": 0, "findings": [],
     }
     findings: list[dict[str, Any]] = [
         {
             **item,
-            "type": fingerprint_types[item["type"]],
+            "type": canonical_knowledge_finding_type(item["type"]),
             "id": item.get("item"),
         }
         for item in fingerprint_scan["findings"]

@@ -22,8 +22,13 @@ from typing import Any, Iterable
 
 from .analysis import DISPLAY_TEXT_FIELDS, evidence_values, reference_project_sources, semantic_display_text, validate_project_evidence
 from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, file_fingerprint, is_within, read_json, run, safe_relative, slugify, stable_hash, utc_now
-from .knowledge import context_source_fingerprints
+from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints
 from .project import primary_worktree_root
+
+REQUIRED_WORKFLOW_PATHS = {
+    f"references/workflows/{stage}.md"
+    for stage in ("intake", "locate", "plan", "implement", "verify", "close", "integrate", "evolve", "bootstrap-project")
+}
 
 def markdown_items(
     values: list[Any],
@@ -109,6 +114,7 @@ def render_project_wiki(
     context: dict[str, Any],
     profile: dict[str, Any],
     architecture: dict[str, Any] | None = None,
+    fingerprint_snapshot: SourceFingerprintSnapshot | None = None,
 ) -> dict[str, Any]:
     root: Path = context["project_root"]
     reference_root = primary_worktree_root(context)
@@ -248,7 +254,7 @@ def render_project_wiki(
         atomic_write_text(wiki / relative, "\n".join(content))
         index_items.append({
             "id": module["id"], "layer": "L2", "kind": "module", "path": relative.as_posix(),
-            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources),
+            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources, fingerprint_snapshot),
             "content_fingerprint": file_fingerprint([wiki / relative], wiki),
             "generated_by": "project-profile", "updated_at": utc_now(),
         })
@@ -354,7 +360,7 @@ def render_project_wiki(
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": identifier, "layer": "L2", "kind": "system", "path": relative.as_posix(),
-            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources),
+            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources, fingerprint_snapshot),
             "content_fingerprint": file_fingerprint([wiki / relative], wiki),
             "generated_by": "project-profile", "updated_at": utc_now(),
         })
@@ -390,7 +396,7 @@ def render_project_wiki(
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": bridge["id"], "layer": "L3", "kind": "bridge", "path": relative.as_posix(),
-            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources),
+            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources, fingerprint_snapshot),
             "content_fingerprint": file_fingerprint([wiki / relative], wiki),
             "generated_by": "project-profile", "updated_at": utc_now(),
         })
@@ -412,7 +418,7 @@ def render_project_wiki(
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": identifier, "layer": "L3", "kind": "bridge", "path": relative.as_posix(),
-            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources),
+            "sources": sources, "source_fingerprints": context_source_fingerprints(context, sources, fingerprint_snapshot),
             "content_fingerprint": file_fingerprint([wiki / relative], wiki),
             "generated_by": "project-profile", "updated_at": utc_now(),
         })
@@ -505,7 +511,7 @@ def render_project_wiki(
             index_items.append({
                 "id": f"reference-{reference_id}", "layer": "reference", "kind": "reference-map",
                 "path": relative.as_posix(), "sources": reference_sources,
-                "source_fingerprints": context_source_fingerprints(context, reference_sources),
+                "source_fingerprints": context_source_fingerprints(context, reference_sources, fingerprint_snapshot),
                 "content_fingerprint": file_fingerprint([wiki / relative], wiki),
                 "generated_by": "project-profile", "updated_at": utc_now(),
             })
@@ -515,7 +521,7 @@ def render_project_wiki(
         index_items.append({
             "id": "reference-projects", "layer": "index", "kind": "reference-index",
             "path": reference_index_relative.as_posix(), "sources": reference_index_sources,
-            "source_fingerprints": context_source_fingerprints(context, reference_index_sources),
+            "source_fingerprints": context_source_fingerprints(context, reference_index_sources, fingerprint_snapshot),
             "content_fingerprint": file_fingerprint([wiki / reference_index_relative], wiki),
             "generated_by": "project-profile", "updated_at": utc_now(),
         })
@@ -544,7 +550,7 @@ def render_project_wiki(
             {
                 "id": "overview", "layer": "L1", "kind": "overview", "path": "overview.md",
                 "sources": overview_sources,
-                "source_fingerprints": context_source_fingerprints(context, overview_sources),
+                "source_fingerprints": context_source_fingerprints(context, overview_sources, fingerprint_snapshot),
                 "content_fingerprint": file_fingerprint([wiki / "overview.md"], wiki),
                 "generated_by": "project-profile", "updated_at": utc_now(),
             },
@@ -564,6 +570,7 @@ def render_architecture_system(
     skill_root: Path,
     context: dict[str, Any],
     architecture: dict[str, Any],
+    fingerprint_snapshot: SourceFingerprintSnapshot | None = None,
 ) -> bool:
     meaningful = any(architecture.get(key) for key in (
         "layers", "dependencies", "components", "circular_dependencies", "key_interfaces", "code_paths", "error_patterns",
@@ -624,7 +631,7 @@ def render_architecture_system(
     atomic_write_text(target, "\n".join(lines))
     index["items"].append({
         "id": "architecture", "layer": "L2", "kind": "system", "path": "systems/architecture.md",
-        "sources": evidence, "source_fingerprints": context_source_fingerprints(context, evidence),
+        "sources": evidence, "source_fingerprints": context_source_fingerprints(context, evidence, fingerprint_snapshot),
         "content_fingerprint": file_fingerprint([target], wiki),
         "generated_by": "architecture-analysis", "updated_at": utc_now(),
     })
@@ -700,7 +707,7 @@ def run_artifact_validations(
 ) -> list[dict[str, Any]]:
     executable = [
         item for item in artifacts
-        if item.get("validation") not in {"text-present", "workflow-contract", "rule-source"}
+        if item.get("validation") not in {"text-present", "workflow-contract", "rule-source", "retired"}
     ]
     if executable and not allow_executable_artifacts:
         raise HarnessError(
@@ -711,6 +718,11 @@ def run_artifact_validations(
     for artifact in artifacts:
         declaration = artifact["validation"].strip()
         target = skill_root / artifact["path"]
+        if declaration == "retired":
+            if target.exists():
+                raise HarnessError(f"Retired artifact still exists: {artifact['path']}")
+            results.append({"path": artifact["path"], "declaration": declaration, "exit_code": 0})
+            continue
         if declaration == "text-present":
             if not target.is_file() or not target.read_text(encoding="utf-8").strip():
                 raise HarnessError(f"Text artifact is empty: {artifact['path']}")
@@ -748,6 +760,7 @@ def apply_creation_delta(
     delta: dict[str, Any],
     context: dict[str, Any],
     allow_executable_artifacts: bool = False,
+    allow_retire: bool = False,
 ) -> dict[str, Any]:
     applied: list[str] = []
     skipped: list[dict[str, str]] = []
@@ -765,15 +778,42 @@ def apply_creation_delta(
         if action in {"retain", "archive-only"}:
             skipped.append({"path": target_relative, "action": action})
             continue
-        if action not in {"create", "replace", "merge"}:
+        if action not in {"create", "replace", "merge", "retire"}:
             raise HarnessError(f"Unsupported creation-delta action: {action}")
         if not allowed_artifact_target(target_relative):
             raise HarnessError(f"Creation delta cannot write outside project Harness semantic owners: {target_relative}")
+        if action == "retire":
+            if not allow_retire:
+                raise HarnessError("Artifact retirement is only supported by a focused Evolution candidate.")
+            if target_relative in {"SKILL.md", "references/rules/red_lines.yaml"}:
+                raise HarnessError(f"Focused Evolution cannot retire a required project Harness owner: {target_relative}")
+            if target_relative in REQUIRED_WORKFLOW_PATHS:
+                raise HarnessError(f"Focused Evolution cannot retire a required workflow: {target_relative}")
+            for field in ("owner", "validation"):
+                if not isinstance(artifact.get(field), str) or not artifact[field].strip():
+                    raise HarnessError(f"Artifact {target_relative} requires {field}.")
+            if artifact["validation"].strip() != "retired":
+                raise HarnessError(f"Retired artifact {target_relative} must declare validation: retired")
+            evidence = evidence_values(artifact)
+            validate_project_evidence(context["project_root"], evidence, f"artifact {target_relative}")
+            target = skill_root / target_relative
+            if not target.is_file() or target.is_symlink():
+                raise HarnessError(f"Focused Evolution retire target must be a physical file: {target_relative}")
+            target.unlink()
+            applied.append(target_relative)
+            artifact["evidence"] = evidence
+            validated_artifacts.append(artifact)
+            continue
         if bundle is None:
             raise HarnessError("Bootstrap creation delta cannot install semantic artifacts.")
         for field in ("owner", "validation"):
             if not isinstance(artifact.get(field), str) or not artifact[field].strip():
                 raise HarnessError(f"Artifact {target_relative} requires {field}.")
+        declaration = artifact["validation"].strip()
+        if target_relative == "references/rules/red_lines.yaml" and declaration != "rule-source":
+            raise HarnessError("The rule source must declare validation: rule-source")
+        if target_relative.startswith("references/workflows/") and declaration != "workflow-contract":
+            raise HarnessError(f"Workflow artifact {target_relative} must declare validation: workflow-contract")
         evidence = evidence_values(artifact)
         validate_project_evidence(context["project_root"], evidence, f"artifact {target_relative}")
         source_relative = safe_relative(str(artifact.get("source", "")), "artifact source")
@@ -852,9 +892,14 @@ def install_analysis_bundle(
     architecture: dict[str, Any],
     bundle: Path | None,
     allow_executable_artifacts: bool = False,
+    fingerprint_snapshot: SourceFingerprintSnapshot | None = None,
 ) -> dict[str, Any]:
-    knowledge = render_project_wiki(skill_root, context, profile, architecture)
-    knowledge["architecture"] = render_architecture_system(skill_root, context, architecture)
+    knowledge = render_project_wiki(
+        skill_root, context, profile, architecture, fingerprint_snapshot,
+    )
+    knowledge["architecture"] = render_architecture_system(
+        skill_root, context, architecture, fingerprint_snapshot,
+    )
     artifacts = apply_creation_delta(
         skill_root,
         bundle,

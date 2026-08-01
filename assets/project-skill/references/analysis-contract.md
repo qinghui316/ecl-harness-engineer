@@ -1,6 +1,8 @@
 # Project Rescan And Analysis Contract
 
-Use this contract during read-only audit and accepted E1 Evolution. Agent judgment analyzes project
+Use this contract during read-only audit and accepted full-refresh E1 Evolution. Focused E1 updates
+rules, workflows, templates, checks, helpers, or the project Harness route through
+`creation-delta.json` without rebuilding project knowledge. Agent judgment analyzes project
 semantics; `scripts/harness_cli.py` validates and publishes deterministic artifacts.
 
 ## Evidence Funnel
@@ -14,7 +16,22 @@ command, and search similarity is not an L3 fact.
 Never read or persist secret values. Local evidence is a project-relative existing path. External
 evidence may use `https:`, `user:`, `contract:`, or `registry:` identifiers.
 
-## Four-File Bundle
+## Focused Evolution Bundle
+
+When accumulated Change evidence does not alter purpose, modules, L1/L2/L3, reference maps,
+architecture, commands, or environment, create only:
+
+```text
+creation-delta.json             # mode: evolution-focused
+artifacts/                      # only sources named by creation-delta
+```
+
+Focused artifacts may create, replace, merge, or retire only Harness-owned routes, rules,
+workflows, templates, checks, and helpers. Retirement declares `validation: retired`. A focused
+bundle cannot write project Wiki or analysis owners and does not run the evidence extractor or a
+full source-fingerprint scan.
+
+## Four-File Full Refresh Bundle
 
 Create one directory containing:
 
@@ -85,8 +102,8 @@ rules, checks, helpers, and templates. Executables require explicit authorizatio
 
 ## Publication Gate
 
-Run `project audit --analysis-bundle <bundle>` before E1 staging. The candidate must preserve the
-audit rubric and live
+`evolve stage` validates either bundle shape directly; a separate `project audit` is optional
+diagnosis, not a staging prerequisite. The candidate must preserve the audit rubric and live
 Change/INDEX/Registry state, pass rule/Wiki/stage checks and project validation, bind an independent
 judge report to its fingerprint, score at least 80, and have no hard issue. Unavailable review is
 `noop`; there is no E2.

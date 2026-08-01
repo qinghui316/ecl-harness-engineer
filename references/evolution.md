@@ -70,8 +70,13 @@ Before terminal publication, reject `rejected/noop` if current non-state Harness
 from the owner fingerprint, and reject `keep` if it does not differ. A kept result increments
 `manifest.skill_revision`.
 
-Stage a complete non-state Skill candidate plus its analysis bundle. Recompute its fingerprint
-immediately before mutation and reject any post-validation change. Publication prepares a complete
+Default to a focused `creation-delta.json` candidate for rules, workflows, templates, checks,
+helpers, and routes. Require the complete four-file analysis bundle only when L1/L2/L3,
+architecture, reference maps, commands, environment, or related knowledge drift changes. Stage
+validates the selected bundle directly; standalone project audit remains diagnostic.
+
+Stage a complete non-state Skill candidate. Recompute its fingerprint immediately before mutation
+and reject any post-validation candidate or bound-source change. Publication prepares a complete
 replacement root, moves the current dynamic `state` into it, and switches the Skill root as one
 recoverable filesystem transaction; it never copies stale Registry state from the candidate.
 Temporary journal, previous-root, and state-file backups exist only until commit/rollback and are
