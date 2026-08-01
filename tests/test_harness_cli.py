@@ -1297,6 +1297,80 @@ class HarnessCliTests(unittest.TestCase):
         self.assertTrue(check.is_file())
         self.run_process([sys.executable, str(check)])
 
+    def test_analysis_source_discovery_prunes_ignored_trees_before_traversal(self) -> None:
+        project = self.root / "pruned-analysis-source"
+        (project / "src").mkdir(parents=True)
+        (project / "src" / "a.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (project / "src" / "z.ts").write_text("export const value = 1;\n", encoding="utf-8")
+        (project / "src" / "notes.md").write_text("not source\n", encoding="utf-8")
+        (project / "app.js").write_text("export const app = true;\n", encoding="utf-8")
+        for index in range(200):
+            dependency = project / "node_modules" / f"package-{index}" / "src"
+            dependency.mkdir(parents=True)
+            (dependency / "index.ts").write_text("export {};\n", encoding="utf-8")
+        ignored_sources = [
+            project / ".agents" / "reference-projects" / "sample" / "src" / "ignored.py",
+            project / ".claude" / "skills" / "ignored.ts",
+        ]
+        for source in ignored_sources:
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("ignored = True\n", encoding="utf-8")
+
+        spec = importlib.util.spec_from_file_location(
+            f"analysis_builder_test_{id(self)}", ROOT / "scripts" / "build_analysis_bundle.py",
+        )
+        assert spec and spec.loader
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+        real_scandir = os.scandir
+        ignored = {"node_modules", ".agents", ".claude", "reference-projects"}
+
+        def guarded_scandir(path: str | bytes | os.PathLike[str]) -> os.ScandirIterator:
+            relative = Path(path).relative_to(project)
+            self.assertFalse(ignored.intersection(relative.parts), f"visited ignored tree: {relative}")
+            return real_scandir(path)
+
+        with mock.patch("os.scandir", side_effect=guarded_scandir):
+            discovered = builder.source_files(project)
+
+        self.assertEqual(discovered, sorted([
+            project / "app.js",
+            project / "src" / "a.py",
+            project / "src" / "z.ts",
+        ]))
+
+    def test_analysis_source_discovery_does_not_follow_directory_links(self) -> None:
+        project = self.root / "linked-analysis-source"
+        (project / "src").mkdir(parents=True)
+        local_source = project / "src" / "local.py"
+        local_source.write_text("LOCAL = True\n", encoding="utf-8")
+        external = self.root / "external-analysis-source"
+        external.mkdir()
+        sentinel = external / "sentinel.py"
+        sentinel.write_text("SENTINEL = 'unchanged'\n", encoding="utf-8")
+        linked = project / "linked-source"
+        self.runtime_links.create_directory_link(linked, external)
+
+        spec = importlib.util.spec_from_file_location(
+            f"linked_analysis_builder_test_{id(self)}", ROOT / "scripts" / "build_analysis_bundle.py",
+        )
+        assert spec and spec.loader
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+        real_scandir = os.scandir
+        external_root = external.resolve()
+
+        def guarded_scandir(path: str | bytes | os.PathLike[str]) -> os.ScandirIterator:
+            self.assertFalse(Path(path).resolve().is_relative_to(external_root), "visited linked target")
+            return real_scandir(path)
+
+        try:
+            with mock.patch("os.scandir", side_effect=guarded_scandir):
+                self.assertEqual(builder.source_files(project), [local_source])
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "SENTINEL = 'unchanged'\n")
+        finally:
+            self.runtime_core.unlink_directory_link_node(linked)
+
     def test_real_polyglot_analysis_extracts_each_language_boundary(self) -> None:
         project = self.root / "real-polyglot"
         (project / "internal" / "jobs").mkdir(parents=True)

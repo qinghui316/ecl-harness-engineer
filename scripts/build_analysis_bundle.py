@@ -5,10 +5,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+_SCRIPT_ROOT = Path(__file__).resolve().parent
+if str(_SCRIPT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_ROOT))
+
+from harness_runtime.core import is_link_like
 
 
 def relative(path: Path, root: Path) -> str:
@@ -48,18 +55,32 @@ def detect_adapters(root: Path) -> dict:
     return json.loads(result.stdout)
 
 
+def raise_walk_error(error: OSError) -> None:
+    raise error
+
+
 def source_files(root: Path) -> list[Path]:
     suffixes = {".py", ".go", ".ts", ".tsx", ".js", ".java", ".rs"}
     ignored = {
         ".git", "node_modules", "vendor", "dist", "build", ".agents", ".claude",
         "reference-projects",
     }
-    return sorted(
-        path for path in root.rglob("*")
-        if path.is_file()
-        and path.suffix in suffixes
-        and not ignored.intersection(path.relative_to(root).parts)
-    )
+    files: list[Path] = []
+    for current, directories, names in os.walk(
+        root, topdown=True, onerror=raise_walk_error, followlinks=False,
+    ):
+        current_path = Path(current)
+        directories[:] = sorted(
+            name for name in directories
+            if name not in ignored and not is_link_like(current_path / name)
+        )
+        files.extend(
+            path for name in sorted(names)
+            if (path := current_path / name).suffix in suffixes
+            and path.is_file()
+            and not is_link_like(path)
+        )
+    return sorted(files)
 
 
 def source_language(path: Path) -> str:
