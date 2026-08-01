@@ -188,38 +188,61 @@ def initial_manifest(
         "updated_at": now,
     }
 
-def ensure_state(skill_root: Path, context: dict[str, Any], canonical_branch: str | None = None) -> None:
+def ensure_state(
+    skill_root: Path,
+    context: dict[str, Any],
+    canonical_branch: str | None = None,
+) -> list[str]:
     state = skill_root / "state"
+    created: list[str] = []
     for relative in (
         "registry/lanes", "registry/changes", "registry/contracts", "registry/integrations",
         "registry/locks", "registry/baseline-events", "evolution/proposals", "evolution/staging",
         "changes/active", "changes/parking", "changes/archive", "analysis", "migration",
     ):
-        (state / relative).mkdir(parents=True, exist_ok=True)
-    branch, commit = canonical_branch_and_commit(context, canonical_branch)
-    baseline = {
-        "schema_version": SCHEMA_VERSION,
-        "canonical_branch": branch,
-        "canonical_commit": commit,
-        "updated_at": utc_now(),
-    }
-    atomic_write_json(state / "registry" / "baseline.json", baseline)
-    evolution = {
-        "schema_version": SCHEMA_VERSION,
-        "threshold": EVOLUTION_THRESHOLD,
-        "evaluated_change_ids": [],
-        "pending_change_ids": [],
-        "pending": False,
-        "last_completed_at": None,
-    }
-    atomic_write_json(state / "evolution" / "state.json", evolution)
+        directory = state / relative
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+            created.append(f"state/{relative}")
+    baseline_path = state / "registry" / "baseline.json"
+    if not baseline_path.exists():
+        branch, commit = canonical_branch_and_commit(context, canonical_branch)
+        atomic_write_json(
+            baseline_path,
+            {
+                "schema_version": SCHEMA_VERSION,
+                "canonical_branch": branch,
+                "canonical_commit": commit,
+                "updated_at": utc_now(),
+            },
+        )
+        created.append("state/registry/baseline.json")
+    evolution_path = state / "evolution" / "state.json"
+    if not evolution_path.exists():
+        atomic_write_json(
+            evolution_path,
+            {
+                "schema_version": SCHEMA_VERSION,
+                "threshold": EVOLUTION_THRESHOLD,
+                "evaluated_change_ids": [],
+                "pending_change_ids": [],
+                "pending": False,
+                "last_completed_at": None,
+            },
+        )
+        created.append("state/evolution/state.json")
     results = state / "evolution" / "results.tsv"
     if not results.exists():
         atomic_write_text(
             results,
             "timestamp\tproposal_id\tchange_ids\tscore\tstatus\teval_mode\tnote",
         )
-    atomic_write_json(
-        state / "changes" / "INDEX.json",
-        {"schema_version": SCHEMA_VERSION, "generated_at": utc_now(), "changes": []},
-    )
+        created.append("state/evolution/results.tsv")
+    index_path = state / "changes" / "INDEX.json"
+    if not index_path.exists():
+        atomic_write_json(
+            index_path,
+            {"schema_version": SCHEMA_VERSION, "generated_at": utc_now(), "changes": []},
+        )
+        created.append("state/changes/INDEX.json")
+    return created

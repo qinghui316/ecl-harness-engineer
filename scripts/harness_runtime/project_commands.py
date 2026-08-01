@@ -21,7 +21,7 @@ from typing import Any, Iterable
 
 from .analysis import load_analysis_bundle
 from .changes import contract_record_path, ecl_integrity_findings, rebuild_change_index
-from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git_baseline_relation, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
+from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git, git_baseline_relation, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
 from .knowledge import context_source_fingerprints, knowledge_check_internal
@@ -29,7 +29,7 @@ from .links import connector_route, copy_runtime, copy_scaffold, ensure_all_proj
 from .project import assign_project_identity, ensure_state, initial_manifest, project_context, require_skill, skill_root_for, worktree_roots
 from .registry import records, registry_root
 from .rendering import install_analysis_bundle
-from .transactions import acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, content_transaction_store, guard_project_skill, guard_project_skill_read_only, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, writer_lock_path
+from .transactions import acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, content_transaction_store, git_repository_findings, guard_project_skill, guard_project_skill_read_only, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, writer_lock_path
 
 def project_init(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
@@ -416,17 +416,114 @@ def rule_views_check(skill_root: Path) -> dict[str, Any]:
                 findings.append({"type": "divergent_derived_rule_view", "path": relative})
     return {"healthy": not findings, "findings": findings}
 
+
+def local_state_initialized(skill_root: Path) -> bool:
+    required = (
+        "state/registry/lanes",
+        "state/registry/changes",
+        "state/registry/contracts",
+        "state/registry/integrations",
+        "state/registry/locks",
+        "state/changes/active",
+        "state/changes/parking",
+        "state/changes/archive",
+        "state/changes/INDEX.json",
+        "state/registry/baseline.json",
+        "state/evolution/state.json",
+        "state/evolution/results.tsv",
+    )
+    return all((skill_root / relative).exists() for relative in required)
+
+
+def project_skill_git_boundary(context: dict[str, Any], root: Path) -> dict[str, Any]:
+    metadata = root / ".git"
+    enabled = metadata.exists() or metadata.is_symlink()
+    if not enabled:
+        return {"enabled": False, "boundary_healthy": True, "findings": []}
+    findings = git_repository_findings(root)
+    tracked_state = git(root, "ls-files", "-z", "--", "state", check=False)
+    if tracked_state.returncode != 0:
+        findings.append({"type": "unreadable_skill_git_tracked_state"})
+    else:
+        disallowed = sorted(
+            value for value in tracked_state.stdout.split("\0")
+            if value and value.replace("\\", "/") != "state/manifest.json"
+        )
+        if disallowed:
+            findings.append({"type": "tracked_local_skill_state", "paths": disallowed})
+    ignored_state = git(
+        root, "check-ignore", "-q", "--no-index", "--", "state/changes/.boundary-probe",
+        check=False,
+    )
+    if ignored_state.returncode != 0:
+        findings.append({"type": "local_skill_state_not_ignored"})
+    manifest_ignored = git(
+        root, "check-ignore", "-q", "--no-index", "--", "state/manifest.json",
+        check=False,
+    )
+    if manifest_ignored.returncode == 0:
+        findings.append({"type": "portable_manifest_ignored"})
+    if context.get("mode") == "multi_lane":
+        skill_relative = f".agents/skills/{context['skill_name']}"
+        claude_relative = f".claude/skills/{context['skill_name']}"
+        tracked = git(
+            context["project_root"],
+            "ls-files", "--stage", "--", skill_relative, claude_relative,
+            check=False,
+        )
+        if tracked.returncode != 0:
+            findings.append({"type": "unreadable_outer_git_index"})
+        elif tracked.stdout.strip():
+            entries = [line for line in tracked.stdout.splitlines() if line.strip()]
+            finding_type = (
+                "project_skill_tracked_as_submodule"
+                if any(line.startswith("160000 ") for line in entries)
+                else "project_skill_tracked_by_business_repository"
+            )
+            findings.append({"type": finding_type, "entries": entries})
+        exclude_path = context["git_common_dir"] / "info" / "exclude"
+        exclude_lines = (
+            exclude_path.read_text(encoding="utf-8").splitlines()
+            if exclude_path.is_file()
+            else []
+        )
+        required_excludes = [f"/{skill_relative}", f"/{claude_relative}"]
+        missing_excludes = [value for value in required_excludes if value not in exclude_lines]
+        if missing_excludes:
+            findings.append({
+                "type": "outer_project_skill_not_ignored",
+                "path": skill_relative,
+                "missing_excludes": missing_excludes,
+            })
+        shared_routes = git(
+            context["project_root"],
+            "ls-files", "-z", "--", "AGENTS.md", "CLAUDE.md", "scripts/harness-skill-link.*",
+            check=False,
+        )
+        tracked_routes = set(shared_routes.stdout.split("\0")) if shared_routes.returncode == 0 else set()
+        missing_routes = [name for name in ("AGENTS.md", "CLAUDE.md") if name not in tracked_routes]
+        if not any(value.startswith("scripts/harness-skill-link.") for value in tracked_routes):
+            missing_routes.append("scripts/harness-skill-link.<host>")
+        if missing_routes:
+            findings.append({"type": "unshared_business_project_route", "paths": missing_routes})
+    return {"enabled": True, "boundary_healthy": not findings, "findings": findings}
+
 def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
     root = require_skill(context, args)
     manifest = read_json(root / "state" / "manifest.json", {})
     findings = []
     repaired_routes = None
+    initialized_paths: list[str] = []
     if getattr(args, "repair_links", False):
+        initialized_paths = ensure_state(root, context, getattr(args, "canonical_branch", None))
+        if "state/changes/INDEX.json" in initialized_paths and records(registry_root(root) / "changes"):
+            rebuild_change_index(root)
         ensure_runtime_links(context, args, root)
         repaired_routes, _ = ensure_all_project_routes(context, root)
-        manifest["updated_at"] = utc_now()
-        atomic_write_json(root / "state" / "manifest.json", manifest)
+    state_ready = local_state_initialized(root)
+    if not state_ready:
+        findings.append({"type": "local_state_uninitialized"})
     launchers = manifest.get("launchers", [])
     if not isinstance(launchers, list):
         findings.append({"type": "invalid_runtime_inventory"})
@@ -521,6 +618,8 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
                     "operation": journal.get("operation"),
                     "phase": journal.get("phase"),
                 })
+    git_sharing = project_skill_git_boundary(context, root)
+    findings.extend(git_sharing["findings"])
     return {
         "healthy": not findings,
         "findings": findings,
@@ -532,6 +631,11 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
         },
         "runtime_links": [],
         "repaired_routes": repaired_routes,
+        "local_state": {
+            "initialized": state_ready,
+            "created": initialized_paths,
+        },
+        "git_sharing": git_sharing,
     }
 
 @guard_project_skill

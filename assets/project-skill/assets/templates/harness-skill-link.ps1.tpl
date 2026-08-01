@@ -68,6 +68,31 @@ function Add-SkillLink([string] $Root, [string] $Path, [string] $Target) {
     return "attached"
 }
 
+function Add-LocalSkillExcludes([string] $CommonDir) {
+    $exclude = Join-Path $CommonDir "info/exclude"
+    $lines = if (Test-Path -LiteralPath $exclude -PathType Leaf) {
+        @(Get-Content -LiteralPath $exclude -Encoding UTF8)
+    } else {
+        @()
+    }
+    $wanted = @(
+        "/.agents/skills/$SkillName",
+        "/.claude/skills/$SkillName"
+    )
+    $changed = $false
+    foreach ($value in $wanted) {
+        if ($lines -notcontains $value) {
+            $lines += $value
+            $changed = $true
+        }
+    }
+    if ($changed) {
+        [System.IO.Directory]::CreateDirectory((Split-Path -Parent $exclude)) | Out-Null
+        $encoding = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($exclude, (($lines -join "`n").TrimEnd() + "`n"), $encoding)
+    }
+}
+
 $current = (Get-Location).Path
 $root = Invoke-Git @("rev-parse", "--show-toplevel") $current
 $commonRaw = Invoke-Git @("rev-parse", "--git-common-dir") $root
@@ -147,6 +172,7 @@ $manifest = Get-Content -Raw -Encoding UTF8 (Join-Path $canonical "state/manifes
 if ($manifest.project_id -ne $ProjectId -or $manifest.skill_name -ne $SkillName) {
     throw "canonical project Harness manifest does not match this Git project"
 }
+Add-LocalSkillExcludes $common
 
 $result = [ordered]@{}
 $created = [System.Collections.Generic.List[string]]::new()

@@ -183,3 +183,18 @@ Expected: read the worktree/Integration route, verify both link targets, detach 
 nodes, reject unknown Windows directory Junctions, and then use non-force `git worktree remove`.
 Wrong targets or cleanup failures preserve the worktree and shared Harness for diagnosis and retry.
 An ordinary feature task does not run this teardown flow.
+
+## 19. Independent Project Skill Git Sharing
+
+```text
+Publish this project Skill as an independent Git repository for a teammate who will clone the
+business project separately. Keep each member's Change history and coordination state local.
+```
+
+Expected: load the Git collaboration reference only for this request; operate from the physical
+project Skill root; create the inner ignore, README, and PR template before the first add; share
+stable knowledge, rules, workflows, Runtime, assets, agents, and only the portable manifest from
+state. Verify the business repository excludes and does not track the nested Skill. A new clone runs
+the connector, Doctor repair, and knowledge check, then creates ignored local Changes. Migrate/E1
+preserve inner Git metadata and repository files, and a mismatched project id or relevant source
+drift stops direct use.

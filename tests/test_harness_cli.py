@@ -440,6 +440,30 @@ class HarnessCliTests(unittest.TestCase):
         self.git(project, "commit", "-m", "add harness routes")
         return self.git(project, "rev-parse", "HEAD")
 
+    def initialize_skill_git_repository(self, skill_root: Path) -> str:
+        (skill_root / ".gitignore").write_text(
+            "/state/*\n!/state/manifest.json\n\n**/__pycache__/\n*.py[cod]\n*.log\n",
+            encoding="utf-8",
+        )
+        manifest = json.loads((skill_root / "state" / "manifest.json").read_text(encoding="utf-8"))
+        (skill_root / "README.md").write_text(
+            f"# Shared Project Skill\n\nProject id: `{manifest['project_id']}`\n",
+            encoding="utf-8",
+        )
+        pull_request = skill_root / ".github" / "pull_request_template.md"
+        pull_request.parent.mkdir(parents=True)
+        pull_request.write_text(
+            "# Project Skill PR\n\n- Base Skill commit:\n- Business project commit/PR:\n- Modules:\n- Validation:\n",
+            encoding="utf-8",
+        )
+        self.run_process(["git", "init", "-b", "main", str(skill_root)])
+        self.git(skill_root, "config", "user.email", "harness-tests@example.invalid")
+        self.git(skill_root, "config", "user.name", "Harness Tests")
+        self.git(skill_root, "add", ".")
+        self.assertEqual(self.git(skill_root, "ls-files", "state").splitlines(), ["state/manifest.json"])
+        self.git(skill_root, "commit", "-m", "publish project skill")
+        return self.git(skill_root, "rev-parse", "HEAD")
+
     def connector_command(self, worktree: Path, *, detach: bool = False) -> list[str]:
         powershell = worktree / "scripts" / "harness-skill-link.ps1"
         node = worktree / "scripts" / "harness-skill-link.mjs"
@@ -828,7 +852,13 @@ class HarnessCliTests(unittest.TestCase):
         prompt_ids = {item["id"] for item in prompts}
         self.assertEqual(
             prompt_ids,
-            {"greenfield-python-api", "mature-polyglot", "parallel-integration-evolution", "reference-source-map"},
+            {
+                "greenfield-python-api",
+                "independent-project-skill-git",
+                "mature-polyglot",
+                "parallel-integration-evolution",
+                "reference-source-map",
+            },
         )
         for item in prompts:
             self.assertTrue(item["prompt"].strip())
@@ -2379,12 +2409,14 @@ class HarnessCliTests(unittest.TestCase):
             "check_project_wiki_stale.py", "check_stage_artifacts.py",
         ):
             self.assertEqual((ROOT / "scripts" / name).read_bytes(), (scripts / name).read_bytes())
-        for name in ("analysis-contract.md", "runtime-modules.md"):
+        for name in ("analysis-contract.md", "runtime-modules.md", "git-collaboration.md"):
             self.assertEqual(
                 (ROOT / "assets" / "project-skill" / "references" / name).read_bytes(),
                 (references / name).read_bytes(),
             )
-        self.assertTrue(any(name.startswith("harness-project.") for name in launchers))
+        for suffix in ("ps1", "cmd", "sh"):
+            self.assertIn(f"harness-project.{suffix}", launchers)
+            self.assertTrue((scripts / f"harness-project.{suffix}").is_file())
 
         stale_source = (ROOT / "scripts" / "check_project_wiki_stale.py").read_text(encoding="utf-8")
         stage_source = (ROOT / "scripts" / "check_stage_artifacts.py").read_text(encoding="utf-8")
@@ -2555,12 +2587,30 @@ class HarnessCliTests(unittest.TestCase):
         codex_link = worktree / ".agents" / "skills" / skill_name
         claude_link = worktree / ".claude" / "skills" / skill_name
         self.assertFalse(codex_link.exists())
+        common = Path(self.git(project, "rev-parse", "--git-common-dir"))
+        if not common.is_absolute():
+            common = (project / common).resolve()
+        exclude = common / "info" / "exclude"
+        existing_excludes = exclude.read_text(encoding="utf-8").splitlines()
+        existing_excludes = [line for line in existing_excludes if skill_name not in line]
+        existing_excludes.append("/keep-existing-local-entry/")
+        exclude.write_text("\n".join(existing_excludes) + "\n", encoding="utf-8")
         attached = self.run_connector(worktree)
         self.assertTrue(attached["ok"])
         self.assertTrue(os.path.samefile(codex_link, initialized["skill_root"]))
         self.assertTrue(os.path.samefile(claude_link, initialized["skill_root"]))
+        repaired_excludes = exclude.read_text(encoding="utf-8").splitlines()
+        self.assertIn(f"/.agents/skills/{skill_name}", repaired_excludes)
+        self.assertIn(f"/.claude/skills/{skill_name}", repaired_excludes)
+        self.assertIn("/keep-existing-local-entry/", repaired_excludes)
         route = (worktree / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertNotIn("python scripts/harness-skill-link.py", route)
+        for connector_name in (
+            "harness-skill-link.ps1",
+            "harness-skill-link.mjs",
+            "harness-skill-link.py",
+        ):
+            self.assertTrue((worktree / "scripts" / connector_name).is_file())
+            self.assertIn(connector_name, route)
         generated_skill = (Path(initialized["skill_root"]) / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("python <project-skill-dir>", generated_skill)
         doctor = self.cli(worktree, "project", "doctor", "--repair-links")
@@ -2698,8 +2748,19 @@ class HarnessCliTests(unittest.TestCase):
                 encoding="utf-8",
             )
             command = [*prefix, str(connector)]
+            common = Path(self.git(project, "rev-parse", "--git-common-dir"))
+            if not common.is_absolute():
+                common = (project / common).resolve()
+            exclude = common / "info" / "exclude"
+            exclude.write_text(
+                "\n".join(line for line in exclude.read_text(encoding="utf-8").splitlines() if skill_root.name not in line) + "\n",
+                encoding="utf-8",
+            )
             attached = json.loads(self.run_process(command, cwd=worktree).stdout)
             self.assertEqual(attached["action"], "attached", template_name)
+            excludes = exclude.read_text(encoding="utf-8").splitlines()
+            self.assertIn(f"/.agents/skills/{skill_root.name}", excludes, template_name)
+            self.assertIn(f"/.claude/skills/{skill_root.name}", excludes, template_name)
             self.assertEqual(
                 {item["status"] for item in attached["links"].values()}, {"attached"}, template_name,
             )
@@ -2980,6 +3041,8 @@ class HarnessCliTests(unittest.TestCase):
         (project / "tests" / "test_jobs.py").write_text("def test_job(): assert True\n", encoding="utf-8")
         initialized = self.init_project(project, self.write_bundle(project, "evolution-base"))
         skill_root = Path(initialized["skill_root"])
+        skill_git_head = self.initialize_skill_git_repository(skill_root)
+        skill_repository_readme = (skill_root / "README.md").read_bytes()
         original_overview = (skill_root / "references" / "project_wiki" / "overview.md").read_text(encoding="utf-8")
         for index in range(1, 6):
             final = self.complete_non_git_change(project, f"change-{index}")
@@ -3049,6 +3112,8 @@ class HarnessCliTests(unittest.TestCase):
         updated_overview = (skill_root / "references" / "project_wiki" / "overview.md").read_text(encoding="utf-8")
         self.assertIn("durable results", updated_overview)
         self.assertNotEqual(original_overview, updated_overview)
+        self.assertEqual(self.git(skill_root, "rev-parse", "HEAD"), skill_git_head)
+        self.assertEqual((skill_root / "README.md").read_bytes(), skill_repository_readme)
         registry_after = self.tree_hashes(skill_root / "state" / "registry")
         changes_after = self.tree_hashes(skill_root / "state" / "changes")
         for path, digest in registry_before.items():
@@ -3064,6 +3129,184 @@ class HarnessCliTests(unittest.TestCase):
             kept["next_window"]["eligible_unevaluated"],
             ["change-6", "change-7"],
         )
+
+    def test_project_skill_git_guidance_is_generated_without_initializing_git(self) -> None:
+        project = self.create_git_project("git-guidance")
+        initialized = self.init_project(project, self.write_bundle(project, "git-guidance"))
+        skill_root = Path(initialized["skill_root"])
+
+        guidance = skill_root / "references" / "git-collaboration.md"
+        self.assertTrue(guidance.is_file())
+        self.assertIn("Only proceed after the user explicitly asks", guidance.read_text(encoding="utf-8"))
+        entry = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("references/git-collaboration.md", entry)
+        self.assertFalse((skill_root / ".git").exists())
+        self.assertFalse((skill_root / ".gitignore").exists())
+        self.assertFalse((skill_root / "README.md").exists())
+        self.assertFalse((skill_root / ".github").exists())
+
+    def test_nested_skill_git_ignores_local_state_and_doctor_repairs_clone_state(self) -> None:
+        project = self.create_git_project("nested-skill-git")
+        initialized = self.init_project(project, self.write_bundle(project, "nested-skill-git"))
+        skill_root = Path(initialized["skill_root"])
+        self.commit_routes(project)
+        self.initialize_skill_git_repository(skill_root)
+
+        self.assertEqual(
+            self.runtime_core.normalize_path(Path(self.git(skill_root, "rev-parse", "--show-toplevel"))),
+            self.runtime_core.normalize_path(skill_root),
+        )
+        self.assertEqual(self.git(project, "status", "--porcelain"), "")
+        manifest_path = skill_root / "state" / "manifest.json"
+        manifest_before = manifest_path.read_bytes()
+        for child in list((skill_root / "state").iterdir()):
+            if child == manifest_path:
+                continue
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+        uninitialized = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertFalse(uninitialized["local_state"]["initialized"])
+        self.assertIn("local_state_uninitialized", {item["type"] for item in uninitialized["findings"]})
+        repaired = self.cli(project, "project", "doctor", "--repair-links")
+        self.assertTrue(repaired["healthy"])
+        self.assertTrue(repaired["local_state"]["initialized"])
+        self.assertTrue(repaired["local_state"]["created"])
+        self.assertEqual(manifest_before, manifest_path.read_bytes())
+        self.assertTrue(repaired["git_sharing"]["enabled"])
+        self.assertTrue(repaired["git_sharing"]["boundary_healthy"])
+
+        common = Path(self.git(project, "rev-parse", "--git-common-dir"))
+        if not common.is_absolute():
+            common = project / common
+        exclude = common / "info" / "exclude"
+        exclude.write_text(
+            "\n".join(
+                line for line in exclude.read_text(encoding="utf-8").splitlines()
+                if skill_root.name not in line
+            ) + "\n",
+            encoding="utf-8",
+        )
+        (project / ".gitignore").write_text(
+            f"/.agents/skills/{skill_root.name}\n/.claude/skills/{skill_root.name}\n",
+            encoding="utf-8",
+        )
+        missing_exclude = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertIn(
+            "outer_project_skill_not_ignored",
+            {item["type"] for item in missing_exclude["findings"]},
+        )
+        repaired = self.cli(project, "project", "doctor", "--repair-links")
+        self.assertTrue(repaired["git_sharing"]["boundary_healthy"])
+
+        self.cli(project, "change", "new", "local-only", "--scope", "local ignored state")
+        self.assertEqual(self.git(skill_root, "status", "--porcelain"), "")
+        self.git(skill_root, "add", "-f", "state/changes/INDEX.json")
+        boundary = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertIn("tracked_local_skill_state", {item["type"] for item in boundary["findings"]})
+
+    def test_business_and_project_skill_repositories_clone_independently(self) -> None:
+        project = self.create_git_project("independent-clone-source")
+        initialized = self.init_project(project, self.write_bundle(project, "independent-clone"))
+        skill_root = Path(initialized["skill_root"])
+        skill_name = skill_root.name
+        self.commit_routes(project)
+        self.initialize_skill_git_repository(skill_root)
+
+        cloned_project = self.root / "independent-clone-target"
+        self.run_process(["git", "clone", str(project), str(cloned_project)])
+        clone_parent = cloned_project / ".agents" / "skills"
+        clone_parent.mkdir(parents=True)
+        cloned_skill = clone_parent / skill_name
+        self.run_process(["git", "clone", str(skill_root), str(cloned_skill)])
+
+        self.assertNotEqual(cloned_project.resolve(), project.resolve())
+        attached = self.run_connector(cloned_project)
+        self.assertTrue(attached["ok"])
+        repaired = self.cli(cloned_project, "project", "doctor", "--repair-links")
+        self.assertTrue(repaired["healthy"])
+        knowledge = self.cli(cloned_project, "knowledge", "check")
+        self.assertTrue(knowledge["healthy"])
+        self.cli(cloned_project, "change", "new", "clone-local", "--scope", "local clone state")
+        self.assertEqual(self.git(cloned_project, "status", "--porcelain"), "")
+        self.assertEqual(self.git(cloned_skill, "status", "--porcelain"), "")
+
+    def test_skill_repository_sidecars_survive_migrate_and_do_not_affect_fingerprint(self) -> None:
+        project = self.create_git_project("skill-sidecars")
+        bundle = self.write_bundle(project, "skill-sidecars")
+        initialized = self.init_project(project, bundle)
+        skill_root = Path(initialized["skill_root"])
+        self.commit_routes(project)
+        head = self.initialize_skill_git_repository(skill_root)
+        self.git(skill_root, "remote", "add", "origin", "https://example.invalid/project-skill.git")
+        (skill_root / "LICENSE.custom").write_text("private fixture license\n", encoding="utf-8")
+        self.git(skill_root, "add", "LICENSE.custom")
+        self.git(skill_root, "commit", "-m", "add license")
+        head = self.git(skill_root, "rev-parse", "HEAD")
+        fingerprint = self.runtime_evolution.harness_content_fingerprint(skill_root)
+        repository_files = {
+            relative: (skill_root / relative).read_bytes()
+            for relative in (".gitignore", "README.md", ".github/pull_request_template.md", "LICENSE.custom")
+        }
+
+        git_dir = Path(self.git(skill_root, "rev-parse", "--git-dir"))
+        if not git_dir.is_absolute():
+            git_dir = skill_root / git_dir
+        index_lock = git_dir / "index.lock"
+        index_lock.write_text("busy\n", encoding="utf-8")
+        blocked = self.cli(
+            project, "project", "migrate", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("skill_git_index_locked", blocked["error"])
+        index_lock.unlink()
+
+        self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
+
+        self.assertEqual(self.git(skill_root, "rev-parse", "HEAD"), head)
+        self.assertEqual(
+            self.git(skill_root, "config", "--get", "remote.origin.url"),
+            "https://example.invalid/project-skill.git",
+        )
+        self.run_process(["git", "-C", str(skill_root), "fsck", "--no-dangling"])
+        for relative, content in repository_files.items():
+            self.assertEqual((skill_root / relative).read_bytes(), content)
+        self.assertNotEqual(fingerprint, self.runtime_evolution.harness_content_fingerprint(skill_root))
+        after_migrate = self.runtime_evolution.harness_content_fingerprint(skill_root)
+        (skill_root / "README.md").write_text("repository-side change\n", encoding="utf-8")
+        self.assertEqual(after_migrate, self.runtime_evolution.harness_content_fingerprint(skill_root))
+
+    def test_skill_repository_sidecars_roll_back_after_partial_preservation_failure(self) -> None:
+        project = self.create_git_project("skill-sidecar-rollback")
+        bundle = self.write_bundle(project, "skill-sidecar-rollback")
+        initialized = self.init_project(project, bundle)
+        skill_root = Path(initialized["skill_root"])
+        self.commit_routes(project)
+        head = self.initialize_skill_git_repository(skill_root)
+        manifest_before = (skill_root / "state" / "manifest.json").read_bytes()
+        readme_before = (skill_root / "README.md").read_bytes()
+        original_move = self.runtime_transactions.transaction_move
+        failed_once = False
+
+        def fail_after_git_sidecar(source: Path, target: Path) -> None:
+            nonlocal failed_once
+            if not failed_once and target.name == ".gitignore":
+                failed_once = True
+                raise OSError("injected repository-sidecar failure")
+            original_move(source, target)
+
+        arguments = ("project", "migrate", "--analysis-bundle", str(bundle))
+        with mock.patch.object(self.runtime_transactions, "transaction_move", side_effect=fail_after_git_sidecar):
+            with self.assertRaises(self.cli_module.HarnessError):
+                self.dispatch(project, *arguments)
+
+        self.assertTrue(failed_once)
+        self.assertEqual(self.git(skill_root, "rev-parse", "HEAD"), head)
+        self.assertEqual((skill_root / "state" / "manifest.json").read_bytes(), manifest_before)
+        self.assertEqual((skill_root / "README.md").read_bytes(), readme_before)
+        self.assertTrue((skill_root / ".gitignore").is_file())
+        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
 
     def test_init_and_migrate_never_create_repository_harness(self) -> None:
         project = self.create_git_project("single-output-project")
@@ -5067,14 +5310,26 @@ class HarnessCliTests(unittest.TestCase):
             encoding="utf-8",
         )
         (references / "runtime-modules.md").write_text("stale runtime map\n", encoding="utf-8")
+        (references / "git-collaboration.md").unlink()
+        entry_path = skill_root / "SKILL.md"
+        entry_path.write_text(
+            entry_path.read_text(encoding="utf-8").replace(
+                "Read `references/git-collaboration.md` only when creating, sharing, cloning, updating, reviewing, or\n"
+                "diagnosing an independent Git repository for this project Skill. Ordinary project work does not load\n"
+                "or run that Git workflow.\n\n",
+                "",
+            ),
+            encoding="utf-8",
+        )
 
         self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
 
-        for name in ("analysis-contract.md", "runtime-modules.md"):
+        for name in ("analysis-contract.md", "runtime-modules.md", "git-collaboration.md"):
             self.assertEqual(
                 (ROOT / "assets" / "project-skill" / "references" / name).read_bytes(),
                 (references / name).read_bytes(),
             )
+        self.assertIn("references/git-collaboration.md", entry_path.read_text(encoding="utf-8"))
 
     def test_fresh_migrate_reports_applied_analysis_bundle(self) -> None:
         project = self.create_git_project("fresh-migrate")

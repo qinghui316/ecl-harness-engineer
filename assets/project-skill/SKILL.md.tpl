@@ -46,6 +46,10 @@ Use `references/analysis-contract.md` for a semantic audit or E1 rescan. Use
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
 
+Read `references/git-collaboration.md` only when creating, sharing, cloning, updating, reviewing, or
+diagnosing an independent Git repository for this project Skill. Ordinary project work does not load
+or run that Git workflow.
+
 Rerun preflight after material path, contract, or baseline changes, before closing multi-Lane
 Structured work, and before Integration. Run knowledge scan/check only for suspected drift, a
 related preflight signal, audit, migration, or E1; these commands report evidence and never rewrite

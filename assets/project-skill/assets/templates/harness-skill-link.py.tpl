@@ -99,6 +99,23 @@ def remove_created_link(path: Path) -> None:
         os.rmdir(path)
 
 
+def ensure_local_skill_excludes(common: Path) -> None:
+    exclude = common / "info" / "exclude"
+    existing = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    lines = existing.splitlines()
+    wanted = [
+        f"/.agents/skills/{SKILL_NAME}",
+        f"/.claude/skills/{SKILL_NAME}",
+    ]
+    if all(value in lines for value in wanted):
+        return
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    for value in wanted:
+        if value not in lines:
+            lines.append(value)
+    exclude.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
 def main() -> int:
     arguments = sys.argv[1:]
     if any(argument != "--detach" for argument in arguments) or arguments.count("--detach") > 1:
@@ -163,6 +180,7 @@ def main() -> int:
         or manifest.get("skill_name") != SKILL_NAME
     ):
         raise RuntimeError("canonical project Harness manifest does not match this Git project")
+    ensure_local_skill_excludes(common)
     result = {}
     created = []
     try:

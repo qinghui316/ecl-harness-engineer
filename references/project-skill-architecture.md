@@ -109,6 +109,19 @@ Keep repository integration bounded:
 
 Do not create repository Harness state as an initialization side effect.
 
+## Optional Project Skill Git Repository
+
+The project Harness includes an on-demand Git collaboration reference, but remains a local
+physical directory by default. Only an explicit sharing request turns that directory into an
+independent nested Git repository. The business repository excludes the whole project Skill through
+its Git-common local exclude; the inner repository excludes dynamic state except the portable
+manifest. Neither repository owns or tracks the other's operational state.
+
+Repository metadata such as `.git`, `.gitignore`, README, and GitHub templates is outside Harness
+content publication. Migration and Evolution preserve it without copying it into candidates or
+fingerprints. Same-machine business worktrees share one physical project Skill and therefore one
+inner Git working tree.
+
 ## Failure And Migration
 
 Initialization and migration publish through the existing content transaction. Preserve all

@@ -30,6 +30,10 @@ manuals into the route.
 Use `assets/project-skill/SKILL.md.tpl` as the only entry template. Fill its identity, mode, and
 launcher placeholders; project-specific detail belongs in project knowledge and workflows.
 
+Every project Harness includes `references/git-collaboration.md`. The entry routes to it
+only for explicit project Skill sharing, clone, update, PR, or nested-Git diagnosis. Do not create
+`.git`, `.gitignore`, README, GitHub metadata, a commit, or a remote during ordinary Harness init.
+
 ## L1 Overview
 
 ```markdown

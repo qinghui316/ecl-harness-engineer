@@ -18,5 +18,10 @@
     "id": "reference-source-map",
     "prompt": "Use this scheduler repository as a source reference for the current project's orchestration module. Build the reference source map and show how future Agents discover the relevant files without mixing the reference repository into the target project's modules or commands.",
     "expected": "Keeps the checkout in project-local reference source space; analyzes its inspected commit, modules, interfaces, call paths, tests, and citations separately; writes the actual relationship into the target L2/L3 and a reference map; follows ordinary document links rather than adding a reference command, profile, loading gate, or automatic updater."
+  },
+  {
+    "id": "independent-project-skill-git",
+    "prompt": "Create an independent Git version of this existing project Skill so a teammate can clone the business project and project Skill separately, initialize local Change state, and submit module knowledge through PRs without sharing our Change history.",
+    "expected": "Loads the generated Git collaboration reference only for this request; initializes Git only at the physical project Skill root after creating the state-safe ignore, README, and PR template; verifies the outer business repository excludes and does not track the nested Skill; shares stable knowledge, Runtime, and manifest only; records the matching business revision; and tells the teammate to run connector, doctor repair, and knowledge check before creating ignored local Changes."
   }
 ]

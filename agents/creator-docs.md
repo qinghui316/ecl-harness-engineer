@@ -41,11 +41,17 @@ Keep project Harness `SKILL.md` a concise stage router. It must identify:
 - Small versus Structured Change trigger;
 - command surface;
 - stage workflow links;
+- an on-demand route to project Skill Git collaboration guidance;
 - stable ownership and current-fact precedence;
 - I2 for canonical Integration and E1-only Evolution.
 
 Do not place module catalogs, Change history, full rules, environment setup, or command explanations
 in the entry file.
+
+Generate `references/git-collaboration.md` for optional independent distribution of the project
+Skill. It is guidance, not an initialization action: project creation must not run `git init`, add a
+remote, commit, or push. The route is loaded only for project Skill sharing, clone, update, PR, or
+Git-boundary diagnosis.
 
 ## L1 Overview
 

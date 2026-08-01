@@ -299,6 +299,8 @@ retired, or archive-only artifact before publication.
    AI-facing knowledge in the project Harness.
 6. Keep repository routes compact. Existing `AGENTS.md` or `CLAUDE.md` content is preserved and
    merged deliberately; it is never overwritten just to install a route.
+7. Include the optional project Skill Git collaboration reference, but do not initialize an
+   independent repository or create sharing metadata unless the user explicitly requests it.
 
 ## F. Semantic Verification
 

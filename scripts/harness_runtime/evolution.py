@@ -23,12 +23,12 @@ from typing import Any, Iterable
 from .analysis import load_analysis_bundle
 from .changes import evolve_check_internal, evolve_check_locked
 from .contracts import load_audit_rubric
-from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, read_json, reject_tree_links, remove_owned_tree, utc_now
+from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, is_link_like, read_json, reject_tree_links, remove_owned_tree, utc_now
 from .knowledge import knowledge_check_internal
 from .project import project_context, require_skill
 from .rendering import install_analysis_bundle
 from .reviews import validate_evolution_judge
-from .transactions import acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
+from .transactions import CONTENT_TRANSACTION_PATHS, acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
 
 @guard_project_skill
 def evolve_status(args: argparse.Namespace) -> dict[str, Any]:
@@ -45,16 +45,19 @@ def evolve_status(args: argparse.Namespace) -> dict[str, Any]:
 
 def harness_content_fingerprint(skill_root: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(skill_root.rglob("*"), key=lambda item: item.as_posix()):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(skill_root)
-        if relative.parts[0] == "state" or "__pycache__" in relative.parts:
-            continue
-        digest.update(relative.as_posix().encode("utf-8"))
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(64 * 1024), b""):
-                digest.update(block)
+    for owner in CONTENT_TRANSACTION_PATHS:
+        root = skill_root / owner
+        paths = [root] if root.is_file() else sorted(root.rglob("*"), key=lambda item: item.as_posix()) if root.is_dir() else []
+        for path in paths:
+            if not path.is_file():
+                continue
+            relative = path.relative_to(skill_root)
+            if "__pycache__" in relative.parts or path.suffix == ".pyc":
+                continue
+            digest.update(relative.as_posix().encode("utf-8"))
+            with path.open("rb") as handle:
+                for block in iter(lambda: handle.read(64 * 1024), b""):
+                    digest.update(block)
     return digest.hexdigest()
 
 def evolution_owner_record(skill_root: Path) -> dict[str, Any]:
@@ -75,14 +78,16 @@ def require_evolution_owner(skill_root: Path, owner_id: str | None = None) -> di
     return owner
 
 def copy_non_state_skill(source: Path, destination: Path) -> None:
-    reject_tree_links(source, "Project Harness content source")
+    if is_link_like(source):
+        raise HarnessError(f"Project Harness content source must be physical: {source}")
     destination.mkdir(parents=True, exist_ok=False)
-    for name in ("SKILL.md", "references", "scripts", "assets", "agents"):
+    for name in CONTENT_TRANSACTION_PATHS:
         item = source / name
         if not item.exists():
             continue
         target = destination / name
         if item.is_dir():
+            reject_tree_links(item, f"Project Harness content source {name}")
             shutil.copytree(
                 item,
                 target,

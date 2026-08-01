@@ -20,11 +20,66 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .core import HarnessError, SCHEMA_VERSION, _CONTENT_GUARD_LOCAL, atomic_write_bytes, atomic_write_json, canonical_id, is_link_like, is_within, normalize_path, read_json, reject_tree_links, remove_owned_tree, safe_relative, unlink_directory_link_node, utc_now
+from .core import HarnessError, SCHEMA_VERSION, _CONTENT_GUARD_LOCAL, atomic_write_bytes, atomic_write_json, canonical_id, git, git_value, is_link_like, is_within, normalize_path, read_json, reject_tree_links, remove_owned_tree, safe_relative, unlink_directory_link_node, utc_now
 from .project import project_context, skill_root_for
 from .registry import registry_root
 
 CONTENT_TRANSACTION_PATHS = ("SKILL.md", "references", "scripts", "assets", "agents")
+REPOSITORY_SIDECAR_NAMES = (".git", ".gitignore", ".gitattributes", ".github", "README.md")
+
+
+def git_repository_findings(skill_root: Path) -> list[dict[str, Any]]:
+    metadata = skill_root / ".git"
+    if not path_present(metadata):
+        return []
+    if is_link_like(metadata):
+        return [{"type": "linked_skill_git_metadata", "path": str(metadata)}]
+    findings: list[dict[str, Any]] = []
+    top_level = git_value(skill_root, "rev-parse", "--show-toplevel")
+    if not top_level:
+        return [{"type": "invalid_skill_git_repository", "path": str(metadata)}]
+    if normalize_path(Path(top_level)) != normalize_path(skill_root):
+        findings.append({
+            "type": "wrong_skill_git_top_level",
+            "expected": str(skill_root),
+            "actual": top_level,
+        })
+    unmerged = git(skill_root, "ls-files", "-u", check=False)
+    if unmerged.returncode != 0:
+        findings.append({"type": "unreadable_skill_git_index"})
+    elif unmerged.stdout.strip():
+        findings.append({"type": "unmerged_skill_git_index"})
+    git_dir_value = git_value(skill_root, "rev-parse", "--git-dir")
+    if not git_dir_value:
+        findings.append({"type": "unresolvable_skill_git_dir"})
+        return findings
+    git_dir = Path(git_dir_value)
+    if not git_dir.is_absolute():
+        git_dir = (skill_root / git_dir).resolve()
+    operation_paths = {
+        "index.lock": "skill_git_index_locked",
+        "MERGE_HEAD": "skill_git_merge_in_progress",
+        "CHERRY_PICK_HEAD": "skill_git_cherry_pick_in_progress",
+        "REVERT_HEAD": "skill_git_revert_in_progress",
+        "rebase-apply": "skill_git_rebase_in_progress",
+        "rebase-merge": "skill_git_rebase_in_progress",
+    }
+    for relative, finding_type in operation_paths.items():
+        if (git_dir / relative).exists():
+            findings.append({"type": finding_type, "path": str(git_dir / relative)})
+    return findings
+
+
+def repository_sidecars(skill_root: Path) -> list[str]:
+    result = [name for name in REPOSITORY_SIDECAR_NAMES if path_present(skill_root / name)]
+    for path in sorted(skill_root.glob("LICENSE*"), key=lambda item: item.name.lower()):
+        if path.name not in result:
+            result.append(path.name)
+    for relative in result:
+        path = skill_root / relative
+        if is_link_like(path):
+            raise HarnessError(f"Project Skill repository sidecar must not be a link: {path}")
+    return result
 
 def writer_lock_path(skill_root: Path) -> Path:
     return registry_root(skill_root) / "locks" / "shared-writer"
@@ -258,6 +313,18 @@ def validate_content_transaction_record(
         snapshot_path = Path(str(snapshot.get("path", ""))).resolve()
         if not is_within(snapshot_path, transaction_root):
             raise HarnessError("Content transaction snapshot backup points outside its journal directory.")
+    sidecars = transaction.get("repository_sidecars", [])
+    if not isinstance(sidecars, list):
+        raise HarnessError("Content transaction repository sidecars must be an array.")
+    allowed = set(REPOSITORY_SIDECAR_NAMES)
+    for relative in sidecars:
+        if (
+            not isinstance(relative, str)
+            or safe_relative(relative, "repository sidecar") != relative
+            or len(Path(relative).parts) != 1
+            or (relative not in allowed and not relative.startswith("LICENSE"))
+        ):
+            raise HarnessError(f"Content transaction has an invalid repository sidecar: {relative!r}")
 
 def rollback_content_transaction(transaction: dict[str, Any]) -> None:
     validate_content_transaction_record(transaction)
@@ -274,12 +341,15 @@ def rollback_content_transaction(transaction: dict[str, Any]) -> None:
             state_holder = replacement
         elif path_present(replacement):
             state_holder = replacement
-        if not path_present(backup / "state") and state_holder and path_present(state_holder / "state"):
-            state = state_holder / "state"
-            if path_present(original_analysis):
-                remove_transaction_path(state / "analysis")
-                transaction_move(original_analysis, state / "analysis")
-            transaction_move(state, backup / "state")
+        preserved = ["state", *transaction.get("repository_sidecars", [])]
+        for relative in preserved:
+            source = state_holder / relative if state_holder else None
+            if path_present(backup / relative) or source is None or not path_present(source):
+                continue
+            if relative == "state" and path_present(original_analysis):
+                remove_transaction_path(source / "analysis")
+                transaction_move(original_analysis, source / "analysis")
+            transaction_move(source, backup / relative)
         if not path_present(skill_root):
             transaction_move(backup, skill_root)
     remove_transaction_path(replacement)
@@ -315,6 +385,13 @@ def apply_content_transaction(
     if not (candidate / "SKILL.md").is_file() or not (candidate / "references").is_dir():
         raise HarnessError("Content candidate is not a complete project Harness.")
     reject_tree_links(candidate, "Content candidate")
+    repository_findings = git_repository_findings(skill_root)
+    if repository_findings:
+        raise HarnessError(
+            "Project Skill Git repository is not safe for content publication: "
+            + json.dumps(repository_findings, ensure_ascii=False)
+        )
+    sidecars = repository_sidecars(skill_root)
     transaction_root = content_transaction_store(skill_root) / f"{operation}-{identifier}-{secrets.token_hex(8)}"
     transaction_root.mkdir(parents=True, exist_ok=False)
     replacement = transaction_root / "next"
@@ -351,6 +428,7 @@ def apply_content_transaction(
         "backup": str(backup),
         "original_analysis": str(original_analysis),
         "state_snapshots": state_snapshots,
+        "repository_sidecars": sidecars,
         "phase": "prepared",
         "created_at": utc_now(),
     }
@@ -363,6 +441,12 @@ def apply_content_transaction(
             raise HarnessError("Current project Harness has no state directory to preserve.")
         transaction_move(backup / "state", replacement / "state")
         transaction["phase"] = "state_preserved"
+        transaction_journal(transaction_root, transaction)
+        for relative in sidecars:
+            source = backup / relative
+            if path_present(source):
+                transaction_move(source, replacement / relative)
+        transaction["phase"] = "repository_sidecars_preserved"
         transaction_journal(transaction_root, transaction)
         if path_present(candidate_analysis):
             if path_present(replacement / "state" / "analysis"):

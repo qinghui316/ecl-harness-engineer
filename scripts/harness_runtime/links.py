@@ -21,6 +21,18 @@ from typing import Any, Iterable
 from .core import HarnessError, MANAGED_CONNECTOR_MARKER, MANAGED_ROUTE_BEGIN, MANAGED_ROUTE_END, MAX_ROUTE_BYTES, TEXT_SUFFIXES, atomic_write_bytes, atomic_write_text, is_link_like, normalize_lexical_path, normalize_path, read_json, reject_linked_ancestors, remove_owned_tree, render, run, safe_relative, unlink_directory_link_node
 from .project import worktree_roots
 
+
+GIT_COLLABORATION_ROUTE = (
+    "Read `references/git-collaboration.md` only when creating, sharing, cloning, updating, "
+    "reviewing, or diagnosing an independent Git repository for this project Skill. Ordinary "
+    "project work does not load or run that Git workflow."
+)
+CONNECTOR_NAMES = (
+    "harness-skill-link.ps1",
+    "harness-skill-link.mjs",
+    "harness-skill-link.py",
+)
+
 def distribution_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
@@ -48,6 +60,19 @@ def copy_scaffold(destination: Path, replacements: dict[str, str]) -> None:
             atomic_write_text(target, render(content, replacements))
         else:
             shutil.copy2(item, target)
+
+
+def ensure_git_collaboration_route(destination: Path) -> None:
+    entry = destination / "SKILL.md"
+    if not entry.is_file():
+        return
+    content = entry.read_text(encoding="utf-8")
+    if "references/git-collaboration.md" in content:
+        return
+    marker = "\n## Stage Route"
+    if marker not in content:
+        raise HarnessError("Project Skill entry has no stable Stage Route insertion point.")
+    atomic_write_text(entry, content.replace(marker, f"\n{GIT_COLLABORATION_ROUTE}\n{marker}", 1))
 
 def copy_runtime(destination: Path) -> list[str]:
     scripts = destination / "scripts"
@@ -119,7 +144,7 @@ def copy_runtime(destination: Path) -> list[str]:
         shutil.copy2(rubric_source, rubric_target)
     if scaffold_runtime_available():
         scaffold_references = scaffold_root() / "references"
-        for reference_name in ("analysis-contract.md", "runtime-modules.md"):
+        for reference_name in ("analysis-contract.md", "runtime-modules.md", "git-collaboration.md"):
             reference_source = scaffold_references / reference_name
             if not reference_source.is_file():
                 raise HarnessError(f"Bundled project Harness reference is missing: {reference_source}")
@@ -127,17 +152,12 @@ def copy_runtime(destination: Path) -> list[str]:
             reference_target.parent.mkdir(parents=True, exist_ok=True)
             if reference_source.resolve() != reference_target.resolve():
                 shutil.copy2(reference_source, reference_target)
+        ensure_git_collaboration_route(destination)
     domains = ("project", "change", "integrate", "evolve", "knowledge")
     launchers = [*runtime_names, *(f"harness_runtime/{path.name}" for path in package_files)]
-    windows_shell = (
-        "powershell" if shutil.which("powershell")
-        else "pwsh" if shutil.which("pwsh")
-        else None
-    )
     for domain in domains:
-        if os.name == "nt" and windows_shell:
-            name = f"harness-{domain}.ps1"
-            content = (
+        launcher_contents = {
+            f"harness-{domain}.ps1": (
                 "$ErrorActionPreference = 'Stop'\n"
                 "$cli = Join-Path $PSScriptRoot 'harness_cli.py'\n"
                 "if ($env:ECL_HARNESS_PYTHON) {\n"
@@ -151,10 +171,8 @@ def copy_runtime(destination: Path) -> list[str]:
                 "    exit 2\n"
                 "}\n"
                 "exit $LASTEXITCODE\n"
-            )
-        elif os.name == "nt":
-            name = f"harness-{domain}.cmd"
-            content = (
+            ),
+            f"harness-{domain}.cmd": (
                 "@echo off\n"
                 "if defined ECL_HARNESS_PYTHON goto harness_python_override\n"
                 "where python >nul 2>nul\n"
@@ -172,10 +190,8 @@ def copy_runtime(destination: Path) -> list[str]:
                 ":harness_py\n"
                 f'py -3 "%~dp0harness_cli.py" {domain} %*\n'
                 "exit /b %errorlevel%\n"
-            )
-        else:
-            name = f"harness-{domain}.sh"
-            content = (
+            ),
+            f"harness-{domain}.sh": (
                 "#!/usr/bin/env sh\n"
                 "set -eu\n"
                 "SCRIPT_DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n"
@@ -189,12 +205,14 @@ def copy_runtime(destination: Path) -> list[str]:
                 "  echo 'Python 3 is required. Install it or set ECL_HARNESS_PYTHON for this host.' >&2\n"
                 "  exit 2\n"
                 "fi\n"
-            )
-        path = scripts / name
-        atomic_write_text(path, content)
-        if os.name != "nt":
-            path.chmod(path.stat().st_mode | 0o111)
-        launchers.append(name)
+            ),
+        }
+        for name, content in launcher_contents.items():
+            path = scripts / name
+            atomic_write_text(path, content)
+            if name.endswith(".sh") and os.name != "nt":
+                path.chmod(path.stat().st_mode | 0o111)
+            launchers.append(name)
     return launchers
 
 def same_target(link: Path, target: Path) -> bool:
@@ -292,9 +310,6 @@ def connector_route() -> tuple[str, str]:
         "No supported new-worktree connector host is available (PowerShell, Node.js, or Python)."
     )
 
-def connector_detach_command(connector_name: str, connector_command: str) -> str:
-    return connector_command + (" -Detach" if connector_name.endswith(".ps1") else " --detach")
-
 def generated_command_routes() -> dict[str, str]:
     if os.name == "nt":
         shell = "powershell" if shutil.which("powershell") else "pwsh" if shutil.which("pwsh") else None
@@ -362,13 +377,17 @@ def ensure_runtime_links(
 
 def route_replacements(context: dict[str, Any]) -> tuple[dict[str, str], str, str]:
     connector_name, connector_command = connector_route()
-    detach_command = connector_detach_command(connector_name, connector_command)
     connector_guidance = (
-        "If this is a newly created worktree and the Skill is not discoverable yet, run:\n\n"
-        f"```text\n{connector_command}\n```\n\n"
+        "If this is a newly created worktree and the Skill is not discoverable yet, run one "
+        "available host connector:\n\n"
+        "```text\n"
+        "PowerShell: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/harness-skill-link.ps1\n"
+        "Node.js:    node scripts/harness-skill-link.mjs\n"
+        "Python:     python3 scripts/harness-skill-link.py (or python on Windows)\n"
+        "```\n\n"
         "Then reload the project Harness; single-Lane Small Changes use targeted verification, while Structured and multi-Lane repository work publish scope and run Registry preflight. "
-        "Before removing this secondary worktree, detach its shared Skill links with:\n\n"
-        f"```text\n{detach_command}\n```"
+        "Before removing this secondary worktree, rerun the same connector with `-Detach` for "
+        "PowerShell or `--detach` for Node.js/Python."
         if context["mode"] == "multi_lane"
         else "This non-Git project currently uses single-Lane mode; no worktree connector is installed."
     )
@@ -411,8 +430,11 @@ def merge_managed_route(target: Path, rendered: str) -> tuple[str, bytes | None]
         else:
             prefix = existing + "\n\n"
         updated = prefix + block + "\n"
-    if previous is not None and updated.encode("utf-8") == previous:
-        return "unchanged", previous
+    if previous is not None:
+        if updated.encode("utf-8") == previous:
+            return "unchanged", previous
+        if existing.replace("\r\n", "\n").rstrip() == updated.replace("\r\n", "\n").rstrip():
+            return "unchanged", previous
     atomic_write_text(target, updated)
     return ("updated" if previous is not None else "created"), previous
 
@@ -462,11 +484,12 @@ def ensure_project_routes(
             routes[name] = status
             snapshots[target] = previous
         if context["mode"] == "multi_lane":
-            relative = f"scripts/{connector_name}"
-            target = context["project_root"] / relative
-            status, previous = install_managed_connector(target, templates / connector_name, replacements)
-            routes[relative] = status
-            snapshots[target] = previous
+            for name in CONNECTOR_NAMES:
+                relative = f"scripts/{name}"
+                target = context["project_root"] / relative
+                status, previous = install_managed_connector(target, templates / name, replacements)
+                routes[relative] = status
+                snapshots[target] = previous
     except Exception:
         restore_route_snapshots(snapshots)
         raise
@@ -483,7 +506,6 @@ def ensure_all_project_routes(
 
 def worktree_route_findings(context: dict[str, Any]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    connector_name, _ = connector_route()
     for worktree in worktree_roots(context):
         for name in ("AGENTS.md", "CLAUDE.md"):
             path = worktree / name
@@ -499,12 +521,13 @@ def worktree_route_findings(context: dict[str, Any]) -> list[dict[str, Any]]:
                     "path": str(path),
                 })
         if context["mode"] == "multi_lane":
-            connector = worktree / "scripts" / connector_name
-            content = connector.read_text(encoding="utf-8", errors="replace") if connector.is_file() else ""
-            if MANAGED_CONNECTOR_MARKER not in content:
-                findings.append({
-                    "type": "missing_worktree_connector",
-                    "worktree": str(worktree),
-                    "path": str(connector),
-                })
+            for connector_name in CONNECTOR_NAMES:
+                connector = worktree / "scripts" / connector_name
+                content = connector.read_text(encoding="utf-8", errors="replace") if connector.is_file() else ""
+                if MANAGED_CONNECTOR_MARKER not in content:
+                    findings.append({
+                        "type": "missing_worktree_connector",
+                        "worktree": str(worktree),
+                        "path": str(connector),
+                    })
     return findings

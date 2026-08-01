@@ -54,6 +54,22 @@ function addSkillLink(root, link, target) {
   return "attached";
 }
 
+function ensureLocalSkillExcludes(common) {
+  const exclude = path.join(common, "info", "exclude");
+  const existing = fs.existsSync(exclude) ? fs.readFileSync(exclude, "utf8") : "";
+  const lines = existing.split(/\r?\n/).filter(Boolean);
+  const wanted = [
+    `/.agents/skills/${skillName}`,
+    `/.claude/skills/${skillName}`,
+  ];
+  if (wanted.every((value) => lines.includes(value))) return;
+  fs.mkdirSync(path.dirname(exclude), { recursive: true });
+  for (const value of wanted) {
+    if (!lines.includes(value)) lines.push(value);
+  }
+  fs.writeFileSync(exclude, `${lines.join("\n")}\n`, "utf8");
+}
+
 const current = process.cwd();
 const root = path.resolve(git(current, "rev-parse", "--show-toplevel"));
 const commonRaw = git(root, "rev-parse", "--git-common-dir");
@@ -121,6 +137,7 @@ if (
 ) {
   throw new Error("canonical project Harness manifest does not match this Git project");
 }
+ensureLocalSkillExcludes(common);
 const result = {};
 const created = [];
 try {
