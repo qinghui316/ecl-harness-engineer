@@ -225,7 +225,8 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
                 architecture or {},
                 bundle,
                 bool(getattr(args, "allow_executable_artifacts", False)),
-                source_snapshot,
+                fingerprint_snapshot=source_snapshot,
+                allow_retire=True,
             )
         else:
             artifacts = apply_creation_delta(

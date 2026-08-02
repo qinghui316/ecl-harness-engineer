@@ -327,6 +327,25 @@ class HarnessCliTests(unittest.TestCase):
         (bundle / "architecture.json").write_text(json.dumps(architecture, indent=2), encoding="utf-8")
         return bundle
 
+    def add_bundle_retirement(
+        self,
+        bundle: Path,
+        target: str,
+        *,
+        evidence: str = "src/jobs/service.py",
+    ) -> Path:
+        delta_path = bundle / "creation-delta.json"
+        delta = json.loads(delta_path.read_text(encoding="utf-8"))
+        delta["artifacts"].append({
+            "path": target,
+            "action": "retire",
+            "owner": "project Harness artifact owner",
+            "validation": "retired",
+            "evidence": [evidence],
+        })
+        delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
+        return bundle
+
     def agent_review_extracted_bundle(
         self,
         project: Path,
@@ -566,7 +585,13 @@ class HarnessCliTests(unittest.TestCase):
             "--validation-passed",
         )
 
-    def prepare_evolution(self, name: str, *, stage: bool = True) -> tuple[Path, Path, Path]:
+    def prepare_evolution(
+        self,
+        name: str,
+        *,
+        stage: bool = True,
+        optional_artifact: str | None = None,
+    ) -> tuple[Path, Path, Path]:
         project = self.root / name
         (project / "src" / "jobs").mkdir(parents=True)
         (project / "src" / "runtime").mkdir(parents=True)
@@ -579,6 +604,10 @@ class HarnessCliTests(unittest.TestCase):
         (project / "tests" / "test_jobs.py").write_text("def test_job(): assert True\n", encoding="utf-8")
         initialized = self.init_project(project, self.write_bundle(project, f"{name}-base"))
         skill_root = Path(initialized["skill_root"])
+        if optional_artifact:
+            target = skill_root / optional_artifact
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("# Obsolete project guidance\n", encoding="utf-8")
         for index in range(1, 6):
             self.complete_non_git_change(project, f"change-{index}")
         self.cli(
@@ -2547,6 +2576,181 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertEqual(result["applied"], ["scripts/checks/obsolete_check.py"])
         self.assertFalse(target.exists())
+
+    def test_full_project_migrate_can_retire_an_optional_check(self) -> None:
+        project = self.create_git_project("full-migrate-retire")
+        initialized = self.init_project(
+            project,
+            self.write_bundle(project, "full-migrate-retire-base", artifact=True),
+            allow_executable_artifacts=True,
+        )
+        skill_root = Path(initialized["skill_root"])
+        target = skill_root / "scripts" / "checks" / "check_project.py"
+        self.assertTrue(target.is_file())
+        bundle = self.add_bundle_retirement(
+            self.write_bundle(project, "full-migrate-retire-update"),
+            "scripts/checks/check_project.py",
+        )
+
+        migrated = self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
+
+        self.assertEqual(
+            migrated["applied"]["artifacts"]["applied"],
+            ["scripts/checks/check_project.py"],
+        )
+        self.assertFalse(target.exists())
+
+    def test_full_evolution_can_retire_an_optional_semantic_artifact(self) -> None:
+        target_relative = "references/obsolete-project-guidance.md"
+        project, skill_root, bundle = self.prepare_evolution(
+            "full-evolution-retire",
+            stage=False,
+            optional_artifact=target_relative,
+        )
+        target = skill_root / target_relative
+        self.assertTrue(target.is_file())
+        self.add_bundle_retirement(bundle, target_relative, evidence="registry:change/change-1")
+
+        staged = self.cli(
+            project,
+            "evolve", "stage",
+            "--proposal-id", "accepted-knowledge",
+            "--owner", "independent-judge",
+            "--analysis-bundle", str(bundle),
+        )
+
+        self.assertEqual(staged["mode"], "full")
+        self.assertTrue(target.is_file())
+        self.assertFalse((Path(staged["candidate"]) / target_relative).exists())
+        judge = self.write_evolution_judge(skill_root)
+        completed = self.cli(
+            project,
+            "evolve", "mark-complete",
+            "--proposal-id", "accepted-knowledge",
+            "--owner", "independent-judge",
+            "--candidate-id", "accepted-knowledge",
+            "--judge-report", str(judge),
+            "--status", "keep",
+        )
+        self.assertEqual(completed["status"], "keep")
+        self.assertFalse(target.exists())
+
+    def test_init_rejects_retirement_and_full_migrate_preserves_protected_owners(self) -> None:
+        init_project = self.create_git_project("init-retire-rejected")
+        init_bundle = self.add_bundle_retirement(
+            self.write_bundle(init_project, "init-retire-rejected"),
+            "scripts/checks/obsolete_check.py",
+        )
+        rejected = self.cli(
+            init_project,
+            "project", "init",
+            "--analysis-bundle", str(init_bundle),
+            expected=(2,),
+        )
+        self.assertIn("publication candidate", rejected["error"])
+        self.assertEqual(list((init_project / ".agents" / "skills").glob("*")), [])
+
+        project = self.create_git_project("full-migrate-retire-protected")
+        initialized = self.init_project(
+            project,
+            self.write_bundle(project, "full-migrate-retire-protected-base"),
+        )
+        skill_root = Path(initialized["skill_root"])
+        revision = json.loads(
+            (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
+        )["skill_revision"]
+        protected = {
+            "SKILL.md": "required project Harness owner",
+            "references/rules/red_lines.yaml": "required project Harness owner",
+            "references/workflows/intake.md": "required workflow",
+            "scripts/harness_runtime/rendering.py": "protected or unsupported",
+            "state/manifest.json": "protected or unsupported",
+            "references/project_wiki/overview.md": "protected or unsupported",
+        }
+        for index, (target_relative, expected_error) in enumerate(protected.items()):
+            with self.subTest(target=target_relative):
+                bundle = self.add_bundle_retirement(
+                    self.write_bundle(project, f"full-migrate-protected-{index}"),
+                    target_relative,
+                )
+                result = self.cli(
+                    project,
+                    "project", "migrate",
+                    "--analysis-bundle", str(bundle),
+                    expected=(2,),
+                )
+                self.assertIn(expected_error, result["error"])
+                self.assertTrue((skill_root / target_relative).exists())
+                self.assertEqual(
+                    json.loads(
+                        (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
+                    )["skill_revision"],
+                    revision,
+                )
+
+    def test_full_migrate_retirement_rolls_back_content_and_dynamic_state(self) -> None:
+        project = self.create_git_project("full-migrate-retire-rollback")
+        initialized = self.init_project(
+            project,
+            self.write_bundle(project, "full-migrate-retire-rollback-base", artifact=True),
+            allow_executable_artifacts=True,
+        )
+        skill_root = Path(initialized["skill_root"])
+        target = skill_root / "scripts" / "checks" / "check_project.py"
+        target_bytes = target.read_bytes()
+        self.cli(
+            project,
+            "change", "new", "retirement-rollback",
+            "--scope", "Prove retirement publication rollback",
+        )
+        change_record = skill_root / "state" / "registry" / "changes" / "retirement-rollback.json"
+        legacy_record = json.loads(change_record.read_text(encoding="utf-8"))
+        legacy_record["status"] = "closing"
+        legacy_record["integration_status"] = "not_integrated"
+        change_record.write_text(json.dumps(legacy_record, indent=2), encoding="utf-8")
+        index_path = skill_root / "state" / "changes" / "INDEX.json"
+        legacy_index = json.loads(index_path.read_text(encoding="utf-8"))
+        legacy_index["rollback_sentinel"] = True
+        index_path.write_text(json.dumps(legacy_index, indent=2), encoding="utf-8")
+        before = self.tree_hashes(skill_root)
+        before_state = self.tree_hashes(skill_root / "state")
+        bundle = self.add_bundle_retirement(
+            self.write_bundle(project, "full-migrate-retire-rollback-update"),
+            "scripts/checks/check_project.py",
+            evidence="registry:change/retirement-rollback",
+        )
+        observed_published_retirement = False
+        original_atomic_write_json = self.runtime_project_commands.atomic_write_json
+
+        def fail_after_dynamic_state_normalization(path: Path, value: dict) -> None:
+            nonlocal observed_published_retirement
+            if Path(path) == skill_root / "state" / "manifest.json" and value.get("skill_revision") == 2:
+                self.assertFalse(target.exists())
+                self.assertEqual(
+                    json.loads(change_record.read_text(encoding="utf-8"))["integration_status"],
+                    "not_requested",
+                )
+                self.assertNotIn(
+                    "rollback_sentinel",
+                    json.loads(index_path.read_text(encoding="utf-8")),
+                )
+                observed_published_retirement = True
+                raise self.cli_module.HarnessError("injected post-normalization failure")
+            original_atomic_write_json(path, value)
+
+        with mock.patch.object(
+            self.runtime_project_commands,
+            "atomic_write_json",
+            side_effect=fail_after_dynamic_state_normalization,
+        ):
+            with self.assertRaisesRegex(self.cli_module.HarnessError, "injected post-normalization failure"):
+                self.dispatch(project, "project", "migrate", "--analysis-bundle", str(bundle))
+
+        self.assertTrue(observed_published_retirement)
+        self.assertEqual(target.read_bytes(), target_bytes)
+        self.assertEqual(before_state, self.tree_hashes(skill_root / "state"))
+        self.assertEqual(before, self.tree_hashes(skill_root))
+        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
 
     def test_open_agent_knowledge_is_indexed_and_preserved_by_full_refresh(self) -> None:
         project = self.create_git_project("open-agent-knowledge")

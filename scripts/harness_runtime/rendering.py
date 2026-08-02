@@ -878,11 +878,11 @@ def apply_creation_delta(
         target = reject_linked_artifact_target(skill_root, target_relative)
         if action == "retire":
             if not allow_retire:
-                raise HarnessError("Artifact retirement is only supported by a focused publication candidate.")
+                raise HarnessError("Artifact retirement is only supported by a publication candidate.")
             if target_relative in {"SKILL.md", "references/rules/red_lines.yaml"}:
-                raise HarnessError(f"Focused Evolution cannot retire a required project Harness owner: {target_relative}")
+                raise HarnessError(f"A publication candidate cannot retire a required project Harness owner: {target_relative}")
             if target_relative in REQUIRED_WORKFLOW_PATHS:
-                raise HarnessError(f"Focused Evolution cannot retire a required workflow: {target_relative}")
+                raise HarnessError(f"A publication candidate cannot retire a required workflow: {target_relative}")
             for field in ("owner", "validation"):
                 if not isinstance(artifact.get(field), str) or not artifact[field].strip():
                     raise HarnessError(f"Artifact {target_relative} requires {field}.")
@@ -891,7 +891,7 @@ def apply_creation_delta(
             evidence = evidence_values(artifact)
             validate_project_evidence(context["project_root"], evidence, f"artifact {target_relative}")
             if not target.is_file() or target.is_symlink():
-                raise HarnessError(f"Focused Evolution retire target must be a physical file: {target_relative}")
+                raise HarnessError(f"Publication candidate retire target must be a physical file: {target_relative}")
             if target_relative.startswith("references/project_wiki/"):
                 index = read_json(skill_root / "references" / "project_wiki" / "index.json", {"items": []})
                 item = next(
@@ -899,7 +899,7 @@ def apply_creation_delta(
                     None,
                 )
                 if not item or item.get("managed_by") != "agent":
-                    raise HarnessError("Focused retirement may remove only Agent-owned project knowledge.")
+                    raise HarnessError("Publication retirement may remove only Agent-owned project knowledge.")
             target.unlink()
             applied.append(target_relative)
             if target_relative.startswith("references/project_wiki/"):
@@ -1049,6 +1049,7 @@ def install_analysis_bundle(
     bundle: Path | None,
     allow_executable_artifacts: bool = False,
     fingerprint_snapshot: SourceFingerprintSnapshot | None = None,
+    allow_retire: bool = False,
 ) -> dict[str, Any]:
     knowledge = render_project_wiki(
         skill_root, context, profile, architecture, fingerprint_snapshot,
@@ -1069,6 +1070,7 @@ def install_analysis_bundle(
         delta,
         context,
         allow_executable_artifacts,
+        allow_retire=allow_retire,
         fingerprint_snapshot=fingerprint_snapshot,
         update_knowledge_index=False,
     )

@@ -100,10 +100,13 @@ not generate entropy findings from prose.
 
 `creation-delta.json` contains mode, decisions, and artifacts. Decisions use
 retain/move/merge/retire/archive-only/create with source, owner, projection, and validation.
-Artifacts require path, create/replace/merge action, bundle-relative source, owner, validation, and
-non-empty evidence. UTF-8 references and assets are open semantic owners; scripts remain limited to
-checks/helpers and require explicit executable authorization. Project Wiki document evidence and
-Owner must match its frontmatter. Runtime, state, generated Wiki views, and derived rule views are
+Artifacts require path, create/replace/merge/retire action, owner, validation, and non-empty
+evidence; create/replace/merge also require a bundle-relative source. Retirement is available only
+while publishing a candidate for an existing project Harness, targets an existing physical optional
+artifact, and remains forbidden during init or bootstrap. UTF-8 references and assets are open
+semantic owners; scripts remain limited to checks/helpers and require explicit executable
+authorization. Project Wiki document evidence and Owner must match its frontmatter. Runtime, state,
+required workflows, required rule owners, generated Wiki views, and derived rule views are
 protected.
 
 ## Publication Gate

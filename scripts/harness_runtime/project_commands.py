@@ -299,9 +299,11 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         acquire_writer(root, "migration", context["project_id"])
         transaction: dict[str, Any] | None = None
         manifest_path = root / "state" / "manifest.json"
-        snapshot_paths = [manifest_path, *sorted(registry_root(root).rglob("*.json"))]
-        if state_rebind:
-            snapshot_paths.append(root / "state" / "changes" / "INDEX.json")
+        snapshot_paths = [
+            manifest_path,
+            root / "state" / "changes" / "INDEX.json",
+            *sorted(registry_root(root).rglob("*.json")),
+        ]
         for lane in records(registry_root(root) / "lanes"):
             branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
             snapshot_paths.append(
@@ -332,7 +334,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                     architecture,
                     bundle,
                     bool(getattr(args, "allow_executable_artifacts", False)),
-                    fingerprint_snapshot,
+                    fingerprint_snapshot=fingerprint_snapshot,
+                    allow_retire=True,
                 )
             elif focused_delta is not None:
                 applied = {
