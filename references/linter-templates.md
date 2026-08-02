@@ -82,13 +82,13 @@ Validate:
 - L1 required sections, project-level navigation coverage, and valid L2 links;
 - L2/L3 citations and source fingerprints;
 - reference-source map checkout identity and citations;
-- broken internal links, uncited L3, and missing indexed files;
+- broken internal links, invalid metadata, orphan documents, and missing indexed files;
 - interface/API/schema/document drift;
-- duplicate current-fact owners, archive-ledger leakage, and roadmap/current-state conflicts.
 
-Missing sources, bad links, index corruption, and uncited L3 are mechanical errors. Misplaced
-detail, stale wording, duplicate semantics, and archive density are review warnings; file length
-alone is not. Knowledge scan/check reports only; init, migrate, or accepted E1 publication applies
+Missing sources, bad links, index corruption, unsafe paths, and exact ID/path conflicts are
+mechanical errors. Misplaced detail, stale wording, duplicate semantics, current/target meaning,
+Owner quality, and archive density belong to Agent/Judge review; Runtime does not infer them from
+keywords. Knowledge scan/check reports only; init, migrate, or accepted E1 publication applies
 stable updates.
 
 ## Stack Adaptation

@@ -158,6 +158,8 @@ Evolution. Complete history remains available and is not copied into current rul
 - Entry files route; workflows instruct; rules constrain; Wiki maps; Registry coordinates; Change
   files explain one task; archive preserves history.
 - Prefer editing an existing owner over adding a new file.
+- Search index/catalog by module, Owner, kind, and task terms before Create; read direct links and
+  likely semantic neighbors, and explain why Merge or Replace is not appropriate for a new file.
 - Merge duplicate current facts and retire stale roadmap/baseline language.
 - Keep closeout narrative in Change archive and load it selectively through INDEX.
 - Line count is an alarm, not a quality score; compact content must still be specific and useful.

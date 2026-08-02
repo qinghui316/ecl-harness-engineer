@@ -4,9 +4,9 @@
 
 - Frozen five-Change window, compact Registry summaries, selected Change/review evidence, and
   Integration signals.
-- The complete generated knowledge catalog and indexed current/target/decision/guide documents,
-  plus workflows, rules, templates, checks, relevant drift findings, and
-  canonical evidence only when the proposal affects project semantics.
+- The generated knowledge catalog, affected current/target/decision/guide documents and their
+  direct semantic neighbors, plus workflows, rules, templates, checks, relevant drift findings,
+  and canonical evidence only when the proposal affects project semantics.
 - `references/analysis-contract.md`, which defines focused delta and full-refresh bundle boundaries.
 
 ## Agent Judgment
@@ -17,6 +17,10 @@ to focused Evolution for Agent-owned L1/L2/L3. Require a full refresh only when 
 module/reference maps, architecture, commands, environment, or related current-fact drift changes.
 Do not promote unintegrated implementation facts or generic
 article advice without project evidence.
+Before creating knowledge, search catalog entries by module, Owner, kind, and task terms. Prefer
+Merge or Replace; a proposal that chooses Create explains why the existing owners are insufficient.
+Expand beyond affected documents only when evidence reveals wider overlap. Full E1 or an explicit
+semantic audit performs the whole-catalog retention review.
 
 ## Deterministic Commands
 

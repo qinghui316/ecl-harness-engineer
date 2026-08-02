@@ -6,7 +6,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import secrets
 import shlex
 import shutil
@@ -24,7 +23,7 @@ from .analysis import load_analysis_bundle
 from .changes import evolve_check_internal, evolve_check_locked
 from .contracts import load_audit_rubric
 from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, is_link_like, read_json, reject_tree_links, remove_owned_tree, utc_now
-from .knowledge import SourceFingerprintSnapshot, canonical_knowledge_finding_type, knowledge_check_internal
+from .knowledge import SourceFingerprintSnapshot, knowledge_check_internal
 from .project import project_context, require_skill
 from .rendering import apply_creation_delta, install_analysis_bundle, load_focused_creation_bundle
 from .reviews import validate_evolution_judge
@@ -115,13 +114,8 @@ def protect_audit_rubric(current: Path, candidate: Path) -> None:
 def require_evolution_proposal(path: Path) -> None:
     if not path.is_file():
         raise HarnessError(f"Evolution proposal is missing: {path}")
-    content = path.read_text(encoding="utf-8", errors="replace")
-    has_title = any(re.match(r"^#{1,6}\s+\S", line.strip()) for line in content.splitlines())
-    has_decision = bool(re.search(r"\b(?:promote|retain|merge|retire|archive-only)\b", content, re.IGNORECASE))
-    if not has_title or not has_decision:
-        raise HarnessError(
-            "Evolution proposal requires a title and at least one Promote/Retain/Merge/Retire/Archive-only decision."
-        )
+    if not path.read_text(encoding="utf-8").strip():
+        raise HarnessError("Evolution proposal must not be empty.")
 
 
 def _local_evidence_sources(*values: Any) -> list[str]:
@@ -212,28 +206,6 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
     mode, profile, audit, delta, architecture, bundle = load_evolution_bundle(args, context)
     source_snapshot = SourceFingerprintSnapshot(context)
     source_snapshot.prime(_local_evidence_sources(profile, audit, delta, architecture))
-    if mode == "full":
-        current_knowledge = knowledge_check_internal(skill_root, context, source_snapshot)
-        current_types = {
-            canonical_knowledge_finding_type(item["type"])
-            for item in [*current_knowledge.get("findings", []), *current_knowledge.get("warnings", [])]
-        }
-        classified_types = {
-            canonical_knowledge_finding_type(item.get("type"))
-            for item in (audit or {}).get("knowledge_findings", [])
-        }
-        missing_classifications = sorted(current_types - classified_types)
-        if missing_classifications:
-            raise HarnessError(
-                "Evolution audit must classify every current knowledge finding before staging: "
-                + ", ".join(missing_classifications)
-            )
-        entropy_types = {
-            "duplicate_current_fact_candidates", "archive_ledger_leakage",
-            "multiple_current_state_owners", "roadmap_current_state_conflict",
-        }
-        if current_types & entropy_types and not (audit or {}).get("entropy_report"):
-            raise HarnessError("Evolution audit requires a before/after entropy_report for current entropy findings.")
     staging_root = skill_root / "state" / "evolution" / "staging"
     candidate = staging_root / proposal_id
     if candidate.exists():
@@ -263,6 +235,7 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
                 context,
                 bool(getattr(args, "allow_executable_artifacts", False)),
                 allow_retire=True,
+                fingerprint_snapshot=source_snapshot,
             )
             installed = {
                 "knowledge": {"refreshed": False},
@@ -270,14 +243,10 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
                 "rules": {"affected_only": True},
             }
         protect_audit_rubric(skill_root, candidate)
-        check = knowledge_check_internal(
-            candidate,
-            context,
-            source_snapshot,
-            include_fingerprints=mode == "full",
-        )
-        if not check["healthy"]:
-            raise HarnessError(f"Evolution candidate knowledge validation failed: {check['findings']}")
+        if mode == "full":
+            check = knowledge_check_internal(candidate, context, source_snapshot)
+            if not check["healthy"]:
+                raise HarnessError(f"Evolution candidate knowledge validation failed: {check['findings']}")
         bound_sources = source_snapshot.local_sources()
         source_digest = source_snapshot.digest(bound_sources)
         verification_snapshot = SourceFingerprintSnapshot(context)

@@ -1176,7 +1176,7 @@ class HarnessCliTests(unittest.TestCase):
             {item.get("path") for item in checked["findings"] if item["type"] == "empty_knowledge_entry"},
         )
         placeholder = wiki / "modules" / "placeholder.md"
-        placeholder.write_text("# Placeholder\n", encoding="utf-8")
+        placeholder.write_text("   \n", encoding="utf-8")
         rejected = self.cli(project, "knowledge", "check", expected=(1,))
         self.assertIn(
             "modules/placeholder.md",
@@ -1312,17 +1312,17 @@ class HarnessCliTests(unittest.TestCase):
                 )
                 self.assertTrue(rejected["error"])
 
-    def test_evolution_proposal_uses_semantic_gate_instead_of_byte_length(self) -> None:
+    def test_evolution_proposal_requires_only_non_empty_content(self) -> None:
         project, skill_root, bundle = self.prepare_evolution("short-evolution-proposal", stage=False)
         proposal = skill_root / "state" / "evolution" / "proposals" / "accepted-knowledge.md"
-        proposal.write_text("# Proposal\n\nReview the evidence.\n", encoding="utf-8")
+        proposal.write_text("   \n", encoding="utf-8")
         rejected = self.cli(
             project, "evolve", "stage", "--proposal-id", "accepted-knowledge",
             "--owner", "independent-judge", "--analysis-bundle", str(bundle), expected=(2,),
         )
-        self.assertIn("Promote/Retain/Merge/Retire/Archive-only", rejected["error"])
+        self.assertIn("must not be empty", rejected["error"])
 
-        proposal.write_text("# P\n\nRetain.\n", encoding="utf-8")
+        proposal.write_text("根据项目证据整理相关知识。\n", encoding="utf-8")
         staged = self.cli(
             project, "evolve", "stage", "--proposal-id", "accepted-knowledge",
             "--owner", "independent-judge", "--analysis-bundle", str(bundle),
@@ -2038,7 +2038,7 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertIn("Secret-bearing field", rejected["error"])
 
-    def test_knowledge_check_separates_structural_errors_from_entropy_warnings(self) -> None:
+    def test_knowledge_check_does_not_infer_document_semantics_from_prose(self) -> None:
         project = self.create_git_project("knowledge-entropy")
         initialized = self.init_project(project, self.write_bundle(project, "knowledge-entropy"))
         skill_root = Path(initialized["skill_root"])
@@ -2048,27 +2048,24 @@ class HarnessCliTests(unittest.TestCase):
         with overview.open("a", encoding="utf-8") as handle:
             handle.write(f"\n## Current Status\n\n{repeated}\nLatest completed: changes/archive/old-change\n")
         with module.open("a", encoding="utf-8") as handle:
-            handle.write(f"\n## Current Plan\n\n{repeated}\n")
-        warning_result = self.cli(project, "knowledge", "check")
-        warning_types = {item["type"] for item in warning_result["warnings"]}
-        self.assertTrue(warning_result["healthy"])
-        self.assertIn("duplicate_current_fact_candidates", warning_types)
-        self.assertIn("archive_ledger_leakage", warning_types)
-        self.assertIn("multiple_current_state_owners", warning_types)
-        self.assertIn("roadmap_current_state_conflict", warning_types)
-        for warning in warning_result["warnings"]:
-            for field in ("severity", "owner", "location", "reason", "repair"):
-                self.assertTrue(warning.get(field), f"{warning['type']} missing {field}")
+            handle.write(
+                f"\n## Current Plan\n\n{repeated}\n"
+                "[Evolve workflow](../../workflows/evolve.md)\n"
+            )
+        result = self.cli(project, "knowledge", "check")
+        self.assertTrue(result["healthy"])
+        self.assertEqual(result["warnings"], [])
+        self.assertNotIn("external_knowledge_link", {item["type"] for item in result["findings"]})
 
         index_path = skill_root / "references" / "project_wiki" / "index.json"
         index = json.loads(index_path.read_text(encoding="utf-8"))
         bridge = next(item for item in index["items"] if item["path"].startswith("bridges/"))
         bridge["sources"] = []
         index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-        failed = self.cli(project, "knowledge", "check", expected=(1,))
-        self.assertIn("uncited_l3_bridge", {item["type"] for item in failed["findings"]})
+        result = self.cli(project, "knowledge", "check")
+        self.assertNotIn("uncited_l3_bridge", {item["type"] for item in result["findings"]})
 
-    def test_evolution_requires_findings_classification_and_before_after_entropy(self) -> None:
+    def test_evolution_accepts_project_language_proposal_without_entropy_keywords(self) -> None:
         project, skill_root, bundle = self.prepare_evolution("evolution-entropy", stage=False)
         repeated = "Current baseline is canonical and next action is to verify the runtime integration contract."
         overview = skill_root / "references" / "project_wiki" / "overview.md"
@@ -2077,28 +2074,8 @@ class HarnessCliTests(unittest.TestCase):
             handle.write(f"\n## Current Status\n\n{repeated}\nLatest completed: changes/archive/old\n")
         with module.open("a", encoding="utf-8") as handle:
             handle.write(f"\n## Current Plan\n\n{repeated}\n")
-        rejected = self.cli(
-            project, "evolve", "stage", "--proposal-id", "accepted-knowledge",
-            "--owner", "independent-judge", "--analysis-bundle", str(bundle), expected=(2,),
-        )
-        self.assertIn("classify every current knowledge finding", rejected["error"])
-
-        audit_path = bundle / "audit.json"
-        audit = json.loads(audit_path.read_text(encoding="utf-8"))
-        for finding_type in (
-            "duplicate_current_fact_candidates", "archive_ledger_leakage",
-            "multiple_current_state_owners", "roadmap_current_state_conflict",
-        ):
-            audit["knowledge_findings"].append({
-                "type": finding_type, "decision": "merge", "owner": "project Harness knowledge owner",
-                "projection": "single current-fact owner", "repair": "merge duplicate current claims",
-                "validation": "knowledge check warning count decreases",
-            })
-        audit["entropy_report"] = {
-            "before": {"duplicate_current_facts": 1, "archive_ledger_lines": 1},
-            "after": {"duplicate_current_facts": 0, "archive_ledger_lines": 0},
-        }
-        audit_path.write_text(json.dumps(audit, indent=2), encoding="utf-8")
+        proposal = skill_root / "state/evolution/proposals/accepted-knowledge.md"
+        proposal.write_text("演进提案：根据项目证据整理相关知识。\n", encoding="utf-8")
         staged = self.cli(
             project, "evolve", "stage", "--proposal-id", "accepted-knowledge",
             "--owner", "independent-judge", "--analysis-bundle", str(bundle),
@@ -2508,9 +2485,9 @@ class HarnessCliTests(unittest.TestCase):
             "install_analysis_bundle",
             side_effect=AssertionError("focused Evolution must not render a full analysis bundle"),
         ), mock.patch.object(
-            self.runtime_knowledge,
-            "knowledge_fingerprint_scan",
-            side_effect=AssertionError("focused Evolution must not scan all project fingerprints"),
+            self.runtime_evolution,
+            "knowledge_check_internal",
+            side_effect=AssertionError("focused Evolution must not run a full knowledge check"),
         ):
             staged = self.dispatch(
                 project,
@@ -2630,7 +2607,13 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("target", catalog)
 
         refresh = self.write_bundle(project, "open-agent-knowledge-refresh")
-        self.cli(project, "project", "migrate", "--analysis-bundle", str(refresh))
+        with mock.patch.object(
+            self.runtime_rendering,
+            "rebuild_project_wiki_index",
+            wraps=self.runtime_rendering.rebuild_project_wiki_index,
+        ) as rebuild_index:
+            self.dispatch(project, "project", "migrate", "--analysis-bundle", str(refresh))
+        self.assertEqual(rebuild_index.call_count, 1)
         self.assertEqual(target_source.read_text(encoding="utf-8"), (
             skill_root / "references/project_wiki/roadmaps/office/v2.md"
         ).read_text(encoding="utf-8"))
@@ -2643,6 +2626,24 @@ class HarnessCliTests(unittest.TestCase):
         project = self.create_git_project("focused-document-migrate")
         initialized = self.init_project(project, self.write_bundle(project, "focused-document-migrate"))
         skill_root = Path(initialized["skill_root"])
+        index_path = skill_root / "references/project_wiki/index.json"
+        initial_index = json.loads(index_path.read_text(encoding="utf-8"))
+        for number in range(600):
+            initial_index["items"].append({
+                "id": f"benchmark-{number}",
+                "title": f"Benchmark {number}",
+                "layer": "L2",
+                "kind": "system",
+                "status": "implemented",
+                "owner": "benchmark",
+                "modules": [],
+                "path": f"benchmark/{number}.md",
+                "sources": ["src/jobs/service.py"],
+                "source_fingerprints": {},
+                "managed_by": "renderer",
+                "generated_by": "benchmark",
+            })
+        index_path.write_text(json.dumps(initial_index, indent=2), encoding="utf-8")
         bundle = self.root / "focused-document-migrate-bundle"
         artifacts = bundle / "artifacts"
         artifacts.mkdir(parents=True)
@@ -2653,6 +2654,7 @@ class HarnessCliTests(unittest.TestCase):
                 title="Queue Decision",
                 kind="decision",
                 owner="job-processing",
+                evidence=("src/jobs/service.py",),
             ),
             encoding="utf-8",
         )
@@ -2666,7 +2668,7 @@ class HarnessCliTests(unittest.TestCase):
                 "source": "artifacts/decision.md",
                 "owner": "job-processing",
                 "validation": "text-present",
-                "evidence": ["user:accepted project direction"],
+                "evidence": ["src/jobs/service.py"],
             }],
         }
         (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
@@ -2675,13 +2677,32 @@ class HarnessCliTests(unittest.TestCase):
             "install_analysis_bundle",
             side_effect=AssertionError("focused migrate must not install a full analysis bundle"),
         ), mock.patch.object(
+            self.runtime_project_commands,
+            "knowledge_check_internal",
+            side_effect=AssertionError("focused migrate must not run a full knowledge check"),
+        ), mock.patch.object(
             self.runtime_knowledge,
-            "knowledge_fingerprint_scan",
-            side_effect=AssertionError("focused migrate must not scan all project fingerprints"),
-        ):
+            "discover_agent_knowledge",
+            side_effect=AssertionError("focused migrate must not discover all Wiki documents"),
+        ), mock.patch.object(
+            self.runtime_knowledge,
+            "agent_knowledge_item",
+            wraps=self.runtime_knowledge.agent_knowledge_item,
+        ) as item_builder, mock.patch.object(
+            self.runtime_knowledge,
+            "context_source_fingerprints",
+            wraps=self.runtime_knowledge.context_source_fingerprints,
+        ) as fingerprints:
             result = self.dispatch(project, "project", "migrate", "--analysis-bundle", str(bundle))
         self.assertEqual(result["applied"]["mode"], "focused")
         self.assertTrue((skill_root / "references/project_wiki/decisions/queue.md").is_file())
+        self.assertEqual(item_builder.call_count, 1)
+        self.assertEqual(fingerprints.call_count, 1)
+        updated_index = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(updated_index["items"]), len(initial_index["items"]) + 1)
+        catalog = (skill_root / "references/project_wiki/catalog.md").read_text(encoding="utf-8")
+        self.assertIn("benchmark/599.md", catalog)
+        self.assertIn("decisions/queue.md", catalog)
 
         retire_bundle = self.root / "focused-document-retire-bundle"
         retire_bundle.mkdir()
@@ -2706,7 +2727,7 @@ class HarnessCliTests(unittest.TestCase):
         retired_index = json.loads((skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8"))
         self.assertNotIn("queue-decision", {item["id"] for item in retired_index["items"]})
 
-    def test_open_knowledge_rejects_protected_paths_and_reports_entropy(self) -> None:
+    def test_open_knowledge_keeps_mechanical_guards_without_semantic_gates(self) -> None:
         project = self.create_git_project("open-knowledge-safety")
         initialized = self.init_project(project, self.write_bundle(project, "open-knowledge-safety"))
         skill_root = Path(initialized["skill_root"])
@@ -2714,11 +2735,11 @@ class HarnessCliTests(unittest.TestCase):
         self.assertFalse(self.runtime_rendering.allowed_artifact_target("scripts/harness_runtime/core.py"))
         self.assertTrue(self.runtime_rendering.allowed_artifact_target("references/designs/target.yaml"))
 
-        invalid_bundle = self.root / "invalid-target-classification"
-        invalid_artifacts = invalid_bundle / "artifacts"
-        invalid_artifacts.mkdir(parents=True)
-        invalid_source = invalid_artifacts / "implemented-target.md"
-        invalid_source.write_text(
+        target_bundle = self.root / "target-classification"
+        target_artifacts = target_bundle / "artifacts"
+        target_artifacts.mkdir(parents=True)
+        target_source = target_artifacts / "implemented-target.md"
+        target_source.write_text(
             self.agent_knowledge_document(
                 "implemented-target",
                 title="Implemented Target",
@@ -2728,7 +2749,7 @@ class HarnessCliTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        invalid_delta = {
+        target_delta = {
             "schema_version": "1.0",
             "mode": "migrate-focused",
             "decisions": [],
@@ -2741,13 +2762,55 @@ class HarnessCliTests(unittest.TestCase):
                 "evidence": ["src/jobs/service.py"],
             }],
         }
-        (invalid_bundle / "creation-delta.json").write_text(
-            json.dumps(invalid_delta, indent=2), encoding="utf-8",
+        (target_bundle / "creation-delta.json").write_text(
+            json.dumps(target_delta, indent=2), encoding="utf-8",
         )
-        invalid = self.cli(
-            project, "project", "migrate", "--analysis-bundle", str(invalid_bundle), expected=(2,),
+        self.cli(project, "project", "migrate", "--analysis-bundle", str(target_bundle))
+
+        target_source.write_text(
+            self.agent_knowledge_document(
+                "implemented-target",
+                title="Implemented Target",
+                kind="target",
+                status="implemented",
+                owner="next-architecture-owner",
+                evidence=("src/jobs/service.py",),
+            ),
+            encoding="utf-8",
         )
-        self.assertIn("current_target_classification_conflict", invalid["error"])
+        target_delta["artifacts"][0]["action"] = "replace"
+        target_delta["artifacts"][0]["owner"] = "next-architecture-owner"
+        (target_bundle / "creation-delta.json").write_text(
+            json.dumps(target_delta, indent=2), encoding="utf-8",
+        )
+        self.cli(project, "project", "migrate", "--analysis-bundle", str(target_bundle))
+        transferred_index = json.loads(
+            (skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8")
+        )
+        transferred = next(item for item in transferred_index["items"] if item["id"] == "implemented-target")
+        self.assertEqual(transferred["owner"], "next-architecture-owner")
+
+        target_path = skill_root / "references/project_wiki/targets/implemented.md"
+        context = self.runtime_project.project_context(project)
+        target_content = target_path.read_text(encoding="utf-8")
+        target_path.write_text(target_content + "\n[Missing](missing.md)\n", encoding="utf-8")
+        with self.assertRaisesRegex(self.runtime_core.HarnessError, "invalid local links"):
+            self.runtime_knowledge.update_project_wiki_index(
+                skill_root, context, {"targets/implemented.md"},
+            )
+        target_path.write_text(target_content, encoding="utf-8")
+
+        empty = skill_root / "references/project_wiki/guides/empty.md"
+        empty.parent.mkdir(parents=True)
+        empty.write_text(
+            "---\necl:\n  id: empty-agent-knowledge\n  layer: L2\n  kind: guide\n"
+            "  status: accepted\n  owner: guide-owner\n  modules: []\n"
+            "  evidence: [user:accepted empty guide]\n  managed_by: agent\n---\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(self.runtime_core.HarnessError, "non-empty body"):
+            self.runtime_knowledge.update_project_wiki_index(skill_root, context, {"guides/empty.md"})
+        empty.unlink()
 
         orphan = skill_root / "references/project_wiki/custom/orphan.md"
         orphan.parent.mkdir(parents=True)
@@ -2765,7 +2828,7 @@ class HarnessCliTests(unittest.TestCase):
         checked = self.cli(project, "knowledge", "check", expected=(1,))
         types = {item["type"] for item in checked["findings"]}
         self.assertIn("orphan_knowledge_document", types)
-        self.assertIn("duplicate_knowledge_content", types)
+        self.assertNotIn("duplicate_knowledge_content", types)
 
     def test_fingerprint_finding_types_share_canonical_audit_names(self) -> None:
         aliases = {

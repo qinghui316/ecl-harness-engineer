@@ -44,7 +44,8 @@ If the detected project id differs, stop and locate the correct project Harness.
 
 Use `references/analysis-contract.md` for a semantic audit, focused document migration, or E1.
 Focused work uses only the affected Agent-owned documents or Harness owners described by
-`references/workflows/evolve.md`. Use
+`references/workflows/evolve.md`; Agent review expands scope when catalog neighbors reveal an
+overlap, while Runtime only validates changed metadata, links, fingerprints, and index entries. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
@@ -94,8 +95,10 @@ validation and candidate-bound independent review.
 
 Every fifth eligible Change creates an Evolution window. After E1, default to a focused update of
 Agent-owned project documents, affected rules, workflows, templates, checks, helpers, or routes.
-Build a complete semantic rescan only when renderer-owned current facts or architecture changed. A candidate applies only when its bound Judge
-report and validation satisfy `references/audit-rubric.json`; there is no E2.
+Search related catalog Owners before creating knowledge and explain why Merge or Replace is not
+appropriate. Build a complete semantic rescan only when renderer-owned current facts or
+architecture changed. A candidate applies only when its bound Judge report and validation satisfy
+`references/audit-rubric.json`; there is no E2.
 
 ## Rule Source
 

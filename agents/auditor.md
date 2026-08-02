@@ -134,13 +134,13 @@ publication that can lose Registry/Change state.
 
 ## Drift And Entropy Findings
 
-Report broken links, uncited L3, source/interface/API/schema/document fingerprint drift, duplicate
-current-fact owners, archive-ledger leakage, and roadmap/current-state conflicts. Mechanical
-structure/citation failures are errors; stale wording, duplicate semantics, line pressure, and
-archive density are review warnings. Every finding names severity, owner, location, reason, repair,
-projection, and validation. E1 classifies each current finding as Promote, Retain, Merge, Retire,
-or Archive-only. Entropy work includes numeric/owned `before` and `after` observations; warnings
-never authorize automatic deletion.
+Use Runtime output for broken links, invalid metadata, missing sources and source/interface/API/
+schema/document fingerprint drift. Independently review duplicate meaning, archive narrative,
+roadmap/current-state conflicts, current/target classification, Owner quality, line pressure, and
+archive density; do not present keyword matches as semantic proof. Every finding names severity,
+owner, location, reason, repair, projection, and validation. E1 classifies each reviewed finding as
+Promote, Retain, Merge, Retire, or Archive-only. Numeric `before` and `after` observations are
+optional when useful; warnings never authorize automatic deletion.
 
 ## Audit Schema
 

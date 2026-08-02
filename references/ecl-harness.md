@@ -217,7 +217,8 @@ At five, create pending but do not block ordinary work. After E1:
 4. Default to a focused delta for Agent-owned project documents, rules, workflows, templates,
    checks, helpers, or routes; build a complete rescan only when renderer-owned current facts or
    architecture changes.
-5. Prefer improving an existing owner over adding a file/rule/workflow.
+5. Search catalog by module, Owner, kind, and task terms; read related owners and direct links,
+   prefer Merge/Replace, and explain why a new file is necessary.
 6. Stage a complete frozen candidate and run affected Harness checks plus necessary project gates.
 7. Request an independent judge that did not author the proposal.
 8. Apply only for score >= 80, no hard issue, and passing validation/full test.

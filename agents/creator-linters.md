@@ -43,10 +43,11 @@ Apply these algorithms to real project evidence:
 - Encoding: validate UTF-8 and scan confirmed corruption markers without rewriting files.
 - Change integrity: validate required project Harness Change files, review gates, task/AC mapping,
   validation evidence, state/Registry agreement, and INDEX freshness.
-- Knowledge drift: missing sources, fingerprint drift, broken links, misplaced L1 detail, duplicate
-  ownership, and uncited L3 mappings. File length alone is not a finding.
-- Documentation entropy: duplicated current facts, archive narrative copied into current owners,
-  and stale current-plan/baseline language.
+- Knowledge integrity: missing sources, fingerprint drift, broken links, invalid metadata, orphan
+  documents, and exact ID/path conflicts. File length and prose semantics are not findings.
+- Documentation entropy remains an Agent/Judge review concern: duplicate meaning, copied archive
+  narrative, stale plans, current/target classification, and Owner quality must not be inferred by
+  regex or filename conventions.
 
 ## Safety And Quality
 

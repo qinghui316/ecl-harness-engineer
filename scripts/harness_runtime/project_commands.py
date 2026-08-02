@@ -345,6 +345,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                         context,
                         bool(getattr(args, "allow_executable_artifacts", False)),
                         allow_retire=True,
+                        fingerprint_snapshot=fingerprint_snapshot,
                     ),
                     "rules": {"affected_only": True},
                 }
@@ -360,16 +361,12 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
                                 context, sources, fingerprint_snapshot,
                             )
                     atomic_write_json(index_path, index)
-            if profile is None:
+            if profile is None and focused_delta is None:
                 rebuild_project_wiki_index(candidate, context, snapshot=fingerprint_snapshot)
-            candidate_check = knowledge_check_internal(
-                candidate,
-                context,
-                fingerprint_snapshot,
-                include_fingerprints=focused_delta is None,
-            )
-            if not candidate_check["healthy"]:
-                raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
+            if focused_delta is None:
+                candidate_check = knowledge_check_internal(candidate, context, fingerprint_snapshot)
+                if not candidate_check["healthy"]:
+                    raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
             transaction = apply_content_transaction(
                 root,
                 candidate,

@@ -97,11 +97,12 @@ the running process; never persist them in manifest, Registry, INDEX, or knowled
 - Initialization and full migration may install a complete evidence-backed analysis bundle.
 - A focused migrate may publish an explicitly requested formal Agent-owned document immediately.
 - After five qualified Changes and E1, focused Evolution may update, merge, retire, or promote any
-  Agent-owned L1/L2/L3 document. Full Evolution refreshes renderer-owned current facts only when
-  whole-project analysis is actually required.
+  Agent-owned L1/L2/L3 document. Before Create, search catalog metadata and related content, then
+  choose Create, Merge, Replace, Retire, or Archive-only. Full Evolution refreshes renderer-owned
+  current facts only when whole-project analysis is actually required.
 - `harness-knowledge scan` and `check` are read-only. They report missing sources, fingerprint
-  drift, broken links, duplicate ownership, misplaced detail, and uncited L3 claims; they never apply a
-  semantic refresh.
+  drift, broken links, invalid metadata, missing indexed files, and orphan documents; they never
+  infer document meaning or apply a semantic refresh.
 - Run them when source drift is suspected, preflight identifies related drift, or audit, migration,
   or E1 needs a mechanical knowledge report. Ordinary explanation, navigation, and source reading
   follow the document links without running a knowledge command.
@@ -109,7 +110,7 @@ the running process; never persist them in manifest, Registry, INDEX, or knowled
   reads baseline events and fingerprints only the knowledge sources selected by current paths,
   contract paths, and owner module. When those sources drift, return `refresh-needed/replan` rather
   than silently trusting stale Wiki text. Full source scans belong to knowledge check, audit,
-  migration, or E1.
+  or Full E1. Focused migrate/E1 validates and reindexes only changed documents.
 - Resolve current facts in this order: Registry contracts/baseline events, shared current Change
   evidence, repository code/manifests/configuration/tests/interfaces, then L1/L2/L3. An unrelated baseline advancement
   does not force a Lane to stop.
@@ -118,6 +119,10 @@ the running process; never persist them in manifest, Registry, INDEX, or knowled
 
 Load L1 first. Select L2 by affected paths, modules, or contracts. Select L3 only for a matching
 translation boundary. Do not preload every module, bridge, Change, or archive.
+
+Semantic duplication, current/target classification, evidence sufficiency, and knowledge quality
+belong to Agent review and the independent Judge. Runtime owns exact ID/path conflicts, index
+integrity, links, fingerprints, and publication safety.
 
 Reference relationships are part of the project knowledge graph. A relevant L2/L3 page links its
 reference source map, and the map points to inspected source. Direct reference research starts from

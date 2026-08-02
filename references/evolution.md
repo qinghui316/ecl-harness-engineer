@@ -36,6 +36,10 @@ Create a proposal before editing current Harness content. Classify every candida
 - Archive-only: evidence is historical or one-off and should not enter current context.
 
 Prefer improving an existing owner over adding a new file or workflow.
+Before creating project knowledge, search the catalog by module, Owner, kind, and task terms; read
+the matching owner, directly linked documents, and likely semantic neighbors. A proposal that adds
+a document explains why Merge or Replace is not appropriate. Keep Change history in archive rather
+than copying it into stable knowledge.
 
 ## Independent Gate
 
@@ -71,10 +75,11 @@ from the owner fingerprint, and reject `keep` if it does not differ. A kept resu
 `manifest.skill_revision`.
 
 Default to a focused `creation-delta.json` candidate for Agent-owned L1/L2/L3 documents, rules,
-workflows, templates, checks, helpers, and routes. Read every indexed catalog entry during the
-Experience Retention Scan. Require the complete four-file analysis bundle only when renderer-owned
-current facts, architecture, reference maps, commands, environment, or related knowledge drift
-changes. Stage
+workflows, templates, checks, helpers, and routes. Its Experience Retention Scan starts from the
+five Changes, affected catalog entries, matching Owners/modules, and direct links; expand only when
+evidence reveals a wider overlap. Full Evolution or an explicit semantic audit reviews the whole
+catalog. Require the complete four-file analysis bundle only when renderer-owned current facts,
+architecture, reference maps, commands, environment, or related knowledge drift changes. Stage
 validates the selected bundle directly; standalone project audit remains diagnostic.
 
 Stage a complete non-state Skill candidate. Recompute its fingerprint immediately before mutation

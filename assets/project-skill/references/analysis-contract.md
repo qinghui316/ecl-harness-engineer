@@ -93,9 +93,10 @@ or ADR paths in profile, architecture, audit, or creation delta.
 
 `audit.json` uses the dimensions, weights, score range, and overall calculation in
 `references/audit-rubric.json`. Every gap has priority, dimension, issue, fix, and non-empty
-evidence. `knowledge_findings` classifies every current drift/entropy finding with type, decision,
-owner, projection, repair, and validation. Entropy findings also require an `entropy_report` with
-measurable and owned `before` and `after` objects.
+evidence. `knowledge_findings` records Agent-reviewed drift or semantic findings with type,
+decision, owner, projection, repair, and validation. An `entropy_report` with measurable and owned
+`before` and `after` objects is optional when a full semantic audit benefits from it; Runtime does
+not generate entropy findings from prose.
 
 `creation-delta.json` contains mode, decisions, and artifacts. Decisions use
 retain/move/merge/retire/archive-only/create with source, owner, projection, and validation.
