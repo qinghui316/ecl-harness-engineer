@@ -1,10 +1,9 @@
-# Project Rescan And Analysis Contract
+# Project Audit And Full Refresh Contract
 
-Use this contract during read-only audit, focused knowledge publication, and accepted E1 Evolution.
-Focused migrate/E1 updates Agent-owned project documents, rules, workflows, templates, checks,
-helpers, or the project Harness route through `creation-delta.json` without rebuilding
-renderer-owned current facts. Agent judgment analyzes project
-semantics; `scripts/harness_cli.py` validates and publishes deterministic artifacts.
+Use this contract during read-only semantic audit and full migration. Accepted E1 reads it only
+when a complete project rescan is required. Ordinary project Harness documents are edited directly
+inside a Structured Change; they do not use a migration bundle. Agent judgment analyzes project
+semantics; `scripts/harness_cli.py` validates deterministic full-refresh artifacts.
 
 ## Evidence Funnel
 
@@ -17,9 +16,9 @@ command, and search similarity is not an L3 fact.
 Never read or persist secret values. Local evidence is a project-relative existing path. External
 evidence may use `https:`, `user:`, `contract:`, or `registry:` identifiers.
 
-## Focused Evolution Bundle
+## Focused E1 Bundle
 
-When accumulated evidence changes Agent-owned documents or Harness behavior without requiring a
+During accepted E1, when accumulated evidence changes project documents or Harness behavior without requiring a
 whole-project semantic rescan, create only:
 
 ```text
@@ -27,11 +26,11 @@ creation-delta.json             # mode: evolution-focused
 artifacts/                      # only sources named by creation-delta
 ```
 
-Focused artifacts may create, replace, merge, or retire Agent-owned Markdown below
+Focused E1 artifacts may create, replace, merge, or retire Agent-owned Markdown below
 `references/project_wiki/**`, other references, routes, rules, workflows, templates, checks, and
 helpers. Agent-owned Wiki pages declare ECL frontmatter with id, semantic layer, kind, status,
-Owner, modules, evidence, and `managed_by: agent`. Retirement declares `validation: retired`.
-Generated overview/catalog/index, derived rule views, local state, and Runtime remain protected.
+Owner, modules, evidence, and optional `managed_by: agent`. Retirement declares `validation: retired`.
+Generated catalog/fingerprint baseline, derived rule views, local state, and Runtime remain protected.
 A focused bundle does not run the evidence extractor or a full source-fingerprint scan.
 
 ## Four-File Full Refresh Bundle

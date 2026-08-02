@@ -25,7 +25,7 @@ The public entry is `scripts/harness_cli.py`. Project Harness installations expo
 | `links.py` | Launchers, managed routes, connectors, project-level links |
 | `registry.py` | Bound Registry record reads and Lane identity |
 | `transactions.py` | Writer/Registry locks, publication journal, rollback, recovery |
-| `knowledge.py` | Read-only metadata, links, source fingerprints, drift, and index/catalog integrity |
+| `knowledge.py` | Markdown metadata, generated catalog/baseline, source fingerprints, drift, and legacy index conversion |
 | `rendering.py` | L1/L2/L3, architecture, rules, workflows, checks |
 | `changes.py` | Change lifecycle, INDEX, preflight, contracts, Evolution eligibility |
 | `reviews.py` | Integration review and Evolution Judge validation |

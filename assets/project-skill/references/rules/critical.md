@@ -64,9 +64,9 @@ Integration finalization and Evolution publication must not overlap; acquire the
 
 ## HR-21: Keep Knowledge Inspection Read Only
 
-Knowledge scan and check only report drift. Stable renderer-owned current facts change through initialization or full refresh; Agent-owned current, target, decision, and guide documents publish through focused migrate or accepted E1 with indexed frontmatter.
+Knowledge scan and check only report drift. Ordinary current, target, decision, and guide documents update directly in a Structured Change; change reindex or close maintains catalog and fingerprints. Full migration is reserved for renderer-owned current facts, Runtime/schema, or broad semantic refresh, and E1 keeps its independent Judge gate.
 
-**On violation:** Stop the inspection, preserve current Wiki content, and move the proposed update into the appropriate focused or full publication flow.
+**On violation:** Stop the inspection and use the direct Change, full migration, or E1 path that matches the actual scope.
 
 ## HR-22: Prioritize Current Facts Over Periodic Wiki
 

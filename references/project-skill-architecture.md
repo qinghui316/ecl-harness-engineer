@@ -71,7 +71,7 @@ verification or cleanup leaves the worktree available for diagnosis and retry.
 ```
 
 Do not persist project roots, Git common dirs, worktree addresses, interpreter commands, runtime
-links, or canonical-root paths in manifest, Registry, INDEX, knowledge index, or generated history.
+links, or canonical-root paths in manifest, Registry, INDEX, knowledge baseline, or generated history.
 Project, Skill, Change, contract, and Integration paths are project-relative or Skill-relative.
 
 Resolve the current interpreter when a launcher executes. PowerShell, Node, and Python connectors
@@ -91,7 +91,7 @@ writer locks; no cross-machine live coordination is implied.
 
 Analyzer may read README, docs, and ADRs as temporary leads. Verify claims against code, manifests,
 interfaces, configuration, tests, accepted contracts, or explicit user evidence, then write the
-result completely into L1/L2/L3 and Architecture. Final analysis state and knowledge indexes do not
+result completely into L1/L2/L3 and Architecture. Final analysis state and knowledge baselines do not
 persist repository prose paths. Unknown claims remain unknown instead of being replaced by links.
 
 Reference-source maps are different: they identify an inspected source checkout and commit, cite

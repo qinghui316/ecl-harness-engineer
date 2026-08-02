@@ -214,9 +214,9 @@ At five, create pending but do not block ordinary work. After E1:
 1. Atomically claim one evolution owner and freeze five IDs; later Changes queue.
 2. Read INDEX and summaries first, then only necessary details and Integration signals.
 3. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only.
-4. Default to a focused delta for Agent-owned project documents, rules, workflows, templates,
-   checks, helpers, or routes; build a complete rescan only when renderer-owned current facts or
-   architecture changes.
+4. Ordinary project documents, rules, workflows, templates, checks, helpers, and routes update
+   directly in their own Structured Changes. During E1, default to a focused delta; build a complete
+   rescan only when renderer-owned current facts or architecture changes.
 5. Search catalog by module, Owner, kind, and task terms; read related owners and direct links,
    prefer Merge/Replace, and explain why a new file is necessary.
 6. Stage a complete frozen candidate and run affected Harness checks plus necessary project gates.

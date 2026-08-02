@@ -1131,10 +1131,11 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("at most three high-impact questions", intake)
         self.assertIn('"id":"HR-23"', rule_source)
         self.assertTrue(self.cli(project, "project", "audit")["rules"]["healthy"])
-        wiki_index = json.loads((wiki / "index.json").read_text(encoding="utf-8"))
-        overview_record = next(item for item in wiki_index["items"] if item["id"] == "overview")
-        self.assertIn("src/runtime/worker.py", overview_record["sources"])
-        self.assertIn("src/jobs/service.py", overview_record["source_fingerprints"])
+        overview_record = self.runtime_knowledge.parse_agent_knowledge_frontmatter(wiki / "overview.md")
+        self.assertIn("src/runtime/worker.py", overview_record["evidence"])
+        baselines = json.loads((wiki / ".ecl-baselines.json").read_text(encoding="utf-8"))
+        self.assertIn("src/jobs/service.py", baselines["documents"]["overview"]["source_fingerprints"])
+        self.assertFalse((wiki / "index.json").exists())
         generated_text = "\n".join(
             path.read_text(encoding="utf-8", errors="ignore")
             for path in skill_root.rglob("*")
@@ -1196,7 +1197,7 @@ class HarnessCliTests(unittest.TestCase):
             "  managed_by: agent\n---\n\n# Brief\n\nUseful.\n",
             encoding="utf-8",
         )
-        self.runtime_knowledge.rebuild_project_wiki_index(
+        self.runtime_knowledge.rebuild_project_wiki_catalog(
             skill_root, self.runtime_project.project_context(project),
         )
         checked = self.cli(project, "knowledge", "check")
@@ -1651,8 +1652,12 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("../../modules/job-processing.md", reference_map)
         self.assertIn("src/scheduler.py", reference_map)
         self.assertIn("0123456789abcdef", reference_map)
-        index = json.loads((wiki / "index.json").read_text(encoding="utf-8"))
-        self.assertIn("reference-map", {item["kind"] for item in index["items"]})
+        self.assertIn("reference_projects/maps/symphony.md", (wiki / "catalog.md").read_text(encoding="utf-8"))
+        reference_metadata = self.runtime_knowledge.parse_agent_knowledge_frontmatter(
+            wiki / "reference_projects" / "maps" / "symphony.md"
+        )
+        self.assertEqual(reference_metadata["layer"], "L3")
+        self.assertEqual(reference_metadata["kind"], "current")
         generated_entry = (skill_root / "SKILL.md").read_text(encoding="utf-8")
         generated_cli = (skill_root / "scripts" / "harness_cli.py").read_text(encoding="utf-8")
         self.assertNotIn("harness-reference", generated_entry)
@@ -1736,6 +1741,10 @@ class HarnessCliTests(unittest.TestCase):
         ])
         self.assertEqual(json.loads(draft_audited.stdout)["semantic"]["analysis_status"], "partial")
         self.agent_review_extracted_bundle(project, fresh_bundle, mode="migrate")
+        refreshed_profile_path = fresh_bundle / "project-profile.json"
+        refreshed_profile = json.loads(refreshed_profile_path.read_text(encoding="utf-8"))
+        refreshed_profile["modules"][0]["responsibility"] += " Expose observable results to callers."
+        refreshed_profile_path.write_text(json.dumps(refreshed_profile, indent=2), encoding="utf-8")
         audited = self.run_process([
             sys.executable, str(generated_cli), "project", "audit", "--analysis-bundle", str(fresh_bundle),
             "--project-root", str(project),
@@ -2081,17 +2090,14 @@ class HarnessCliTests(unittest.TestCase):
                 f"\n## Current Plan\n\n{repeated}\n"
                 "[Evolve workflow](../../workflows/evolve.md)\n"
             )
+        self.runtime_knowledge.rebuild_project_wiki_catalog(
+            skill_root, self.runtime_project.project_context(project),
+        )
         result = self.cli(project, "knowledge", "check")
         self.assertTrue(result["healthy"])
         self.assertEqual(result["warnings"], [])
         self.assertNotIn("external_knowledge_link", {item["type"] for item in result["findings"]})
 
-        index_path = skill_root / "references" / "project_wiki" / "index.json"
-        index = json.loads(index_path.read_text(encoding="utf-8"))
-        bridge = next(item for item in index["items"] if item["path"].startswith("bridges/"))
-        bridge["sources"] = []
-        index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
-        result = self.cli(project, "knowledge", "check")
         self.assertNotIn("uncited_l3_bridge", {item["type"] for item in result["findings"]})
 
     def test_evolution_accepts_project_language_proposal_without_entropy_keywords(self) -> None:
@@ -2329,10 +2335,10 @@ class HarnessCliTests(unittest.TestCase):
         )
         initialized = self.init_project(project, bundle)
         skill_root = Path(initialized["skill_root"])
-        index_path = skill_root / "references" / "project_wiki" / "index.json"
-        index = json.loads(index_path.read_text(encoding="utf-8"))
+        baseline_path = skill_root / "references" / "project_wiki" / ".ecl-baselines.json"
+        index = json.loads(baseline_path.read_text(encoding="utf-8"))
         package_records = [
-            item for item in index["items"]
+            item for item in index["documents"].values()
             if "package.json" in item.get("source_fingerprints", {})
         ]
         self.assertTrue(package_records)
@@ -2375,22 +2381,22 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual({item["type"] for item in missing["findings"]}, {"missing"})
         package.write_text(original, encoding="utf-8")
 
-        original_index = index_path.read_bytes()
+        original_index = baseline_path.read_bytes()
         tampered = json.loads(original_index.decode("utf-8"))
-        target = next(item for item in tampered["items"] if "package.json" in item.get("source_fingerprints", {}))
+        target = next(item for item in tampered["documents"].values() if "package.json" in item.get("source_fingerprints", {}))
         target["source_fingerprints"]["package.json"] = "not-a-fingerprint"
-        index_path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
+        baseline_path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
         invalid = self.cli(project, "knowledge", "scan", expected=(1,))
         self.assertIn("invalid_fingerprint", {item["type"] for item in invalid["findings"]})
 
         tampered = json.loads(original_index.decode("utf-8"))
-        target = next(item for item in tampered["items"] if "package.json" in item.get("source_fingerprints", {}))
+        target = next(item for item in tampered["documents"].values() if "package.json" in item.get("source_fingerprints", {}))
         fingerprint = target["source_fingerprints"].pop("package.json")
         target["source_fingerprints"]["../package.json"] = fingerprint
-        index_path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
+        baseline_path.write_text(json.dumps(tampered, indent=2), encoding="utf-8")
         invalid = self.cli(project, "knowledge", "scan", expected=(1,))
         self.assertIn("invalid_source", {item["type"] for item in invalid["findings"]})
-        index_path.write_bytes(original_index)
+        baseline_path.write_bytes(original_index)
 
         outside = self.root / "outside-source.txt"
         outside.write_text("outside\n", encoding="utf-8")
@@ -2443,18 +2449,32 @@ class HarnessCliTests(unittest.TestCase):
         wiki = skill_root / "references" / "project_wiki"
         wiki.mkdir(parents=True)
         items = [
-            {"id": "direct-item", "kind": "bridge", "source_fingerprints": {related["direct"]: "0" * 64}},
-            {"id": "contract-item", "kind": "bridge", "source_fingerprints": {related["contract"]: "0" * 64}},
-            {"id": "job-processing", "kind": "module", "source_fingerprints": {related["module"]: "0" * 64}},
+            ("direct-item", related["direct"], []),
+            ("contract-item", related["contract"], []),
+            ("job-processing", related["module"], ["job-processing"]),
         ]
         for index in range(597):
             source = unrelated_sources[index % len(unrelated_sources)]
-            items.append({
-                "id": f"unrelated-{index}",
-                "kind": "bridge",
+            items.append((f"unrelated-{index}", source, []))
+        documents = {}
+        for identifier, source, modules in items:
+            path = wiki / f"{identifier}.md"
+            module_value = ", ".join(modules)
+            path.write_text(
+                "---\necl:\n"
+                f"  id: {identifier}\n  layer: L2\n  kind: current\n  status: implemented\n"
+                f"  owner: benchmark\n  modules: [{module_value}]\n  evidence: [{source}]\n"
+                "---\n\n# Knowledge\n\nCurrent evidence map.\n",
+                encoding="utf-8",
+            )
+            documents[identifier] = {
+                "path": path.relative_to(wiki).as_posix(),
+                "content_fingerprint": self.runtime_core.file_fingerprint([path], wiki),
                 "source_fingerprints": {source: "0" * 64},
-            })
-        (wiki / "index.json").write_text(json.dumps({"items": items}, indent=2), encoding="utf-8")
+            }
+        (wiki / ".ecl-baselines.json").write_text(json.dumps({
+            "schema_version": "1.0", "project_id": "scoped", "documents": documents,
+        }, indent=2), encoding="utf-8")
         context = self.runtime_project.project_context(project)
         current = {"paths": ["src/direct"]}
         contract = {"affected_paths": ["src/contract"], "owner_module": "job-processing"}
@@ -2665,7 +2685,6 @@ class HarnessCliTests(unittest.TestCase):
             "references/workflows/intake.md": "required workflow",
             "scripts/harness_runtime/rendering.py": "protected or unsupported",
             "state/manifest.json": "protected or unsupported",
-            "references/project_wiki/overview.md": "protected or unsupported",
         }
         for index, (target_relative, expected_error) in enumerate(protected.items()):
             with self.subTest(target=target_relative):
@@ -2752,20 +2771,19 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(before, self.tree_hashes(skill_root))
         self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
 
-    def test_open_agent_knowledge_is_indexed_and_preserved_by_full_refresh(self) -> None:
+    def test_open_agent_knowledge_is_directly_edited_and_preserved_by_full_refresh(self) -> None:
         project = self.create_git_project("open-agent-knowledge")
         initialized = self.init_project(project, self.write_bundle(project, "open-agent-knowledge"))
         skill_root = Path(initialized["skill_root"])
-        bundle = self.root / "open-agent-knowledge-focused"
-        artifacts = bundle / "artifacts"
-        artifacts.mkdir(parents=True)
-        target_source = artifacts / "office-v2.md"
-        target_source.write_text(
+        wiki = skill_root / "references/project_wiki"
+        target = wiki / "roadmaps/office/v2.md"
+        target.parent.mkdir(parents=True)
+        target.write_text(
             self.agent_knowledge_document("office-v2-target", title="Office V2 Target Architecture"),
             encoding="utf-8",
         )
-        takeover_source = artifacts / "job-processing.md"
-        takeover_source.write_text(
+        module = wiki / "modules/job-processing.md"
+        module.write_text(
             self.agent_knowledge_document(
                 "job-processing",
                 title="Agent-Owned Job Processing",
@@ -2776,174 +2794,93 @@ class HarnessCliTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        delta = {
-            "schema_version": "1.0",
-            "mode": "migrate-focused",
-            "decisions": [],
-            "artifacts": [
-                {
-                    "path": "references/project_wiki/roadmaps/office/v2.md",
-                    "action": "create",
-                    "source": "artifacts/office-v2.md",
-                    "owner": "project-architecture",
-                    "validation": "text-present",
-                    "evidence": ["user:accepted project direction"],
-                },
-                {
-                    "path": "references/project_wiki/modules/job-processing.md",
-                    "action": "replace",
-                    "source": "artifacts/job-processing.md",
-                    "owner": "job-processing",
-                    "validation": "text-present",
-                    "evidence": ["src/jobs/service.py"],
-                },
-            ],
-        }
-        (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
-        migrated = self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
-        self.assertEqual(migrated["applied"]["mode"], "focused")
-        index = json.loads((skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8"))
-        by_id = {item["id"]: item for item in index["items"]}
-        self.assertEqual(by_id["office-v2-target"]["path"], "roadmaps/office/v2.md")
-        self.assertEqual(by_id["job-processing"]["managed_by"], "agent")
-        catalog = (skill_root / "references/project_wiki/catalog.md").read_text(encoding="utf-8")
+        revision = json.loads((skill_root / "state/manifest.json").read_text(encoding="utf-8"))["skill_revision"]
+        reindexed = self.cli(project, "change", "reindex")
+        self.assertIn("office-v2-target", reindexed["knowledge"]["refreshed"])
+        self.assertEqual(
+            json.loads((skill_root / "state/manifest.json").read_text(encoding="utf-8"))["skill_revision"],
+            revision,
+        )
+        self.assertFalse((wiki / "index.json").exists())
+        baselines = json.loads((wiki / ".ecl-baselines.json").read_text(encoding="utf-8"))
+        self.assertEqual(baselines["documents"]["office-v2-target"]["path"], "roadmaps/office/v2.md")
+        catalog = (wiki / "catalog.md").read_text(encoding="utf-8")
         self.assertIn("roadmaps/office/v2.md", catalog)
         self.assertIn("target", catalog)
 
         refresh = self.write_bundle(project, "open-agent-knowledge-refresh")
-        with mock.patch.object(
-            self.runtime_rendering,
-            "rebuild_project_wiki_index",
-            wraps=self.runtime_rendering.rebuild_project_wiki_index,
-        ) as rebuild_index:
-            self.dispatch(project, "project", "migrate", "--analysis-bundle", str(refresh))
-        self.assertEqual(rebuild_index.call_count, 1)
-        self.assertEqual(target_source.read_text(encoding="utf-8"), (
-            skill_root / "references/project_wiki/roadmaps/office/v2.md"
-        ).read_text(encoding="utf-8"))
-        self.assertIn(
-            "Agent-Owned Job Processing",
-            (skill_root / "references/project_wiki/modules/job-processing.md").read_text(encoding="utf-8"),
-        )
+        self.cli(project, "project", "migrate", "--analysis-bundle", str(refresh))
+        self.assertIn("Office V2 Target Architecture", target.read_text(encoding="utf-8"))
+        self.assertIn("Agent-Owned Job Processing", module.read_text(encoding="utf-8"))
 
-    def test_focused_migrate_updates_agent_knowledge_without_full_analysis(self) -> None:
+    def test_document_reindex_scales_and_focused_migrate_is_rejected(self) -> None:
         project = self.create_git_project("focused-document-migrate")
         initialized = self.init_project(project, self.write_bundle(project, "focused-document-migrate"))
         skill_root = Path(initialized["skill_root"])
-        index_path = skill_root / "references/project_wiki/index.json"
-        initial_index = json.loads(index_path.read_text(encoding="utf-8"))
+        wiki = skill_root / "references/project_wiki"
+        benchmark = wiki / "benchmark"
+        benchmark.mkdir()
         for number in range(600):
-            initial_index["items"].append({
-                "id": f"benchmark-{number}",
-                "title": f"Benchmark {number}",
-                "layer": "L2",
-                "kind": "system",
-                "status": "implemented",
-                "owner": "benchmark",
-                "modules": [],
-                "path": f"benchmark/{number}.md",
-                "sources": ["src/jobs/service.py"],
-                "source_fingerprints": {},
-                "managed_by": "renderer",
-                "generated_by": "benchmark",
-            })
-        index_path.write_text(json.dumps(initial_index, indent=2), encoding="utf-8")
-        bundle = self.root / "focused-document-migrate-bundle"
-        artifacts = bundle / "artifacts"
-        artifacts.mkdir(parents=True)
-        source = artifacts / "decision.md"
-        source.write_text(
+            (benchmark / f"{number}.md").write_text(
+                self.agent_knowledge_document(
+                    f"benchmark-{number}", title=f"Benchmark {number}", kind="guide",
+                    owner="benchmark", evidence=("src/jobs/service.py",),
+                ),
+                encoding="utf-8",
+            )
+        self.cli(project, "change", "reindex")
+        decision = wiki / "decisions/queue.md"
+        decision.parent.mkdir()
+        decision.write_text(
             self.agent_knowledge_document(
-                "queue-decision",
-                title="Queue Decision",
-                kind="decision",
-                owner="job-processing",
-                evidence=("src/jobs/service.py",),
+                "queue-decision", title="Queue Decision", kind="decision",
+                owner="job-processing", evidence=("src/jobs/service.py",),
             ),
             encoding="utf-8",
         )
-        delta = {
-            "schema_version": "1.0",
-            "mode": "migrate-focused",
-            "decisions": [],
-            "artifacts": [{
-                "path": "references/project_wiki/decisions/queue.md",
-                "action": "create",
-                "source": "artifacts/decision.md",
-                "owner": "job-processing",
-                "validation": "text-present",
-                "evidence": ["src/jobs/service.py"],
-            }],
-        }
-        (bundle / "creation-delta.json").write_text(json.dumps(delta, indent=2), encoding="utf-8")
+        revision = json.loads((skill_root / "state/manifest.json").read_text(encoding="utf-8"))["skill_revision"]
         with mock.patch.object(
-            self.runtime_project_commands,
-            "install_analysis_bundle",
-            side_effect=AssertionError("focused migrate must not install a full analysis bundle"),
-        ), mock.patch.object(
-            self.runtime_project_commands,
-            "knowledge_check_internal",
-            side_effect=AssertionError("focused migrate must not run a full knowledge check"),
-        ), mock.patch.object(
-            self.runtime_knowledge,
-            "discover_agent_knowledge",
-            side_effect=AssertionError("focused migrate must not discover all Wiki documents"),
-        ), mock.patch.object(
-            self.runtime_knowledge,
-            "agent_knowledge_item",
-            wraps=self.runtime_knowledge.agent_knowledge_item,
-        ) as item_builder, mock.patch.object(
             self.runtime_knowledge,
             "context_source_fingerprints",
             wraps=self.runtime_knowledge.context_source_fingerprints,
         ) as fingerprints:
-            result = self.dispatch(project, "project", "migrate", "--analysis-bundle", str(bundle))
-        self.assertEqual(result["applied"]["mode"], "focused")
-        self.assertTrue((skill_root / "references/project_wiki/decisions/queue.md").is_file())
-        self.assertEqual(item_builder.call_count, 1)
+            result = self.dispatch(project, "change", "reindex")
         self.assertEqual(fingerprints.call_count, 1)
-        updated_index = json.loads(index_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(updated_index["items"]), len(initial_index["items"]) + 1)
-        catalog = (skill_root / "references/project_wiki/catalog.md").read_text(encoding="utf-8")
+        self.assertEqual(result["knowledge"]["refreshed"], ["queue-decision"])
+        catalog = (wiki / "catalog.md").read_text(encoding="utf-8")
         self.assertIn("benchmark/599.md", catalog)
         self.assertIn("decisions/queue.md", catalog)
-
-        retire_bundle = self.root / "focused-document-retire-bundle"
-        retire_bundle.mkdir()
-        retire_delta = {
-            "schema_version": "1.0",
-            "mode": "migrate-focused",
-            "decisions": [],
-            "artifacts": [{
-                "path": "references/project_wiki/decisions/queue.md",
-                "action": "retire",
-                "owner": "job-processing",
-                "validation": "retired",
-                "evidence": ["user:accepted project direction"],
-            }],
-        }
-        (retire_bundle / "creation-delta.json").write_text(
-            json.dumps(retire_delta, indent=2), encoding="utf-8",
+        self.assertEqual(
+            json.loads((skill_root / "state/manifest.json").read_text(encoding="utf-8"))["skill_revision"],
+            revision,
         )
-        retired = self.cli(project, "project", "migrate", "--analysis-bundle", str(retire_bundle))
-        self.assertEqual(retired["applied"]["mode"], "focused")
-        self.assertFalse((skill_root / "references/project_wiki/decisions/queue.md").exists())
-        retired_index = json.loads((skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8"))
-        self.assertNotIn("queue-decision", {item["id"] for item in retired_index["items"]})
+
+        bundle = self.root / "focused-document-migrate-bundle"
+        bundle.mkdir()
+        (bundle / "creation-delta.json").write_text(json.dumps({
+            "schema_version": "1.0", "mode": "migrate-focused", "decisions": [], "artifacts": [],
+        }), encoding="utf-8")
+        rejected = self.cli(
+            project, "project", "migrate", "--analysis-bundle", str(bundle), expected=(2,),
+        )
+        self.assertIn("complete four-file analysis bundle", rejected["error"])
+        decision.unlink()
+        self.cli(project, "change", "reindex")
+        baselines = json.loads((wiki / ".ecl-baselines.json").read_text(encoding="utf-8"))
+        self.assertNotIn("queue-decision", baselines["documents"])
 
     def test_open_knowledge_keeps_mechanical_guards_without_semantic_gates(self) -> None:
         project = self.create_git_project("open-knowledge-safety")
         initialized = self.init_project(project, self.write_bundle(project, "open-knowledge-safety"))
         skill_root = Path(initialized["skill_root"])
         self.assertFalse(self.runtime_rendering.allowed_artifact_target("references/project_wiki/index.json"))
+        self.assertFalse(self.runtime_rendering.allowed_artifact_target("references/project_wiki/.ecl-baselines.json"))
         self.assertFalse(self.runtime_rendering.allowed_artifact_target("scripts/harness_runtime/core.py"))
         self.assertTrue(self.runtime_rendering.allowed_artifact_target("references/designs/target.yaml"))
 
-        target_bundle = self.root / "target-classification"
-        target_artifacts = target_bundle / "artifacts"
-        target_artifacts.mkdir(parents=True)
-        target_source = target_artifacts / "implemented-target.md"
-        target_source.write_text(
+        target_path = skill_root / "references/project_wiki/targets/implemented.md"
+        target_path.parent.mkdir(parents=True)
+        target_path.write_text(
             self.agent_knowledge_document(
                 "implemented-target",
                 title="Implemented Target",
@@ -2953,25 +2890,8 @@ class HarnessCliTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        target_delta = {
-            "schema_version": "1.0",
-            "mode": "migrate-focused",
-            "decisions": [],
-            "artifacts": [{
-                "path": "references/project_wiki/targets/implemented.md",
-                "action": "create",
-                "source": "artifacts/implemented-target.md",
-                "owner": "project-architecture",
-                "validation": "text-present",
-                "evidence": ["src/jobs/service.py"],
-            }],
-        }
-        (target_bundle / "creation-delta.json").write_text(
-            json.dumps(target_delta, indent=2), encoding="utf-8",
-        )
-        self.cli(project, "project", "migrate", "--analysis-bundle", str(target_bundle))
-
-        target_source.write_text(
+        self.cli(project, "change", "reindex")
+        target_path.write_text(
             self.agent_knowledge_document(
                 "implemented-target",
                 title="Implemented Target",
@@ -2982,26 +2902,15 @@ class HarnessCliTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        target_delta["artifacts"][0]["action"] = "replace"
-        target_delta["artifacts"][0]["owner"] = "next-architecture-owner"
-        (target_bundle / "creation-delta.json").write_text(
-            json.dumps(target_delta, indent=2), encoding="utf-8",
-        )
-        self.cli(project, "project", "migrate", "--analysis-bundle", str(target_bundle))
-        transferred_index = json.loads(
-            (skill_root / "references/project_wiki/index.json").read_text(encoding="utf-8")
-        )
-        transferred = next(item for item in transferred_index["items"] if item["id"] == "implemented-target")
+        self.cli(project, "change", "reindex")
+        transferred = self.runtime_knowledge.parse_agent_knowledge_frontmatter(target_path)
         self.assertEqual(transferred["owner"], "next-architecture-owner")
 
-        target_path = skill_root / "references/project_wiki/targets/implemented.md"
         context = self.runtime_project.project_context(project)
         target_content = target_path.read_text(encoding="utf-8")
         target_path.write_text(target_content + "\n[Missing](missing.md)\n", encoding="utf-8")
         with self.assertRaisesRegex(self.runtime_core.HarnessError, "invalid local links"):
-            self.runtime_knowledge.update_project_wiki_index(
-                skill_root, context, {"targets/implemented.md"},
-            )
+            self.runtime_knowledge.rebuild_project_wiki_catalog(skill_root, context)
         target_path.write_text(target_content, encoding="utf-8")
 
         empty = skill_root / "references/project_wiki/guides/empty.md"
@@ -3013,7 +2922,7 @@ class HarnessCliTests(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(self.runtime_core.HarnessError, "non-empty body"):
-            self.runtime_knowledge.update_project_wiki_index(skill_root, context, {"guides/empty.md"})
+            self.runtime_knowledge.rebuild_project_wiki_catalog(skill_root, context)
         empty.unlink()
 
         orphan = skill_root / "references/project_wiki/custom/orphan.md"
@@ -3022,17 +2931,77 @@ class HarnessCliTests(unittest.TestCase):
         source = skill_root / "references/project_wiki/modules/job-processing.md"
         duplicate = skill_root / "references/project_wiki/custom/duplicate.md"
         duplicate.write_bytes(source.read_bytes())
-        index_path = skill_root / "references/project_wiki/index.json"
-        index = json.loads(index_path.read_text(encoding="utf-8"))
-        duplicate_item = dict(next(item for item in index["items"] if item["id"] == "job-processing"))
-        duplicate_item["id"] = "job-processing-copy"
-        duplicate_item["path"] = "custom/duplicate.md"
-        index["items"].append(duplicate_item)
-        index_path.write_text(json.dumps(index, indent=2), encoding="utf-8")
         checked = self.cli(project, "knowledge", "check", expected=(1,))
         types = {item["type"] for item in checked["findings"]}
-        self.assertIn("orphan_knowledge_document", types)
+        self.assertIn("missing_knowledge_frontmatter", types)
+        self.assertIn("duplicate_knowledge_id", types)
         self.assertNotIn("duplicate_knowledge_content", types)
+
+    def test_legacy_knowledge_index_converts_atomically_without_reanalysis(self) -> None:
+        project = self.create_git_project("legacy-knowledge-conversion")
+        initialized = self.init_project(project, self.write_bundle(project, "legacy-knowledge-conversion"))
+        skill_root = Path(initialized["skill_root"])
+        wiki = skill_root / "references/project_wiki"
+        baseline_path = wiki / ".ecl-baselines.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        legacy_items = []
+        bodies = {}
+        for item in self.runtime_knowledge.discover_project_knowledge(
+            skill_root, self.runtime_project.project_context(project),
+        ):
+            path = wiki / item["path"]
+            text = path.read_text(encoding="utf-8")
+            lines = text.splitlines()
+            end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "---")
+            body = "\n".join(lines[end + 1:]).lstrip("\n")
+            bodies[item["path"]] = body
+            path.write_text(body, encoding="utf-8")
+            record = baseline["documents"][item["id"]]
+            legacy_items.append({
+                "id": item["id"], "layer": item["layer"], "kind": item["kind"],
+                "status": item["status"], "owner": item["owner"], "modules": item["modules"],
+                "path": item["path"], "sources": item["sources"],
+                "source_fingerprints": record["source_fingerprints"],
+                "managed_by": "renderer", "generated_by": "project-profile",
+            })
+        baseline_path.unlink()
+        (wiki / "index.json").write_text(json.dumps({
+            "schema_version": "1.0", "project_id": initialized["project_id"], "items": legacy_items,
+        }, indent=2), encoding="utf-8")
+        revision = json.loads((skill_root / "state/manifest.json").read_text(encoding="utf-8"))["skill_revision"]
+        before = self.tree_hashes(skill_root)
+        original_convert = self.runtime_project_commands.convert_legacy_knowledge_index
+
+        def fail_after_conversion(*args, **kwargs):
+            original_convert(*args, **kwargs)
+            raise self.runtime_core.HarnessError("injected legacy conversion failure")
+
+        with mock.patch.object(
+            self.runtime_project_commands, "convert_legacy_knowledge_index",
+            side_effect=fail_after_conversion,
+        ):
+            with self.assertRaisesRegex(
+                self.runtime_core.HarnessError, "injected legacy conversion failure",
+            ):
+                self.dispatch(project, "project", "migrate")
+        self.assertEqual(before, self.tree_hashes(skill_root))
+
+        doctor = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertIn("legacy_knowledge_index", {item["type"] for item in doctor["findings"]})
+        migrated = self.cli(project, "project", "migrate")
+        self.assertTrue(migrated["applied"]["legacy_knowledge"]["converted"])
+        self.assertFalse((wiki / "index.json").exists())
+        self.assertTrue(baseline_path.is_file())
+        self.assertEqual(
+            json.loads((skill_root / "state/manifest.json").read_text(encoding="utf-8"))["skill_revision"],
+            revision + 1,
+        )
+        for relative, body in bodies.items():
+            text = (wiki / relative).read_text(encoding="utf-8")
+            lines = text.splitlines()
+            end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "---")
+            self.assertEqual("\n".join(lines[end + 1:]).lstrip("\n"), body)
+        self.assertTrue(self.cli(project, "knowledge", "check")["healthy"])
 
     def test_fingerprint_finding_types_share_canonical_audit_names(self) -> None:
         aliases = {
@@ -4043,7 +4012,7 @@ class HarnessCliTests(unittest.TestCase):
         self.run_process(["git", "-C", str(skill_root), "fsck", "--no-dangling"])
         for relative, content in repository_files.items():
             self.assertEqual((skill_root / relative).read_bytes(), content)
-        self.assertNotEqual(fingerprint, self.runtime_evolution.harness_content_fingerprint(skill_root))
+        self.assertEqual(fingerprint, self.runtime_evolution.harness_content_fingerprint(skill_root))
         after_migrate = self.runtime_evolution.harness_content_fingerprint(skill_root)
         (skill_root / "README.md").write_text("repository-side change\n", encoding="utf-8")
         self.assertEqual(after_migrate, self.runtime_evolution.harness_content_fingerprint(skill_root))

@@ -31,7 +31,7 @@ project workflow, add internal functions to the facade, or bypass a public comma
 | `changes.py` | ECL evidence, lifecycle, INDEX/search/context, preflight, contracts, and five-Change eligibility |
 | `integration.py` | Exact commit-range Integration, independent review binding, I2 landing, and retry phases |
 | `evolution.py` | E1 ownership, candidate staging, Judge gate, transactional publication, and results |
-| `knowledge.py` | Read-only knowledge metadata, links, source fingerprints, drift, and generated index/catalog integrity |
+| `knowledge.py` | Markdown metadata, generated catalog/baseline, source fingerprints, drift, and legacy index conversion |
 | `project_commands.py` | Project init/audit/migrate/doctor orchestration and single-Lane-to-Git upgrade |
 
 `harness_cli.py` owns only argument parsing, command dispatch, JSON output, exit codes, and the

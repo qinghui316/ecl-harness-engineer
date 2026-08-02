@@ -42,10 +42,12 @@ If the detected project id differs, stop and locate the correct project Harness.
 {{KNOWLEDGE_COMMAND}} scan|check --project-root <path>
 ```
 
-Use `references/analysis-contract.md` for a semantic audit, focused document migration, or E1.
-Focused work uses only the affected Agent-owned documents or Harness owners described by
+For ordinary current, target, decision, guide, workflow, or rule documentation, read the knowledge
+model, update the Markdown directly in the current Structured Change, and let `change reindex` or
+`change close` refresh the generated catalog and fingerprint baseline. Use
+`references/analysis-contract.md` only for a semantic audit or full migration. E1 follows
 `references/workflows/evolve.md`; Agent review expands scope when catalog neighbors reveal an
-overlap, while Runtime only validates changed metadata, links, fingerprints, and index entries. Use
+overlap, while Runtime only validates metadata, links, fingerprints, and exact conflicts. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
@@ -93,7 +95,7 @@ accepted spec or plan.
 Integration applies selected exact completion ranges. The user confirms I2 only after aggregate
 validation and candidate-bound independent review.
 
-Every fifth eligible Change creates an Evolution window. After E1, default to a focused update of
+Every fifth eligible Change creates an Evolution window. During E1, default to a focused update of
 Agent-owned project documents, affected rules, workflows, templates, checks, helpers, or routes.
 Search related catalog Owners before creating knowledge and explain why Merge or Replace is not
 appropriate. Build a complete semantic rescan only when renderer-owned current facts or

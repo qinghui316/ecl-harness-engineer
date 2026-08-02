@@ -76,7 +76,7 @@ documents. Each page includes responsibility, roots, entrypoints,
 interfaces/data owners, dependencies, tests, commands, boundaries, citations, and source
 fingerprints. A top-level directory name alone is never enough.
 
-Use indexed ECL frontmatter for Agent-owned current, target, decision, and guide documents. The
+Use ECL frontmatter for current, target, decision, and guide documents. The
 semantic layer comes from impact and reading depth, not a filename or fixed subdirectory. Never
 present an unimplemented target as current architecture.
 
@@ -158,7 +158,7 @@ Evolution. Complete history remains available and is not copied into current rul
 - Entry files route; workflows instruct; rules constrain; Wiki maps; Registry coordinates; Change
   files explain one task; archive preserves history.
 - Prefer editing an existing owner over adding a new file.
-- Search index/catalog by module, Owner, kind, and task terms before Create; read direct links and
+- Search catalog by module, Owner, kind, and task terms before Create; read direct links and
   likely semantic neighbors, and explain why Merge or Replace is not appropriate for a new file.
 - Merge duplicate current facts and retire stale roadmap/baseline language.
 - Keep closeout narrative in Change archive and load it selectively through INDEX.

@@ -32,7 +32,9 @@ FINGERPRINT_FINDING_TYPES = {
 AGENT_KNOWLEDGE_LAYERS = {"L1", "L2", "L3"}
 AGENT_KNOWLEDGE_KINDS = {"current", "target", "decision", "guide"}
 AGENT_KNOWLEDGE_STATUSES = {"proposed", "accepted", "in_progress", "implemented", "retired"}
-GENERATED_KNOWLEDGE_PATHS = {"overview.md", "catalog.md"}
+GENERATED_KNOWLEDGE_PATHS = {"catalog.md"}
+KNOWLEDGE_BASELINE_FILE = ".ecl-baselines.json"
+LEGACY_KNOWLEDGE_INDEX_FILE = "index.json"
 KNOWLEDGE_DOCUMENT_SUFFIXES = {".md", ".json", ".yaml", ".yml"}
 
 
@@ -304,7 +306,7 @@ def parse_agent_knowledge_frontmatter(path: Path) -> dict[str, Any] | None:
     unknown = sorted(set(values) - allowed)
     if unknown:
         raise HarnessError(f"Unsupported ECL knowledge frontmatter fields in {path}: {', '.join(unknown)}")
-    required = ("id", "layer", "kind", "status", "owner", "evidence", "managed_by")
+    required = ("id", "layer", "kind", "status", "owner", "evidence")
     missing = [key for key in required if key not in values]
     if missing:
         raise HarnessError(f"Agent-owned knowledge frontmatter is missing {', '.join(missing)}: {path}")
@@ -317,8 +319,9 @@ def parse_agent_knowledge_frontmatter(path: Path) -> dict[str, Any] | None:
         raise HarnessError(f"Knowledge kind must be current, target, decision, or guide: {path}")
     if values["status"] not in AGENT_KNOWLEDGE_STATUSES:
         raise HarnessError(f"Knowledge status is invalid: {path}")
-    if values["managed_by"] != "agent":
-        raise HarnessError(f"Agent-owned knowledge must declare managed_by: agent: {path}")
+    values.setdefault("managed_by", "agent")
+    if values["managed_by"] not in {"agent", "renderer"}:
+        raise HarnessError(f"Knowledge managed_by must be agent or renderer: {path}")
     if not isinstance(values["owner"], str) or not values["owner"].strip():
         raise HarnessError(f"Agent-owned knowledge requires a non-empty owner: {path}")
     for key in ("modules", "evidence"):
@@ -331,6 +334,100 @@ def parse_agent_knowledge_frontmatter(path: Path) -> dict[str, Any] | None:
     return values
 
 
+def _frontmatter_lines(metadata: dict[str, Any]) -> list[str]:
+    lines = ["---", "ecl:"]
+    for key in ("id", "layer", "kind", "status", "owner"):
+        lines.append(f"  {key}: {json.dumps(str(metadata[key]), ensure_ascii=False)}")
+    for key in ("modules", "evidence"):
+        values = metadata.get(key, [])
+        if values:
+            lines.append(f"  {key}:")
+            lines.extend(f"    - {json.dumps(str(value), ensure_ascii=False)}" for value in values)
+        else:
+            lines.append(f"  {key}: []")
+    if metadata.get("managed_by"):
+        lines.append(f"  managed_by: {metadata['managed_by']}")
+    return [*lines, "---", ""]
+
+
+def ensure_renderer_knowledge_frontmatter(path: Path, item: dict[str, Any]) -> None:
+    if parse_agent_knowledge_frontmatter(path) is not None:
+        return
+    raw_layer = str(item.get("layer", "L3"))
+    layer = raw_layer if raw_layer in AGENT_KNOWLEDGE_LAYERS else ("L1" if raw_layer == "index" else "L3")
+    identifier = canonical_id(str(item.get("id", path.stem)), "Knowledge document id")
+    sources = [str(value) for value in item.get("sources", []) if str(value).strip()]
+    if not sources:
+        sources = [f"contract:analysis/{identifier}"]
+    modules = [str(value) for value in item.get("modules", []) if str(value).strip()]
+    if not modules and item.get("kind") == "module":
+        modules = [identifier]
+    metadata = {
+        "id": identifier,
+        "layer": layer,
+        "kind": "current",
+        "status": "implemented",
+        "owner": str(item.get("owner") or item.get("generated_by") or identifier),
+        "modules": modules,
+        "evidence": sources,
+        "managed_by": "renderer",
+    }
+    content = path.read_text(encoding="utf-8")
+    atomic_write_text(path, "\n".join([*_frontmatter_lines(metadata), content]))
+
+
+def convert_legacy_knowledge_index(
+    skill_root: Path,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    wiki = skill_root / "references" / "project_wiki"
+    index_path = wiki / LEGACY_KNOWLEDGE_INDEX_FILE
+    legacy = read_json(index_path, None)
+    if not isinstance(legacy, dict) or not isinstance(legacy.get("items"), list):
+        return {"converted": False, "documents": 0}
+    legacy_by_id: dict[str, dict[str, Any]] = {}
+    for raw_item in legacy["items"]:
+        if not isinstance(raw_item, dict) or not raw_item.get("id") or not raw_item.get("path"):
+            raise HarnessError("Legacy project knowledge index contains an invalid item.")
+        identifier = str(raw_item["id"])
+        if identifier in legacy_by_id:
+            raise HarnessError(f"Legacy project knowledge index contains duplicate id: {identifier}")
+        legacy_by_id[identifier] = raw_item
+        path = wiki / safe_relative(str(raw_item["path"]), "legacy knowledge path")
+        if not path.is_file() or path.suffix.lower() != ".md":
+            raise HarnessError(f"Legacy project knowledge document is missing: {raw_item['path']}")
+        if parse_agent_knowledge_frontmatter(path) is None:
+            ensure_renderer_knowledge_frontmatter(path, raw_item)
+
+    items = discover_project_knowledge(
+        skill_root, context, include_content_fingerprint=True,
+    )
+    ids = [item["id"] for item in items]
+    paths = [item["path"] for item in items]
+    if len(set(ids)) != len(ids) or len(set(paths)) != len(paths):
+        raise HarnessError("Converted project knowledge contains duplicate id or path.")
+    documents: dict[str, Any] = {}
+    snapshot = SourceFingerprintSnapshot(context)
+    for item in items:
+        old = legacy_by_id.get(item["id"], {})
+        fingerprints = old.get("source_fingerprints")
+        if not isinstance(fingerprints, dict):
+            fingerprints = context_source_fingerprints(context, item["sources"], snapshot)
+        documents[item["id"]] = {
+            "path": item["path"],
+            "content_fingerprint": item["content_fingerprint"],
+            "source_fingerprints": fingerprints,
+        }
+    atomic_write_json(wiki / KNOWLEDGE_BASELINE_FILE, {
+        "schema_version": "1.0",
+        "project_id": context["project_id"],
+        "documents": documents,
+    })
+    render_knowledge_catalog(skill_root, items)
+    index_path.unlink()
+    return {"converted": True, "documents": len(documents)}
+
+
 def _markdown_title(path: Path) -> str:
     for line in path.read_text(encoding="utf-8").splitlines():
         match = re.match(r"^#\s+(.+?)\s*$", line)
@@ -339,10 +436,11 @@ def _markdown_title(path: Path) -> str:
     return path.stem.replace("-", " ").strip().title()
 
 
-def discover_agent_knowledge(
+def discover_project_knowledge(
     skill_root: Path,
     context: dict[str, Any],
     snapshot: SourceFingerprintSnapshot | None = None,
+    include_content_fingerprint: bool = False,
 ) -> list[dict[str, Any]]:
     wiki = skill_root / "references" / "project_wiki"
     items: list[dict[str, Any]] = []
@@ -350,10 +448,24 @@ def discover_agent_knowledge(
         relative = path.relative_to(wiki).as_posix()
         if relative in GENERATED_KNOWLEDGE_PATHS:
             continue
-        item = agent_knowledge_item(skill_root, context, path, snapshot)
+        item = agent_knowledge_item(
+            skill_root, context, path, snapshot,
+            include_content_fingerprint=include_content_fingerprint,
+        )
         if item is not None:
             items.append(item)
     return items
+
+
+def discover_agent_knowledge(
+    skill_root: Path,
+    context: dict[str, Any],
+    snapshot: SourceFingerprintSnapshot | None = None,
+) -> list[dict[str, Any]]:
+    return [
+        item for item in discover_project_knowledge(skill_root, context, snapshot)
+        if item.get("managed_by") == "agent"
+    ]
 
 
 def agent_knowledge_item(
@@ -361,13 +473,15 @@ def agent_knowledge_item(
     context: dict[str, Any],
     path: Path,
     snapshot: SourceFingerprintSnapshot | None = None,
+    *,
+    include_content_fingerprint: bool = True,
 ) -> dict[str, Any] | None:
     wiki = skill_root / "references" / "project_wiki"
     metadata = parse_agent_knowledge_frontmatter(path)
     if metadata is None:
         return None
     sources = metadata["evidence"]
-    return {
+    item = {
         "id": metadata["id"],
         "title": _markdown_title(path),
         "layer": metadata["layer"],
@@ -377,22 +491,12 @@ def agent_knowledge_item(
         "modules": metadata["modules"],
         "path": path.relative_to(wiki).as_posix(),
         "sources": sources,
-        "source_fingerprints": context_source_fingerprints(context, sources, snapshot),
-        "content_fingerprint": file_fingerprint([path], wiki),
-        "managed_by": "agent",
-        "generated_by": "agent",
+        "managed_by": metadata["managed_by"],
         "updated_at": utc_now(),
     }
-
-
-def _normalize_generated_knowledge_item(item: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(item)
-    normalized.setdefault("title", str(normalized.get("id", "Knowledge")).replace("-", " ").title())
-    normalized.setdefault("status", "implemented")
-    normalized.setdefault("owner", normalized.get("generated_by", "project-profile"))
-    normalized.setdefault("modules", [normalized["id"]] if normalized.get("kind") == "module" else [])
-    normalized.setdefault("managed_by", "renderer")
-    return normalized
+    if include_content_fingerprint:
+        item["content_fingerprint"] = _content_fingerprint(path, wiki)
+    return item
 
 
 def _catalog_cell(value: Any) -> str:
@@ -403,13 +507,13 @@ def render_knowledge_catalog(skill_root: Path, items: list[dict[str, Any]]) -> N
     wiki = skill_root / "references" / "project_wiki"
     lines = [
         "# Project Knowledge Catalog", "",
-        "Generated from `index.json`. Select documents by layer, kind, module, and owner; do not edit this file.", "",
+        "Generated from project knowledge frontmatter. Select documents by layer, kind, module, and owner; do not edit this file.", "",
     ]
     layer_order = {"L1": 0, "L2": 1, "L3": 2, "reference": 3, "index": 4}
     for layer in sorted({str(item.get("layer", "other")) for item in items}, key=lambda value: (layer_order.get(value, 9), value)):
         lines.extend([
             f"## {layer}", "",
-            "| Document | Kind | Status | Owner | Modules | Managed by |", "| --- | --- | --- | --- | --- | --- |",
+            "| Document | Kind | Status | Owner | Modules |", "| --- | --- | --- | --- | --- |",
         ])
         selected = sorted(
             (item for item in items if str(item.get("layer", "other")) == layer),
@@ -420,125 +524,73 @@ def render_knowledge_catalog(skill_root: Path, items: list[dict[str, Any]]) -> N
             lines.append(
                 f"| [{_catalog_cell(item.get('title') or item.get('id'))}]({_catalog_cell(item.get('path'))}) | "
                 f"{_catalog_cell(item.get('kind'))} | {_catalog_cell(item.get('status'))} | "
-                f"{_catalog_cell(item.get('owner'))} | {_catalog_cell(modules)} | {_catalog_cell(item.get('managed_by'))} |"
+                f"{_catalog_cell(item.get('owner'))} | {_catalog_cell(modules)} |"
             )
         lines.append("")
     atomic_write_text(wiki / "catalog.md", "\n".join(lines))
 
 
-def _write_project_wiki_index(
+def rebuild_project_wiki_catalog(
     skill_root: Path,
     context: dict[str, Any],
-    previous: dict[str, Any],
-    generated: list[dict[str, Any]],
-    agent_items: list[dict[str, Any]],
-) -> dict[str, Any]:
-    wiki = skill_root / "references" / "project_wiki"
-    generated = [_normalize_generated_knowledge_item(item) for item in generated]
-    if any(
-        not isinstance(item, dict) or not item.get("id") or not item.get("path")
-        for item in agent_items
-    ):
-        raise HarnessError("Agent-owned project knowledge requires non-empty id and path entries.")
-    agent_ids = {item["id"]: item for item in agent_items}
-    agent_paths = {item["path"]: item for item in agent_items}
-    if len(agent_ids) != len(agent_items) or len(agent_paths) != len(agent_items):
-        raise HarnessError("Agent-owned project knowledge contains a duplicate id or path.")
-    retained_generated: list[dict[str, Any]] = []
-    for item in generated:
-        by_id = agent_ids.get(item.get("id"))
-        by_path = agent_paths.get(item.get("path"))
-        if by_id or by_path:
-            if by_id is by_path and by_id is not None:
-                continue
-            raise HarnessError(
-                f"Agent-owned knowledge conflicts with a renderer-owned id or path: {item.get('id')} / {item.get('path')}"
-            )
-        retained_generated.append(item)
-    combined = [*retained_generated, *agent_items]
-    ids = [str(item.get("id", "")) for item in combined]
-    paths = [str(item.get("path", "")) for item in combined]
-    if len(set(ids)) != len(ids) or len(set(paths)) != len(paths):
-        raise HarnessError("Project knowledge index contains a duplicate id or path.")
-    combined.sort(key=lambda item: (str(item.get("layer", "")), str(item.get("kind", "")), str(item.get("id", ""))))
-    index = {
-        "schema_version": previous.get("schema_version", "1.0"),
-        "project_id": context["project_id"],
-        "generated_at": utc_now(),
-        "items": combined,
-    }
-    atomic_write_json(wiki / "index.json", index)
-    render_knowledge_catalog(skill_root, combined)
-    return index
-
-
-def rebuild_project_wiki_index(
-    skill_root: Path,
-    context: dict[str, Any],
-    generated_items: list[dict[str, Any]] | None = None,
     snapshot: SourceFingerprintSnapshot | None = None,
+    refresh_all: bool = False,
 ) -> dict[str, Any]:
     wiki = skill_root / "references" / "project_wiki"
-    previous = read_json(wiki / "index.json", {"items": []})
-    generated = generated_items
-    if generated is None:
-        generated = [
-            item for item in previous.get("items", [])
-            if isinstance(item, dict) and item.get("managed_by") != "agent" and item.get("generated_by") != "agent"
-        ]
-    return _write_project_wiki_index(
-        skill_root,
-        context,
-        previous,
-        generated,
-        discover_agent_knowledge(skill_root, context, snapshot),
+    baseline_path = wiki / KNOWLEDGE_BASELINE_FILE
+    previous = read_json(baseline_path, {"documents": {}})
+    previous_documents = previous.get("documents", {}) if isinstance(previous, dict) else {}
+    if not isinstance(previous_documents, dict):
+        previous_documents = {}
+    items = discover_project_knowledge(
+        skill_root, context, include_content_fingerprint=True,
     )
+    ids = [item["id"] for item in items]
+    paths = [item["path"] for item in items]
+    if len(set(ids)) != len(ids):
+        raise HarnessError("Project knowledge contains a duplicate id.")
+    if len(set(paths)) != len(paths):
+        raise HarnessError("Project knowledge contains a duplicate path.")
 
-
-def update_project_wiki_index(
-    skill_root: Path,
-    context: dict[str, Any],
-    changed_paths: set[str],
-    snapshot: SourceFingerprintSnapshot | None = None,
-) -> dict[str, Any]:
-    """Update Agent-owned index entries without reading unchanged Wiki documents."""
-    wiki = skill_root / "references" / "project_wiki"
-    previous = read_json(wiki / "index.json", None)
-    if not isinstance(previous, dict) or not isinstance(previous.get("items"), list):
-        raise HarnessError("Focused knowledge publication requires a valid existing project Wiki index.")
-
-    normalized_paths = {
-        safe_relative(path, "changed knowledge path")
-        for path in changed_paths
-    }
-    generated: list[dict[str, Any]] = []
-    agent_items: list[dict[str, Any]] = []
-    for item in previous["items"]:
-        if not isinstance(item, dict):
-            raise HarnessError("Focused knowledge publication requires object index entries.")
-        if item.get("managed_by") == "agent" or item.get("generated_by") == "agent":
-            if item.get("path") not in normalized_paths:
-                agent_items.append(item)
-        else:
-            generated.append(item)
-
-    for relative in sorted(normalized_paths):
-        path = wiki / relative
-        if not path.exists():
-            continue
-        if not path.is_file() or path.suffix.lower() != ".md":
-            raise HarnessError(f"Indexed project knowledge must be a Markdown file: {relative}")
+    active = snapshot or SourceFingerprintSnapshot(context)
+    documents: dict[str, Any] = {}
+    refreshed: list[str] = []
+    for item in items:
+        path = wiki / item["path"]
         if markdown_body_is_empty(path):
-            raise HarnessError(f"Agent-owned project knowledge must have a non-empty body: {relative}")
-        item = agent_knowledge_item(skill_root, context, path, snapshot)
-        if item is None:
-            raise HarnessError(f"Agent-owned project knowledge requires ECL frontmatter: {relative}")
+            raise HarnessError(f"Project knowledge must have a non-empty body: {item['path']}")
         link_findings = knowledge_link_findings(skill_root, path, item["id"])
         if link_findings:
-            raise HarnessError(f"Agent-owned project knowledge has invalid local links: {link_findings}")
-        agent_items.append(item)
+            raise HarnessError(f"Project knowledge has invalid local links: {link_findings}")
+        previous_item = previous_documents.get(item["id"], {})
+        unchanged = not refresh_all and (
+            isinstance(previous_item, dict)
+            and previous_item.get("path") == item["path"]
+            and previous_item.get("content_fingerprint") == item["content_fingerprint"]
+            and isinstance(previous_item.get("source_fingerprints"), dict)
+        )
+        source_fingerprints = (
+            previous_item["source_fingerprints"]
+            if unchanged
+            else context_source_fingerprints(context, item["sources"], active)
+        )
+        if not unchanged:
+            refreshed.append(item["id"])
+        documents[item["id"]] = {
+            "path": item["path"],
+            "content_fingerprint": item["content_fingerprint"],
+            "source_fingerprints": source_fingerprints,
+        }
+    items.sort(key=lambda item: (item["layer"], item["kind"], item["id"]))
+    baseline = {
+        "schema_version": "1.0",
+        "project_id": context["project_id"],
+        "documents": documents,
+    }
+    atomic_write_json(baseline_path, baseline)
+    render_knowledge_catalog(skill_root, items)
+    return {"items": items, "documents": documents, "refreshed": refreshed}
 
-    return _write_project_wiki_index(skill_root, context, previous, generated, agent_items)
 
 def knowledge_fingerprint_scan(
     skill_root: Path,
@@ -546,10 +598,11 @@ def knowledge_fingerprint_scan(
     selected_sources: dict[str, set[str]] | None = None,
     snapshot: SourceFingerprintSnapshot | None = None,
 ) -> dict[str, Any]:
-    index_path = skill_root / "references" / "project_wiki" / "index.json"
-    index = read_json(index_path, None)
-    if not isinstance(index, dict) or not isinstance(index.get("items"), list):
-        raise HarnessError(f"Invalid project knowledge index: {index_path}")
+    wiki = skill_root / "references" / "project_wiki"
+    baseline_path = wiki / KNOWLEDGE_BASELINE_FILE
+    baseline = read_json(baseline_path, None)
+    if not isinstance(baseline, dict) or not isinstance(baseline.get("documents"), dict):
+        raise HarnessError(f"Invalid project knowledge baseline: {baseline_path}")
 
     findings: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -563,11 +616,10 @@ def knowledge_fingerprint_scan(
         seen.add(key)
         findings.append({"type": finding_type, "item": item_id, "source": source, **detail})
 
-    for item in index["items"]:
+    for item_id, item in baseline["documents"].items():
         if not isinstance(item, dict):
-            add("invalid_source", None, None, detail="knowledge index item must be an object")
+            add("invalid_source", item_id, None, detail="knowledge baseline item must be an object")
             continue
-        item_id = item.get("id")
         selected_for_item = None if selected_sources is None else selected_sources.get(str(item_id or ""))
         if selected_sources is not None and selected_for_item is None:
             continue
@@ -668,26 +720,47 @@ def knowledge_check_internal(
     knowledge = skill_root / "references" / "project_wiki"
     overview = knowledge / "overview.md"
     catalog = knowledge / "catalog.md"
-    index = read_json(knowledge / "index.json", {})
-    index_by_id = {
-        str(item.get("id")): item
-        for item in index.get("items", [])
-        if isinstance(item, dict) and item.get("id")
-    }
-    fingerprint_scan = knowledge_fingerprint_scan(
-        skill_root, context, snapshot=snapshot,
-    ) if include_fingerprints else {
-        "healthy": True, "stale": False, "checked": 0, "unique_sources": 0, "findings": [],
-    }
+    baseline = read_json(knowledge / KNOWLEDGE_BASELINE_FILE, {})
+    baseline_documents = baseline.get("documents", {}) if isinstance(baseline, dict) else {}
+    if not isinstance(baseline_documents, dict):
+        baseline_documents = {}
     findings: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
+    for path in sorted(knowledge.rglob("*.md")) if knowledge.is_dir() else []:
+        relative = path.relative_to(knowledge).as_posix()
+        if relative in GENERATED_KNOWLEDGE_PATHS:
+            continue
+        try:
+            item = agent_knowledge_item(skill_root, context, path)
+        except (HarnessError, UnicodeDecodeError) as exc:
+            findings.append({
+                "type": "invalid_knowledge_frontmatter", "path": relative, "detail": str(exc),
+            })
+            continue
+        if item is None:
+            findings.append({"type": "missing_knowledge_frontmatter", "path": relative})
+            continue
+        items.append(item)
+    items_by_id = {item["id"]: item for item in items}
+    try:
+        fingerprint_scan = knowledge_fingerprint_scan(
+            skill_root, context, snapshot=snapshot,
+        ) if include_fingerprints else {
+            "healthy": True, "stale": False, "checked": 0, "unique_sources": 0, "findings": [],
+        }
+    except HarnessError as exc:
+        fingerprint_scan = {
+            "healthy": False, "stale": False, "checked": 0, "unique_sources": 0, "findings": [],
+        }
+        findings.append({"type": "invalid_knowledge_baseline", "detail": str(exc)})
     for item in fingerprint_scan["findings"]:
         normalized = {
             **item,
             "type": canonical_knowledge_finding_type(item["type"]),
             "id": item.get("item"),
         }
-        owner = index_by_id.get(str(item.get("item")), {})
+        owner = items_by_id.get(str(item.get("item")), {})
         if normalized["type"] == "knowledge_drift" and owner.get("kind") in {"target", "decision"}:
             normalized["type"] = "knowledge_evidence_review"
             normalized["reason"] = "target or decision evidence changed and requires semantic review"
@@ -703,39 +776,21 @@ def knowledge_check_internal(
     if not catalog.exists():
         findings.append({"type": "missing_knowledge_catalog", "path": str(catalog)})
     ids: dict[str, list[str]] = {}
-    indexed_paths: dict[str, list[str]] = {}
-    for item in index.get("items", []):
-        if not isinstance(item, dict):
-            findings.append({"type": "invalid_knowledge_index_item"})
-            continue
-        identifier = str(item.get("id", ""))
-        ids.setdefault(identifier, []).append(str(item.get("path", "")))
-        try:
-            relative_path = safe_relative(str(item.get("path", "")), "knowledge index path")
-        except HarnessError as exc:
-            findings.append({"type": "invalid_knowledge_path", "id": item.get("id"), "detail": str(exc)})
-            continue
-        indexed_paths.setdefault(relative_path, []).append(identifier)
+    paths_by_document: dict[str, list[str]] = {}
+    for item in items:
+        identifier = item["id"]
+        relative_path = item["path"]
+        ids.setdefault(identifier, []).append(relative_path)
+        paths_by_document.setdefault(relative_path, []).append(identifier)
         path = knowledge / relative_path
-        if not path.exists():
-            findings.append({"type": "missing_knowledge_entry", "id": item.get("id"), "path": str(path)})
-        elif path.is_file() and item.get("managed_by") == "agent" and item.get("content_fingerprint"):
-            current_content = file_fingerprint([path], knowledge)
-            if current_content != item.get("content_fingerprint"):
-                findings.append({"type": "knowledge_content_index_drift", "id": item.get("id"), "path": relative_path})
-        if item.get("managed_by") == "agent":
-            if path.suffix.lower() != ".md":
-                findings.append({"type": "invalid_agent_knowledge_format", "id": item.get("id"), "path": relative_path})
-            elif path.is_file():
-                try:
-                    metadata = parse_agent_knowledge_frontmatter(path)
-                except (HarnessError, UnicodeDecodeError) as exc:
-                    findings.append({"type": "invalid_knowledge_frontmatter", "id": item.get("id"), "path": relative_path, "detail": str(exc)})
-                else:
-                    if metadata is None:
-                        findings.append({"type": "missing_knowledge_frontmatter", "id": item.get("id"), "path": relative_path})
-                    elif any(metadata.get(key) != item.get(key) for key in ("id", "layer", "kind", "status", "owner", "modules")):
-                        findings.append({"type": "knowledge_frontmatter_index_mismatch", "id": item.get("id"), "path": relative_path})
+        baseline_item = baseline_documents.get(identifier)
+        if not isinstance(baseline_item, dict):
+            findings.append({"type": "missing_knowledge_baseline", "id": identifier, "path": relative_path})
+        elif (
+            baseline_item.get("path") != relative_path
+            or baseline_item.get("content_fingerprint") != item["content_fingerprint"]
+        ):
+            findings.append({"type": "knowledge_baseline_stale", "id": identifier, "path": relative_path})
         for source in item.get("sources", []):
             if not isinstance(source, str):
                 findings.append({"type": "invalid_knowledge_source", "id": item.get("id")})
@@ -760,36 +815,42 @@ def knowledge_check_internal(
                     finding_keys.add(key)
         if path.exists() and path.suffix == ".md":
             findings.extend(knowledge_link_findings(skill_root, path, item.get("id")))
-    for identifier, paths in ids.items():
-        if not identifier or len(paths) > 1:
-            findings.append({"type": "duplicate_knowledge_id", "id": identifier, "paths": paths})
-    for relative, identifiers in indexed_paths.items():
+    for identifier, identifier_paths in ids.items():
+        if not identifier or len(identifier_paths) > 1:
+            findings.append({"type": "duplicate_knowledge_id", "id": identifier, "paths": identifier_paths})
+    for relative, identifiers in paths_by_document.items():
         if len(identifiers) > 1:
             findings.append({"type": "duplicate_knowledge_path", "path": relative, "ids": identifiers})
-    indexed_set = set(indexed_paths)
-    document_paths = [
+    document_files = [
         path for path in knowledge.rglob("*")
         if path.is_file() and path.suffix.lower() in KNOWLEDGE_DOCUMENT_SUFFIXES
     ] if knowledge.is_dir() else []
-    for path in document_paths:
+    for path in document_files:
         relative = path.relative_to(knowledge).as_posix()
-        if relative not in {*GENERATED_KNOWLEDGE_PATHS, "index.json"} and relative not in indexed_set:
+        excluded = {
+            *GENERATED_KNOWLEDGE_PATHS,
+            KNOWLEDGE_BASELINE_FILE,
+            LEGACY_KNOWLEDGE_INDEX_FILE,
+        }
+        if relative not in excluded and relative not in paths_by_document:
             findings.append({"type": "orphan_knowledge_document", "path": relative})
         if path.suffix.lower() == ".md" and markdown_body_is_empty(path):
             findings.append({"type": "empty_knowledge_entry", "path": relative})
     repairs = {
         "broken_knowledge_link": "Repair the project-Wiki link or remove the unsupported projection through migrate/E1.",
         "knowledge_drift": "Rescan the affected source and replan against Registry/canonical facts before refreshing Wiki.",
-        "orphan_knowledge_document": "Add valid Agent-owned frontmatter through focused migrate/E1 or move the file outside project_wiki.",
+        "orphan_knowledge_document": "Add valid frontmatter in the current Change or move the file outside project_wiki.",
+        "knowledge_baseline_stale": "Run change reindex after reviewing the changed document and its evidence.",
+        "missing_knowledge_baseline": "Run change reindex to create the document fingerprint baseline.",
         "knowledge_evidence_review": "Review changed target/decision evidence without treating it as implemented-code drift.",
     }
-    for severity, items in (("error", findings), ("warning", warnings)):
-        for item in items:
+    for severity, severity_items in (("error", findings), ("warning", warnings)):
+        for item in severity_items:
             item.setdefault("severity", severity)
             item.setdefault("owner", "project Harness knowledge/audit owner")
             item.setdefault("location", item.get("path") or item.get("id") or "project knowledge graph")
             item.setdefault("reason", item["type"].replace("_", " "))
-            item.setdefault("repair", repairs.get(item["type"], "Rescan evidence and repair through init, migrate, or accepted E1 Evolution."))
+            item.setdefault("repair", repairs.get(item["type"], "Review the evidence and repair the document in the current Change."))
     return {
         "read_only": True,
         "healthy": not findings,
@@ -798,7 +859,7 @@ def knowledge_check_internal(
         "unique_sources": fingerprint_scan["unique_sources"],
         "findings": findings,
         "warnings": warnings,
-        "items": len(index.get("items", [])),
+        "items": len(items),
     }
 
 @guard_project_skill_read_only

@@ -22,7 +22,7 @@ from typing import Any, Iterable
 
 from .analysis import DISPLAY_TEXT_FIELDS, evidence_values, reference_project_sources, semantic_display_text, validate_project_evidence
 from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, file_fingerprint, is_within, read_json, reject_linked_ancestors, run, safe_relative, slugify, stable_hash, utc_now
-from .knowledge import SourceFingerprintSnapshot, context_source_fingerprints, discover_agent_knowledge, parse_agent_knowledge_frontmatter, rebuild_project_wiki_index, update_project_wiki_index
+from .knowledge import KNOWLEDGE_BASELINE_FILE, LEGACY_KNOWLEDGE_INDEX_FILE, SourceFingerprintSnapshot, context_source_fingerprints, discover_agent_knowledge, discover_project_knowledge, ensure_renderer_knowledge_frontmatter, parse_agent_knowledge_frontmatter, rebuild_project_wiki_catalog
 from .project import primary_worktree_root
 
 REQUIRED_WORKFLOW_PATHS = {
@@ -121,7 +121,7 @@ def render_project_wiki(
     wiki = skill_root / "references" / "project_wiki"
     for directory in ("modules", "systems", "bridges", "reference_projects/maps"):
         (wiki / directory).mkdir(parents=True, exist_ok=True)
-    previous = read_json(wiki / "index.json", {})
+    existing_items = discover_project_knowledge(skill_root, context)
     agent_items = discover_agent_knowledge(skill_root, context, fingerprint_snapshot)
     agent_by_id = {item["id"]: item for item in agent_items}
     agent_by_path = {item["path"]: item for item in agent_items}
@@ -140,8 +140,8 @@ def render_project_wiki(
             f"Agent-owned knowledge conflicts with renderer output id/path: {identifier} / {path}"
         )
 
-    for item in previous.get("items", []):
-        if item.get("generated_by") != "project-profile":
+    for item in existing_items:
+        if item.get("managed_by") != "renderer":
             continue
         relative = item.get("path")
         if not isinstance(relative, str) or relative == "overview.md":
@@ -573,28 +573,11 @@ def render_project_wiki(
     for reference in global_references:
         overview_sources.extend(reference_project_sources(reference_root, reference, evidence_values(reference)))
     overview_sources = list(dict.fromkeys(overview_sources))
-    index = {
-        "schema_version": SCHEMA_VERSION,
-        "project_id": context["project_id"],
-        "generated_at": utc_now(),
-        "items": [
-            {
-                "id": "overview", "layer": "L1", "kind": "overview", "path": "overview.md",
-                "sources": overview_sources,
-                "source_fingerprints": context_source_fingerprints(context, overview_sources, fingerprint_snapshot),
-                "content_fingerprint": file_fingerprint([wiki / "overview.md"], wiki),
-                "generated_by": "project-profile", "updated_at": utc_now(),
-            },
-            *index_items,
-        ],
-    }
-    preserved_generated = [
-        item for item in previous.get("items", [])
-        if isinstance(item, dict)
-        and item.get("generated_by") not in {"project-profile", "agent"}
-        and item.get("managed_by") != "agent"
-    ]
-    generated_items = [*index["items"], *preserved_generated]
+    generated_items = [{
+        "id": "overview", "layer": "L1", "kind": "overview", "path": "overview.md",
+        "sources": overview_sources,
+        "generated_by": "project-profile", "updated_at": utc_now(),
+    }, *index_items]
     return {
         "analysis_status": profile.get("analysis_status"),
         "modules": len(modules),
@@ -679,17 +662,16 @@ def render_architecture_system(
     atomic_write_text(target, "\n".join(lines))
     generated_items.append({
         "id": "architecture", "layer": "L2", "kind": "system", "path": "systems/architecture.md",
-        "sources": evidence, "source_fingerprints": context_source_fingerprints(context, evidence, fingerprint_snapshot),
-        "content_fingerprint": file_fingerprint([target], wiki),
+        "sources": evidence,
         "generated_by": "architecture-analysis", "updated_at": utc_now(),
     })
     return True
 
 PROTECTED_ARTIFACT_PATHS = {
     "state/manifest.json",
-    "references/project_wiki/index.json",
+    f"references/project_wiki/{KNOWLEDGE_BASELINE_FILE}",
+    f"references/project_wiki/{LEGACY_KNOWLEDGE_INDEX_FILE}",
     "references/project_wiki/catalog.md",
-    "references/project_wiki/overview.md",
     "references/rules/critical.md",
     "references/audit-rubric.json",
 }
@@ -852,7 +834,7 @@ def apply_creation_delta(
     allow_executable_artifacts: bool = False,
     allow_retire: bool = False,
     fingerprint_snapshot: SourceFingerprintSnapshot | None = None,
-    update_knowledge_index: bool = True,
+    update_knowledge_catalog: bool = True,
 ) -> dict[str, Any]:
     applied: list[str] = []
     skipped: list[dict[str, str]] = []
@@ -893,12 +875,8 @@ def apply_creation_delta(
             if not target.is_file() or target.is_symlink():
                 raise HarnessError(f"Publication candidate retire target must be a physical file: {target_relative}")
             if target_relative.startswith("references/project_wiki/"):
-                index = read_json(skill_root / "references" / "project_wiki" / "index.json", {"items": []})
-                item = next(
-                    (entry for entry in index.get("items", []) if entry.get("path") == target_relative.removeprefix("references/project_wiki/")),
-                    None,
-                )
-                if not item or item.get("managed_by") != "agent":
+                metadata = parse_agent_knowledge_frontmatter(target)
+                if not metadata or metadata.get("managed_by") != "agent":
                     raise HarnessError("Publication retirement may remove only Agent-owned project knowledge.")
             target.unlink()
             applied.append(target_relative)
@@ -943,7 +921,7 @@ def apply_creation_delta(
         content = validate_text_artifact(source, target_relative)
         if target_relative.startswith("references/project_wiki/"):
             if target.suffix.lower() != ".md":
-                raise HarnessError("Indexed project knowledge must be a Markdown document with ECL frontmatter.")
+                raise HarnessError("Project knowledge must be a Markdown document with ECL frontmatter.")
             metadata = parse_agent_knowledge_frontmatter(source)
             if metadata is None:
                 raise HarnessError(f"Agent-owned project knowledge requires ECL frontmatter: {target_relative}")
@@ -961,14 +939,9 @@ def apply_creation_delta(
             knowledge_paths.add(target_relative.removeprefix("references/project_wiki/"))
         artifact["evidence"] = evidence
         validated_artifacts.append(artifact)
-    knowledge_index = None
-    if knowledge_paths and update_knowledge_index:
-        knowledge_index = update_project_wiki_index(
-            skill_root,
-            context,
-            knowledge_paths,
-            fingerprint_snapshot,
-        )
+    knowledge_catalog = None
+    if knowledge_paths and update_knowledge_catalog:
+        knowledge_catalog = rebuild_project_wiki_catalog(skill_root, context, fingerprint_snapshot)
     validations = run_artifact_validations(
         skill_root,
         validated_artifacts,
@@ -979,8 +952,8 @@ def apply_creation_delta(
         "skipped": skipped,
         "validations": validations,
         "merge_semantics": "full-candidate replacement",
-        "knowledge_index_updated": bool(knowledge_paths),
-        "knowledge_items": len(knowledge_index.get("items", [])) if knowledge_index else None,
+        "knowledge_catalog_updated": bool(knowledge_paths),
+        "knowledge_items": len(knowledge_catalog.get("items", [])) if knowledge_catalog else None,
     }
 
 
@@ -1064,6 +1037,11 @@ def install_analysis_bundle(
         agent_items,
         fingerprint_snapshot,
     )
+    wiki = skill_root / "references" / "project_wiki"
+    for item in generated_items:
+        path = wiki / str(item.get("path", ""))
+        if path.is_file():
+            ensure_renderer_knowledge_frontmatter(path, item)
     artifacts = apply_creation_delta(
         skill_root,
         bundle,
@@ -1072,16 +1050,11 @@ def install_analysis_bundle(
         allow_executable_artifacts,
         allow_retire=allow_retire,
         fingerprint_snapshot=fingerprint_snapshot,
-        update_knowledge_index=False,
+        update_knowledge_catalog=False,
     )
-    knowledge_index = rebuild_project_wiki_index(
-        skill_root,
-        context,
-        generated_items,
-        fingerprint_snapshot,
-    )
-    if artifacts["knowledge_index_updated"]:
-        artifacts["knowledge_items"] = len(knowledge_index["items"])
+    knowledge_catalog = rebuild_project_wiki_catalog(skill_root, context, fingerprint_snapshot)
+    if artifacts.get("knowledge_catalog_updated"):
+        artifacts["knowledge_items"] = len(knowledge_catalog["items"])
     rules = generate_rule_views(skill_root)
     validate_workflow_templates(skill_root)
     persist_analysis(skill_root, profile, audit, delta, architecture)

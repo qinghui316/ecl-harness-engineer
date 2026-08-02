@@ -22,7 +22,7 @@ from typing import Any, Iterable
 
 from .contracts import validate_change_evidence
 from .core import EVOLUTION_THRESHOLD, HarnessError, REQUIRED_CHANGE_FILES, SCHEMA_VERSION, TERMINAL_CHANGE_STATUSES, _UNSET, atomic_create_json, atomic_write_json, atomic_write_text, canonical_id, git, git_baseline_relation, git_value, is_link_like, read_json, reject_tree_links, remove_owned_tree, render, safe_relative, slugify, utc_now
-from .knowledge import knowledge_fingerprint_scan
+from .knowledge import KNOWLEDGE_BASELINE_FILE, discover_project_knowledge, knowledge_fingerprint_scan, rebuild_project_wiki_catalog
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
 from .transactions import guard_project_skill, short_registry_lock
@@ -418,7 +418,9 @@ def knowledge_drift_impacts(
     current_contract: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     wiki = skill_root / "references" / "project_wiki"
-    index = read_json(wiki / "index.json", {})
+    baseline = read_json(wiki / KNOWLEDGE_BASELINE_FILE, {})
+    baseline_documents = baseline.get("documents", {}) if isinstance(baseline, dict) else {}
+    items = discover_project_knowledge(skill_root, context)
     current_paths = [
         normalize_claim(item)
         for item in [
@@ -428,17 +430,15 @@ def knowledge_drift_impacts(
     ]
     owner_module = current_contract.get("owner_module") if current_contract else None
     selected_sources: dict[str, set[str]] = {}
-    for item in index.get("items", []):
-        if not isinstance(item, dict):
-            continue
+    for item in items:
         item_id = str(item.get("id") or "")
-        fingerprints = item.get("source_fingerprints", {})
+        record = baseline_documents.get(item_id, {}) if isinstance(baseline_documents, dict) else {}
+        fingerprints = record.get("source_fingerprints", {}) if isinstance(record, dict) else {}
         if not item_id or not isinstance(fingerprints, dict):
             continue
         module_related = bool(
             owner_module
-            and item.get("kind") == "module"
-            and item_id == slugify(str(owner_module))
+            and slugify(str(owner_module)) in item.get("modules", [])
         )
         related_sources = {
             source for source in fingerprints
@@ -462,9 +462,7 @@ def knowledge_drift_impacts(
         if item_id and isinstance(source, str):
             drift_by_item.setdefault(item_id, []).append(source)
     impacts = []
-    for item in index.get("items", []):
-        if not isinstance(item, dict):
-            continue
+    for item in items:
         drifted_sources = sorted(set(drift_by_item.get(str(item.get("id") or ""), [])))
         related_sources = sorted({
             source for source in drifted_sources
@@ -472,8 +470,7 @@ def knowledge_drift_impacts(
         })
         module_related = bool(
             owner_module
-            and item.get("kind") == "module"
-            and item.get("id") == slugify(str(owner_module))
+            and slugify(str(owner_module)) in item.get("modules", [])
         )
         if drifted_sources and (related_sources or module_related):
             impacts.append({
@@ -744,6 +741,7 @@ def change_close(args: argparse.Namespace) -> dict[str, Any]:
             if context["mode"] != "multi_lane":
                 raise HarnessError("Completion commit metadata is only available for Git-backed Changes.")
             value["completion_commit"] = validate_completion_commit(context, value, args.completion_commit)
+    knowledge = rebuild_project_wiki_catalog(skill_root, context)
     if source.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists() or is_link_like(destination):
@@ -762,6 +760,7 @@ def change_close(args: argparse.Namespace) -> dict[str, Any]:
         "status": "closed",
         "change": value,
         "integration_boundary": "recorded" if value.get("completion_commit") else "not_recorded",
+        "knowledge": {"items": len(knowledge["items"]), "refreshed": knowledge["refreshed"]},
         "evolution": evolution,
     }
 
@@ -829,7 +828,13 @@ def change_reindex(args: argparse.Namespace) -> dict[str, Any]:
     context = project_context(Path(args.project_root))
     skill_root = require_skill(context, args)
     index = rebuild_change_index(skill_root)
-    return {"status": "reindexed", "count": len(index["changes"]), "index": index}
+    knowledge = rebuild_project_wiki_catalog(skill_root, context)
+    return {
+        "status": "reindexed",
+        "count": len(index["changes"]),
+        "index": index,
+        "knowledge": {"items": len(knowledge["items"]), "refreshed": knowledge["refreshed"]},
+    }
 
 @guard_project_skill
 def change_search(args: argparse.Namespace) -> dict[str, Any]:

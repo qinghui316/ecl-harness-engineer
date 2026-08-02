@@ -12,9 +12,11 @@ validator and renderer.
 - Current project Harness manifest, content, and dynamic state.
 - A complete self-contained four-file bundle for semantic refresh:
   `project-profile.json`, `architecture.json`, `audit.json`, and `creation-delta.json`.
-- Or a focused `creation-delta.json` plus `artifacts/` with `mode: migrate-focused` when the user
-  explicitly requests immediate Agent-owned documentation or another bounded Harness update.
 - Explicit authorization for executable creation-delta artifacts.
+
+Ordinary project Harness documents, workflows, guides, and rules are edited directly in a
+Structured Change. `project migrate` rejects focused document bundles with an instruction to use
+that direct workflow.
 
 Manifest `1.0` bootstrap state may receive the portable path upgrade without semantic invention. A
 complete `1.0` Harness must provide a new complete bundle; otherwise return
@@ -33,15 +35,18 @@ complete `1.0` Harness must provide a new complete bundle; otherwise return
 - Convert Integration worktree records to `state/integrations/<integration-id>`.
 - Repository prose is candidate context, not complete-bundle or knowledge-index evidence.
 - Knowledge scan/check remains read-only and cannot substitute for migration.
+- A legacy `project_wiki/index.json` may be converted once without semantic reanalysis. The
+  transaction adds renderer frontmatter, imports source baselines, rebuilds catalog, and removes the
+  legacy index without changing document bodies or dynamic state.
 
 ## Transaction
 
 1. Validate route identity, current state, bundle schema/evidence, protected paths, and path/link
    boundaries.
 2. Build a non-state candidate and mirror the current Harness runtime into it.
-3. Apply the complete bundle when semantic refresh is required, or only the focused delta without
-   extractor/audit/Wiki regeneration when publishing Agent-owned content.
-4. Regenerate rules and knowledge index; run candidate checks.
+3. Apply the complete bundle when semantic refresh is required, or perform only the explicit legacy
+   index conversion when no analysis bundle is supplied.
+4. Regenerate rules, catalog, and fingerprint baseline; run candidate checks.
 5. Acquire the shared writer and publish through the recoverable content transaction.
 6. Normalize manifest, baseline, Lane, Change owner, and Integration records to portable schema
    `2.0` while retaining dynamic state.

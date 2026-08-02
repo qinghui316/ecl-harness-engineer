@@ -16,7 +16,8 @@ passing validation; Git state and Integration intent do not determine whether th
   work reruns it only after material path, contract, or baseline changes.
 - Run `check_stage_artifacts.py --stage close`.
 - Run `change close` once to validate evidence and archive the terminal Change.
-- Rebuild the Skill-owned Change INDEX after every terminal close.
+- Rebuild the Skill-owned Change INDEX plus generated knowledge catalog/baseline after every
+  terminal close. Unchanged knowledge retains its existing source fingerprints.
 - Run `evolve check` after terminal close.
 
 ## Actions

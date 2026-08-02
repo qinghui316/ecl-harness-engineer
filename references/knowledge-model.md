@@ -54,14 +54,19 @@ standards. Create a bridge only when the project contains a real translation bou
 Search expansion may use inferred synonyms to locate code. Decisions and durable bridges require
 source citations, accepted contracts, or user statements.
 
-## Generated Index
+## Markdown Truth And Generated Navigation
 
-`references/project_wiki/index.json` is generated and contains document id, layer, source paths,
-source fingerprints, and update time. Never hand-edit it.
+Every Markdown document below `references/project_wiki/` is a formal knowledge source. Its
+frontmatter carries navigation and evidence metadata; there is no separate authoritative document
+index.
 
-`references/project_wiki/catalog.md` is also generated. It groups every indexed document by
+`references/project_wiki/catalog.md` is generated. It groups every document by
 semantic layer, kind, status, Owner, and module. The default route is overview -> catalog -> the
 smallest relevant L2/L3 set; filenames and directories do not define layer.
+
+`references/project_wiki/.ecl-baselines.json` stores only document content identities and source
+fingerprints. It is a shared mechanical sidecar for cross-machine drift detection, not a navigation
+index or semantic owner. Runtime maintains catalog and baseline; Agents do not hand-edit them.
 
 Agent-owned Markdown uses this frontmatter:
 
@@ -77,17 +82,17 @@ ecl:
   evidence:
     - user:accepted target architecture
     - registry:change/office-v2
-  managed_by: agent
 ---
 ```
 
 Layers are `L1|L2|L3`; kinds are `current|target|decision|guide`; statuses are
-`proposed|accepted|in_progress|implemented|retired`. Full refresh replaces only renderer-owned
-current facts. Matching Agent ownership of both an existing id and path is an explicit takeover;
-an id-only or path-only collision fails closed.
+`proposed|accepted|in_progress|implemented|retired`. `managed_by` is optional and defaults to
+`agent`; renderer output declares `managed_by: renderer`. An Agent may take over a renderer page by
+changing that field in a normal Structured Change. Full refresh replaces only renderer-owned
+current facts; exact duplicate ids or paths fail closed.
 
-Use relative project paths in knowledge documents and indexes. Resolve local absolute paths only in
-the running process; never persist them in manifest, Registry, INDEX, or knowledge state.
+Use relative project paths in knowledge documents and baselines. Resolve local absolute paths only
+in the running process; never persist them in manifest, Registry, INDEX, or knowledge state.
 
 ## Refresh Rules
 
@@ -95,13 +100,15 @@ the running process; never persist them in manifest, Registry, INDEX, or knowled
 - Integration lands accepted code and optional business documents and records baseline, Registry, and evolution signals;
   it does not rewrite L1/L2/L3.
 - Initialization and full migration may install a complete evidence-backed analysis bundle.
-- A focused migrate may publish an explicitly requested formal Agent-owned document immediately.
+- A Structured Change may directly create, merge, replace, retire, or take over a formal document.
+  `change reindex` and `change close` rebuild catalog metadata and refresh source fingerprints only
+  for changed documents. This does not run migrate, renderer, audit, Judge, or increment revision.
 - After five qualified Changes and E1, focused Evolution may update, merge, retire, or promote any
   Agent-owned L1/L2/L3 document. Before Create, search catalog metadata and related content, then
   choose Create, Merge, Replace, Retire, or Archive-only. Full Evolution refreshes renderer-owned
   current facts only when whole-project analysis is actually required.
 - `harness-knowledge scan` and `check` are read-only. They report missing sources, fingerprint
-  drift, broken links, invalid metadata, missing indexed files, and orphan documents; they never
+  drift, broken links, invalid metadata, missing baselines, and orphan documents; they never
   infer document meaning or apply a semantic refresh.
 - Run them when source drift is suspected, preflight identifies related drift, or audit, migration,
   or E1 needs a mechanical knowledge report. Ordinary explanation, navigation, and source reading
@@ -110,7 +117,7 @@ the running process; never persist them in manifest, Registry, INDEX, or knowled
   reads baseline events and fingerprints only the knowledge sources selected by current paths,
   contract paths, and owner module. When those sources drift, return `refresh-needed/replan` rather
   than silently trusting stale Wiki text. Full source scans belong to knowledge check, audit,
-  or Full E1. Focused migrate/E1 validates and reindexes only changed documents.
+  or Full E1. Ordinary document reindex and Focused E1 refresh fingerprints only for changed documents.
 - Resolve current facts in this order: Registry contracts/baseline events, shared current Change
   evidence, repository code/manifests/configuration/tests/interfaces, then L1/L2/L3. An unrelated baseline advancement
   does not force a Lane to stop.
@@ -121,8 +128,8 @@ Load L1 first. Select L2 by affected paths, modules, or contracts. Select L3 onl
 translation boundary. Do not preload every module, bridge, Change, or archive.
 
 Semantic duplication, current/target classification, evidence sufficiency, and knowledge quality
-belong to Agent review and the independent Judge. Runtime owns exact ID/path conflicts, index
-integrity, links, fingerprints, and publication safety.
+belong to Agent review; independent Judge review is required only for E1. Runtime owns exact ID/path
+conflicts, frontmatter, catalog/baseline integrity, links, fingerprints, and E1 publication safety.
 
 Reference relationships are part of the project knowledge graph. A relevant L2/L3 page links its
 reference source map, and the map points to inspected source. Direct reference research starts from

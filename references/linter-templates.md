@@ -82,14 +82,14 @@ Validate:
 - L1 required sections, project-level navigation coverage, and valid L2 links;
 - L2/L3 citations and source fingerprints;
 - reference-source map checkout identity and citations;
-- broken internal links, invalid metadata, orphan documents, and missing indexed files;
+- broken internal links, invalid metadata, orphan documents, and missing fingerprint baselines;
 - interface/API/schema/document drift;
 
 Missing sources, bad links, index corruption, unsafe paths, and exact ID/path conflicts are
 mechanical errors. Misplaced detail, stale wording, duplicate semantics, current/target meaning,
 Owner quality, and archive density belong to Agent/Judge review; Runtime does not infer them from
-keywords. Knowledge scan/check reports only; init, migrate, or accepted E1 publication applies
-stable updates.
+keywords. Knowledge scan/check reports only; ordinary knowledge updates directly in a Structured
+Change, while init, full migrate, and accepted E1 retain their publication boundaries.
 
 ## Stack Adaptation
 
