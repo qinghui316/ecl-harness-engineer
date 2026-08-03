@@ -1,4 +1,4 @@
-"""Project identity, Git/worktree discovery, canonical Skill paths, and manifests."""
+"""Project identity, Git/worktree discovery, physical Harness paths, and manifests."""
 
 from __future__ import annotations
 

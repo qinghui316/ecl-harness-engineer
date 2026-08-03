@@ -1,10 +1,10 @@
 # Project Harness Architecture
 
-## Ownership
+## Responsibility Boundary
 
-Create one project Harness per project. It owns complete AI-facing project knowledge, rules,
+Create one project Harness per project. It stores complete AI-facing project knowledge, rules,
 workflows, Change history, contracts, Integration results, and Evolution experience. Accepted code
-and optional human-facing business documents remain in the project repository, but repository prose
+and optional human-facing project documentation remain in the project repository, but repository prose
 is not a runtime knowledge dependency.
 
 All local worktrees and supported coding runtimes read one physical Harness. Machine facts such as
@@ -77,15 +77,15 @@ Project, Skill, Change, contract, and Integration paths are project-relative or 
 Resolve the current interpreter when a launcher executes. PowerShell, Node, and Python connectors
 remain independent pre-discovery host entries, not separate coordination implementations.
 
-## Lane Discovery
+## Parallel Work Lane Discovery
 
-Use `lane-single` outside Git. In Git, use `lane-<hash(project_id + branch_ref)>`. Resolve current
+Use `lane-single` outside Git. In Git, use `lane-<hash(project_id + branch)>`. Resolve current
 worktree locations through Git and do not persist them. Detached HEAD may read knowledge and history
 but cannot create Structured Changes because it has no stable branch Lane.
 
 On a new machine, place the matching project Harness beside the project, retain the marker and
-project id, and rediscover current worktrees and links. Same-machine worktrees share Registry and
-writer locks; no cross-machine live coordination is implied.
+project ID, and rediscover current worktrees and links. Same-machine worktrees share the coordination
+Registry and exclusive write locks; no cross-machine live coordination is implied.
 
 ## Knowledge Independence
 
@@ -117,20 +117,21 @@ independent nested Git repository. The business repository excludes the whole pr
 its Git-common local exclude; the inner repository excludes dynamic state except the portable
 manifest. Neither repository owns or tracks the other's operational state.
 
-Repository metadata such as `.git`, `.gitignore`, README, and GitHub templates is outside Harness
-content publication. Migration and Evolution preserve it without copying it into candidates or
-fingerprints. Same-machine business worktrees share one physical project Skill and therefore one
-inner Git working tree.
+Repository metadata such as `.git`, `.gitignore`, README, and GitHub templates is outside stable
+Harness content transactions. Migration and Evolution preserve it without copying it into staged
+candidates or content digests. Same-machine business worktrees share one physical project Skill and
+therefore one inner Git working tree.
 
 ## Failure And Migration
 
-Initialization and migration publish through the existing content transaction. Preserve all
+Initialization and migration apply updates through the existing recoverable content transaction. Preserve all
 pre-existing routes and collisions. Remove only links created by the failed operation.
 
-Migration from manifest `1.0` keeps the opaque project id, removes machine fields, normalizes Lane
-owners and Integration paths, and preserves Change/INDEX/Registry/Evolution state. A complete old
+Migration from manifest `1.0` keeps the opaque project ID, removes machine fields, normalizes
+parallel work Lane assignments and Integration paths, and preserves Change/INDEX/Registry/Evolution state. A complete old
 Harness with repository-prose knowledge dependencies requires a new complete self-contained bundle;
-otherwise return `semantic_refresh_required` without partial publication.
+otherwise return `semantic_refresh_required` (full project knowledge refresh required) without
+applying a partial update.
 
-Non-Git-to-Git transition never runs `git init`. Once Git exists, migrate Lane ownership to the
+Non-Git-to-Git transition never runs `git init`. Once Git exists, migrate Lane assignment to the
 current named branch and refresh mechanical source fingerprints without changing semantic content.

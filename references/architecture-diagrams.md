@@ -42,11 +42,12 @@ Render only forms supported by facts:
 5. Module boundary view from layer/module ownership plus dependencies.
 6. Call hierarchy or data flow only when ordered call/data edges are recorded.
 
-Each generated page lists citations and stores source fingerprints in project Wiki `index.json`.
-`knowledge scan/check` reports changed or missing sources. A changed fingerprint is a review/replan
-signal; it never authorizes automatic deletion or invention of replacement edges.
+Each generated page lists citations. The project Wiki `.ecl-baselines.json` metadata stores source
+fingerprints, and `knowledge scan/check` reports changed or missing sources. A changed fingerprint
+requires review or replanning; it never authorizes automatic deletion or invention of replacement
+edges.
 
 ## Exit
 
 Exit when every rendered node/edge is traceable, unsupported relations are absent, diagrams are
-progressively loaded from L2/L3, and a source change produces a drift finding.
+progressively loaded from L2/L3, and a source change produces a knowledge-review finding.

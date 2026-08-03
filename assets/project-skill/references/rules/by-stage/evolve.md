@@ -4,9 +4,9 @@
 
 ## HR-06: Keep Record Types Separate
 
-Integration and Evolution records are not Changes and never count toward the five-Change window.
+Integration and Evolution records are not Changes and never count toward the set of five Changes reviewed by Evolution.
 
-**On violation:** Recompute the eligible window from unique Change records.
+**On violation:** Recompute the eligible set from unique Change records.
 
 ## HR-07: Count Only Qualified Changes
 
@@ -14,17 +14,17 @@ Evolution eligibility requires completed, validation-passed, evidence-complete, 
 
 **On violation:** Exclude the record and repair its evidence or status before recounting.
 
-## HR-08: Evolve At Five
+## HR-08: Review Every Five Qualified Changes
 
-Create pending at five unevaluated qualified Changes; Changes one through four do not start maintenance.
+Create pending review state at five unevaluated qualified Changes; Changes one through four do not start Harness maintenance.
 
-**On violation:** Leave ordinary work unblocked and restore the correct pending window.
+**On violation:** Leave ordinary work unblocked and restore the correct pending set of Change IDs.
 
-## HR-10: Apply Passing Evolution Without E2
+## HR-10: Apply Accepted Evolution Without E2
 
-After E1, a proposal that passes every gate is applied automatically; unavailable independent review is noop.
+After E1 approval, apply a proposal automatically only when every acceptance check passes; unavailable independent review records noop, meaning no change was applied.
 
-**On violation:** Do not claim keep and preserve the pre-E1 content fingerprint.
+**On violation:** Do not record keep and preserve the pre-E1 Harness content digest.
 
 ## HR-12: Bound Historical Loading
 
@@ -38,11 +38,11 @@ Do not introduce daemons, remote locks, cross-machine synchronization, automatic
 
 **On violation:** Remove the unsupported mechanism and report the local-only boundary.
 
-## HR-16: Verify Evolution Mutation
+## HR-16: Verify Evolution Result
 
-Rejected and noop runs preserve the pre-E1 content fingerprint; keep must change it and pass project Harness validation.
+Rejected and noop results preserve the pre-E1 Harness content digest; keep must change it and pass project Harness validation.
 
-**On violation:** Reject terminal publication until the fingerprint and decision agree.
+**On violation:** Reject the terminal result until the content digest and decision agree.
 
 ## HR-18: Preserve Command Evidence Status
 

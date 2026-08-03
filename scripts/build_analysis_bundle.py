@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract a draft four-file evidence bundle for Agent semantic review."""
+"""Extract a draft four control-file evidence bundle for Agent semantic review."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Project Wiki, rules, workflows, artifacts, and analysis publication."""
+"""Project Wiki, rules, workflows, artifacts, and migration-bundle rendering."""
 
 from __future__ import annotations
 
@@ -126,7 +126,7 @@ def render_project_wiki(
     agent_by_id = {item["id"]: item for item in agent_items}
     agent_by_path = {item["path"]: item for item in agent_items}
     if len(agent_by_id) != len(agent_items) or len(agent_by_path) != len(agent_items):
-        raise HarnessError("Agent-owned project knowledge contains a duplicate id or path.")
+        raise HarnessError("Agent-maintained project knowledge contains a duplicate ID or path.")
 
     def agent_owns(identifier: str, relative: Path | str) -> bool:
         path = Path(relative).as_posix()
@@ -137,7 +137,7 @@ def render_project_wiki(
         if by_id is by_path and by_id is not None:
             return True
         raise HarnessError(
-            f"Agent-owned knowledge conflicts with renderer output id/path: {identifier} / {path}"
+            f"Agent-maintained knowledge conflicts with generated output ID/path: {identifier} / {path}"
         )
 
     for item in existing_items:
@@ -605,7 +605,9 @@ def render_architecture_system(
     by_path = next((item for item in agent_items if item["path"] == "systems/architecture.md"), None)
     if by_id or by_path:
         if by_id is not by_path or by_id is None:
-            raise HarnessError("Agent-owned architecture knowledge conflicts with the renderer id or path.")
+            raise HarnessError(
+                "Agent-maintained architecture knowledge conflicts with a generated ID or path."
+            )
         generated_items[:] = [
             item for item in generated_items
             if item.get("id") != "architecture" and item.get("path") != "systems/architecture.md"
@@ -860,11 +862,13 @@ def apply_creation_delta(
         target = reject_linked_artifact_target(skill_root, target_relative)
         if action == "retire":
             if not allow_retire:
-                raise HarnessError("Artifact retirement is only supported by a publication candidate.")
+                raise HarnessError(
+                    "Artifact retirement is only supported by a staged migration or Evolution candidate."
+                )
             if target_relative in {"SKILL.md", "references/rules/red_lines.yaml"}:
-                raise HarnessError(f"A publication candidate cannot retire a required project Harness owner: {target_relative}")
+                raise HarnessError(f"A staged candidate cannot retire a required project Harness file: {target_relative}")
             if target_relative in REQUIRED_WORKFLOW_PATHS:
-                raise HarnessError(f"A publication candidate cannot retire a required workflow: {target_relative}")
+                raise HarnessError(f"A staged candidate cannot retire a required workflow: {target_relative}")
             for field in ("owner", "validation"):
                 if not isinstance(artifact.get(field), str) or not artifact[field].strip():
                     raise HarnessError(f"Artifact {target_relative} requires {field}.")
@@ -873,11 +877,13 @@ def apply_creation_delta(
             evidence = evidence_values(artifact)
             validate_project_evidence(context["project_root"], evidence, f"artifact {target_relative}")
             if not target.is_file() or target.is_symlink():
-                raise HarnessError(f"Publication candidate retire target must be a physical file: {target_relative}")
+                raise HarnessError(f"Staged-candidate retire target must be a physical file: {target_relative}")
             if target_relative.startswith("references/project_wiki/"):
                 metadata = parse_agent_knowledge_frontmatter(target)
                 if not metadata or metadata.get("managed_by") != "agent":
-                    raise HarnessError("Publication retirement may remove only Agent-owned project knowledge.")
+                    raise HarnessError(
+                        "A staged candidate may retire only agent-maintained project knowledge."
+                    )
             target.unlink()
             applied.append(target_relative)
             if target_relative.startswith("references/project_wiki/"):
@@ -924,7 +930,7 @@ def apply_creation_delta(
                 raise HarnessError("Project knowledge must be a Markdown document with ECL frontmatter.")
             metadata = parse_agent_knowledge_frontmatter(source)
             if metadata is None:
-                raise HarnessError(f"Agent-owned project knowledge requires ECL frontmatter: {target_relative}")
+                raise HarnessError(f"Agent-maintained project knowledge requires ECL frontmatter: {target_relative}")
             if metadata["owner"] != artifact["owner"].strip():
                 raise HarnessError(
                     f"Artifact owner and project knowledge owner disagree for {target_relative}."

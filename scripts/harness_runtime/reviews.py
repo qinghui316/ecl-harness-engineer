@@ -53,7 +53,7 @@ def validate_evolution_judge(
     if reviewer_id == owner_id:
         raise ValueError("Evolution reviewer must differ from the Evolution owner.")
     if report["candidate_fingerprint"] != candidate_fingerprint:
-        raise ValueError("Evolution judge report does not bind the staged candidate fingerprint.")
+        raise ValueError("Evolution review report does not bind the staged candidate integrity digest.")
     if not isinstance(report["score"], (int, float)) or not 0 <= report["score"] <= 100:
         raise ValueError("Evolution judge score must be between 0 and 100.")
     if not isinstance(report["hard_issues"], list):

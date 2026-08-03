@@ -3,34 +3,42 @@
 Read this file only when maintaining a local Harness helper or diagnosing a traceback. Normal
 project work uses the launchers and stage workflows.
 
-## Ownership
+## Responsibility Boundary
 
 Agents decide project purpose, module meaning, architecture, audit findings, project knowledge,
-reference relationships, and Evolution proposals. The runtime protects ids, paths, indexes,
-links, Registry records, commit identity, locks, review bindings, and recoverable publication.
+reference relationships, and Evolution proposals. The runtime protects IDs, paths, indexes,
+links, coordination Registry records, commit identity, locks, review bindings, and
+crash-recoverable transactions.
+
+An atomic write replaces one file or performs one filesystem rename. A complete Harness update is
+a recoverable multi-file transaction with a journal, rollback, and crash recovery. A content digest
+identifies exact Harness or candidate content; a source-state digest identifies the source snapshot
+used for validation. The compatible `managed_by: renderer|agent` values mean generated document and
+agent-maintained document in prose.
 
 The public entry is `scripts/harness_cli.py`. Project Harness installations expose
 `project audit|doctor`; project creation and migration are performed by ECL Harness Engineer.
 `doctor` diagnoses installation, runtime inventory, links, Registry identity, locks, and recovery.
-`audit` adds Change evidence, rule views, project knowledge, citations, drift, and entropy.
+`audit` adds Change evidence, rule views, project knowledge, citations, source-change findings, and
+duplication findings.
 
 ## Modules
 
 | Module | Responsibility |
 | --- | --- |
-| `core.py` | IDs, path safety, atomic I/O, process execution, fingerprints |
+| `core.py` | IDs, path safety, atomic I/O, process execution, content digests |
 | `contracts.py` | Analysis, architecture, audit-rubric, Change, and secret-safe validation |
 | `analysis.py` | Bundle evidence, reference-source isolation, artifact authorization |
 | `project.py` | Project identity, Git/common-dir/worktree discovery, manifest facts |
 | `links.py` | Launchers, managed routes, connectors, project-level links |
-| `registry.py` | Bound Registry record reads and Lane identity |
-| `transactions.py` | Writer/Registry locks, publication journal, rollback, recovery |
-| `knowledge.py` | Markdown metadata, generated catalog/baseline, source fingerprints, drift, and legacy index conversion |
+| `registry.py` | Bound coordination Registry record reads and parallel work Lane identity |
+| `transactions.py` | Exclusive write/Registry locks, transaction journal, rollback, recovery |
+| `knowledge.py` | Markdown metadata, generated catalog/source baseline, source fingerprints, source-change findings, and legacy index conversion |
 | `rendering.py` | L1/L2/L3, architecture, rules, workflows, checks |
 | `changes.py` | Change lifecycle, INDEX, preflight, contracts, Evolution eligibility |
-| `reviews.py` | Integration review and Evolution Judge validation |
-| `integration.py` | Exact ranges, I2 landing, Registry update, retry phases |
-| `evolution.py` | E1 ownership, staging, protected gate, Judge, publication, results |
+| `reviews.py` | Integration review and independent Evolution review validation |
+| `integration.py` | Exact ranges, integration approval (I2), Registry update, retry phases |
+| `evolution.py` | Exclusive Evolution lease, staging, independent review, recoverable transaction, results |
 | `project_commands.py` | Project audit/doctor and supported creation-time orchestration |
 
 ## Traceback Route

@@ -1,4 +1,4 @@
-"""Registry/content locks and recoverable content publication transactions."""
+"""Coordination Registry locks and crash-recoverable content transactions."""
 
 from __future__ import annotations
 
@@ -182,7 +182,7 @@ def content_publication_guard(skill_root: Path, *, timeout_seconds: float = 30.0
             candidate = lock_path.open("a+b")
         except FileNotFoundError:
             if time.monotonic() >= deadline:
-                raise HarnessError("Timed out waiting for the project Harness to finish publishing.")
+                raise HarnessError("Timed out waiting for the current project Harness update to finish.")
             time.sleep(0.025)
             continue
         if candidate.tell() == 0:
@@ -193,7 +193,7 @@ def content_publication_guard(skill_root: Path, *, timeout_seconds: float = 30.0
             break
         candidate.close()
         if time.monotonic() >= deadline:
-            raise HarnessError("Timed out waiting for the project Harness content publication lock.")
+            raise HarnessError("Timed out waiting for the project Harness filesystem operation lock.")
         time.sleep(0.025)
     held.add(key)
     _CONTENT_GUARD_LOCAL.held = held
@@ -388,7 +388,7 @@ def apply_content_transaction(
     repository_findings = git_repository_findings(skill_root)
     if repository_findings:
         raise HarnessError(
-            "Project Skill Git repository is not safe for content publication: "
+            "Project Skill Git repository is not safe for a stable content update: "
             + json.dumps(repository_findings, ensure_ascii=False)
         )
     sidecars = repository_sidecars(skill_root)
@@ -462,7 +462,7 @@ def apply_content_transaction(
         rollback_content_transaction(transaction)
         if isinstance(exc, HarnessError):
             raise
-        raise HarnessError(f"{operation.title()} content publication failed: {exc}") from exc
+        raise HarnessError(f"{operation.title()} content transaction failed: {exc}") from exc
 
 def commit_content_transaction(transaction: dict[str, Any]) -> None:
     validate_content_transaction_record(transaction)

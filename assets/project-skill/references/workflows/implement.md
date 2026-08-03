@@ -13,7 +13,8 @@ plan or contract, but they do not silently expand scope or rewrite stable shared
 
 ## Deterministic Commands
 
-- Use the plan's current preflight; rerun it after material path, contract, or baseline discoveries.
+- Use the plan's current preflight; rerun it after material path, contract, or Git integration-base
+  discoveries.
 - Run targeted format, compile, lint, or test commands listed in project knowledge.
 - Update Change task evidence after verified milestones.
 
@@ -36,7 +37,7 @@ expansion and no unresolved contract conflict.
 
 ## Stop And Escalate
 
-Stop for stale baseline that invalidates the plan, unexpected permission/data/API impact, unrelated
+Stop for a stale Git integration base that invalidates the plan, unexpected permission/data/API impact, unrelated
 user-change collision, or a required project gate that cannot be run safely.
 
 ## Rules

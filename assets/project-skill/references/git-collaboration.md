@@ -5,7 +5,7 @@ independent Git repository for this project Skill. The business project reposito
 Skill repository are separate repositories. Do not initialize either repository as a side effect of
 ordinary project work.
 
-## Ownership
+## Repository Boundaries
 
 Share stable project knowledge and operating capability:
 
@@ -33,7 +33,7 @@ locks, transactions, caches, logs, and Python runtime artifacts
 ```
 
 Do not publish active, parked, or archived Change evidence. Promote a durable conclusion into its
-current L1/L2/L3, rule, workflow, or Runtime owner, validate it, and submit that stable change.
+current L1/L2/L3, rule, workflow, or Runtime module, validate it, and submit that stable change.
 
 ## Create A Git Version
 
@@ -92,7 +92,7 @@ initialize Git in place if necessary, fetch the remote, and semantically reconci
 while preserving ignored local state. Refuse a different project id.
 
 Knowledge is directly usable only with the matching business-project revision. Related source
-drift requires knowledge refresh or Change replanning; unrelated drift is recorded without blocking
+source changes require knowledge refresh or Change replanning; unrelated source changes are recorded without blocking
 unaffected work.
 
 ## Pull Requests
@@ -109,14 +109,15 @@ Knowledge check and project validation
 ```
 
 Different L2 modules normally merge independently. Concurrent edits to the same L1/L2/L3 bridge,
-rule, workflow, or Runtime owner require an Agent to reconcile meaning against final source,
+rule, workflow, or Runtime module require an Agent to reconcile meaning against final source,
 interfaces, contracts, and tests. Regenerate machine-owned indexes and rule views; do not resolve
 them as independent prose.
 
 Use the physical project Skill root for checkout, pull, merge, and commit. Same-machine business
-worktrees share this one inner Git worktree. Do not overlap project Skill Git merge/pull with migrate,
-E1 publication, or another content transaction. If stable content changes while a local Change is
-active, review the diff and rerun relevant preflight before continuing.
+worktrees share this one inner Git worktree. Do not overlap project Skill Git merge/pull with
+migrate, application of an accepted E1 candidate, or another content transaction. If stable content
+changes while a local Change is active, review the diff and rerun relevant preflight before
+continuing.
 
 ## Safety Boundaries
 

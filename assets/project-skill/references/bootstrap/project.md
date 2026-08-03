@@ -22,7 +22,7 @@ authentication, service, security, and public-contract uncertainty blocks implem
   documentation, and CI; it requires approval before implementation.
 - `tasks.md` maps every acceptance criterion to owner/path and validation.
 - `review.md` covers architecture, code, security, commands, environment, contract, optional
-  Integration notes, knowledge, and documentation entropy.
+  Integration notes, knowledge, and documentation retention.
 - Optional Integration notes record whether a later exact commit boundary will be needed.
 
 Prefer this dependency direction unless the approved plan proves a better project boundary:
@@ -57,4 +57,4 @@ clean up only resources they created.
 
 Before close, run the declared primary scenario and gates, verify dependency direction, reject
 secret values and guessed runtime facts, and complete all ECL evidence. When the user requests
-Integration, establish an exact commit boundary and continue through I2.
+Integration, establish an exact commit boundary and continue through integration approval (I2).

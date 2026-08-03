@@ -2,7 +2,8 @@
 
 ## Inputs
 
-- Change spec, locate evidence, current Registry contracts, and canonical baseline.
+- Change spec, locate evidence, current coordination Registry contracts, and canonical Git
+  integration base.
 - Project command and verification catalogs.
 - Applicable L2/L3 knowledge and current stage rules.
 
@@ -13,18 +14,18 @@ from preferences, and distinguish configured commands from adapter-derived candi
 
 ## Deterministic Commands
 
-- After publishing initial scope, run `change preflight` before finalizing the plan and again only
-  after materially changing path, contract, or baseline claims.
+- After recording initial scope with `change publish`, run `change preflight` before finalizing the
+  plan and again only after materially changing path, contract, or Git integration-base claims.
 - Run `change publish` with paths and a contract when high-impact boundaries change.
 - Run `check_stage_artifacts.py --stage plan` before requesting plan approval.
 
 ## Actions
 
-1. Map each acceptance criterion to an owner, task, and validation command.
-2. Publish affected paths and dependencies.
-3. Publish API/schema/event/config/permission/module contracts when required.
+1. Map each acceptance criterion to an assigned owner, task, and validation command.
+2. Record affected paths and dependencies in the coordination Registry.
+3. Record API/schema/event/config/permission/module contracts when required.
 4. Define compatibility, migration, rollback-at-code-level, risk, and test strategy.
-5. Resolve Registry conflicts and obtain the project-native plan approval.
+5. Resolve coordination Registry conflicts and obtain the project-native plan approval.
 
 ## Outputs
 
@@ -32,13 +33,13 @@ from preferences, and distinguish configured commands from adapter-derived candi
 
 ## Exit
 
-Every task traces to acceptance; owner, compatibility, dependencies, and verification are explicit;
-no unresolved Registry conflict or high-impact ambiguity remains.
+Every task traces to acceptance; assignment, compatibility, dependencies, and verification are
+explicit; no unresolved coordination Registry conflict or high-impact ambiguity remains.
 
 ## Stop And Escalate
 
-Stop when another Lane owns an incompatible path/contract, a required command is only speculative,
-or approval has not been obtained.
+Stop when another parallel work Lane holds an incompatible path/contract claim, a required command
+is only speculative, or approval has not been obtained.
 
 ## Rules
 

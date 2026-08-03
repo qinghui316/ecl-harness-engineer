@@ -48,5 +48,5 @@ section when it does not apply.
 
 ## Handoff
 
-- Current owner/Lane: recorded in Registry.
+- Current assigned owner/parallel work Lane: recorded in the coordination Registry.
 - Resume from: TBD

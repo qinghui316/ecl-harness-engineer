@@ -4,14 +4,14 @@
 
 TBD
 
-## Impacted Modules, Owners And Paths
+## Impacted Modules, Component Owners And Paths
 
 - Owner: TBD
 - Paths: TBD
 
 ## Interfaces, Data, Permissions And Contracts
 
-Not applicable or link the published contract record.
+Not applicable or link the contract recorded in the coordination Registry.
 
 ## Spec Gaps Found From Planning
 

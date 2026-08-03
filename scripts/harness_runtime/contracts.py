@@ -198,7 +198,9 @@ def validate_audit(audit: dict[str, Any]) -> dict[str, Any]:
         or not isinstance(entropy.get("before"), dict)
         or not isinstance(entropy.get("after"), dict)
     ):
-        raise ValueError("Audit entropy_report requires before and after objects.")
+        raise ValueError(
+            "Audit entropy_report (documentation duplication report) requires before and after objects."
+        )
     return audit
 
 

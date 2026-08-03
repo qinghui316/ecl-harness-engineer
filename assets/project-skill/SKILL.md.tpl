@@ -8,17 +8,22 @@ description: "Operate the local Harness for {{PROJECT_NAME}}. Use for project wo
 Use this project Harness when the current project id is `{{PROJECT_ID}}`. Its collaboration mode is
 `{{MODE}}`.
 
+A Change is one recorded and validated unit of work. The coordination Registry stores shared
+worktree facts, and a Lane is one parallel work lane. E1 is the user approval checkpoint that
+starts a periodic Harness review. I2 is the user approval to land an independently reviewed
+Integration candidate. Both identifiers remain in commands and persisted state.
+
 ## Start
 
 1. Read `references/rules/critical.md` and `references/project_wiki/overview.md`.
 2. Use the generated `references/project_wiki/catalog.md` to select relevant L2/L3 current,
-   target, decision, or guide documents by module and Owner. Follow linked reference-source maps
+   target, decision, or guide documents by module and knowledge owner. Follow linked reference-source maps
    only when the task crosses those boundaries.
 3. For explanation, navigation, or read-only source research, continue from project knowledge and
-   cited implementation evidence without running Registry commands.
+   cited implementation evidence without running coordination Registry commands.
 4. Classify repository mutations before running commands. In single-Lane mode, Small Changes
    proceed with targeted project verification. In multi-Lane mode, every repository mutation uses
-   a Structured Change so its paths are claimed before `{{CHANGE_COMMAND}} preflight
+   a Structured Change so its affected paths are recorded before `{{CHANGE_COMMAND}} preflight
    --project-root <cwd>` runs.
 5. Read the current workflow and `references/rules/by-stage/<stage>.md` before making that stage's
    decisions.
@@ -29,7 +34,7 @@ If the detected project id differs, stop and locate the correct project Harness.
 
 - **Small:** single-Lane, local, low-risk work without contract, architecture, cross-module, release,
   permission, data, or multi-step validation impact. A formal Change and preflight are optional.
-- **Structured:** create one Change, publish scope and high-impact contracts, approve its plan,
+- **Structured:** create one Change, record its scope and high-impact contracts, approve its plan,
   implement, verify, and close with complete evidence.
 
 ## Commands
@@ -44,10 +49,13 @@ If the detected project id differs, stop and locate the correct project Harness.
 
 For ordinary current, target, decision, guide, workflow, or rule documentation, read the knowledge
 model, update the Markdown directly in the current Structured Change, and let `change reindex` or
-`change close` refresh the generated catalog and fingerprint baseline. Use
+`change close` refresh the generated catalog and knowledge source baseline. Use
+`kind: current` only for integrated product behavior or current Harness-process facts. Keep an
+unintegrated product claim in Change evidence or a target/in-progress document; after landing, a
+Structured Change may promote it to current. Use
 `references/analysis-contract.md` only for a semantic audit or full migration. E1 follows
 `references/workflows/evolve.md`; Agent review expands scope when catalog neighbors reveal an
-overlap, while Runtime only validates metadata, links, fingerprints, and exact conflicts. Use
+overlap, while Runtime only validates metadata, links, content digests, and exact conflicts. Use
 `references/bootstrap/project.md` only for an approved empty-project bootstrap Change. Read
 `references/runtime-modules.md` only to maintain a helper or diagnose a traceback. Read the
 Integration workflow before creating, detaching, or removing a worktree.
@@ -56,10 +64,10 @@ Read `references/git-collaboration.md` only when creating, sharing, cloning, upd
 diagnosing an independent Git repository for this project Skill. Ordinary project work does not load
 or run that Git workflow.
 
-Rerun preflight after material path, contract, or baseline changes, before closing multi-Lane
-Structured work, and before Integration. Run knowledge scan/check only for suspected drift, a
-related preflight signal, audit, migration, or E1; these commands report evidence and never rewrite
-project knowledge.
+Rerun preflight after material path, contract, or Git integration-base changes, before closing multi-Lane
+Structured work, and before Integration. Run knowledge scan/check only for suspected source changes, a
+related source-change signal, audit, migration, or E1; these commands report evidence and never
+rewrite project knowledge.
 
 ## Stage Route
 
@@ -75,32 +83,34 @@ project knowledge.
 | Evolve | `references/workflows/evolve.md` |
 | Bootstrap an empty business project | `references/workflows/bootstrap-project.md` |
 
-## Current Evidence
+## Source Precedence
 
-When sources disagree, use this order:
+When sources disagree, use the source that owns the question:
 
 ```text
-Registry baseline events and contracts
--> current Change evidence
--> repository code, manifests, configuration, tests, and accepted interfaces
--> periodic L1/L2/L3 project knowledge
+coordination state -> Registry integration-base events and contracts
+accepted work scope -> current Change spec, plan, and evidence
+implemented behavior -> repository code, manifests, configuration, tests, and accepted interfaces
+periodic project context -> L1/L2/L3 project knowledge
 ```
 
-Related drift returns `refresh-needed`; revise the Change before continuing. `state/changes/` owns
-complete Change evidence and history. Registry records coordinate Lanes but do not replace the
-accepted spec or plan.
+A related source change returns `refresh-needed`; revise the Change before continuing.
+`state/changes/` stores complete Change evidence and history. Coordination Registry records align
+parallel work Lanes but do not replace implemented behavior or the accepted spec and plan.
 
-## Integration And Evolution
+## Integration Approval And Harness Evolution Review
 
-Integration applies selected exact completion ranges. The user confirms I2 only after aggregate
-validation and candidate-bound independent review.
+Integration applies selected exact completion ranges. The user gives integration approval (I2)
+only after aggregate validation and independent review of the exact candidate commit.
 
-Every fifth eligible Change creates an Evolution window. During E1, default to a focused update of
-Agent-owned project documents, affected rules, workflows, templates, checks, helpers, or routes.
-Search related catalog Owners before creating knowledge and explain why Merge or Replace is not
-appropriate. Build a complete semantic rescan only when renderer-owned current facts or
-architecture changed. A candidate applies only when its bound Judge report and validation satisfy
-`references/audit-rubric.json`; there is no E2.
+Every fifth eligible Change creates a fixed set of Change IDs for periodic Harness review (E1).
+Default to a focused update of agent-maintained project documents, affected rules, workflows,
+templates, checks, helpers, or routes. Search related knowledge owners before creating a document
+and explain why Merge or Replace is not appropriate. Run a complete project knowledge refresh only
+when current facts generated by full project analysis, architecture, reference maps, commands,
+environment, or related knowledge sources changed. Apply a staged
+Evolution candidate only when an independent review tied to its content digest and the required
+validation satisfy `references/audit-rubric.json`; there is no E2.
 
 ## Rule Source
 

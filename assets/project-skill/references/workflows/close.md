@@ -9,14 +9,15 @@
 
 Choose completed, blocked, or abandoned honestly. Completion depends on accepted evidence and
 passing validation; Git state and Integration intent do not determine whether the Change qualifies.
+Status `blocked` is terminal; use parking when the same Change is expected to resume.
 
 ## Deterministic Commands
 
 - In multi-Lane mode, rerun `change preflight` for a Structured Change before close. Single-Lane
-  work reruns it only after material path, contract, or baseline changes.
+  work reruns it only after material path, contract, or Git integration-base changes.
 - Run `check_stage_artifacts.py --stage close`.
 - Run `change close` once to validate evidence and archive the terminal Change.
-- Rebuild the Skill-owned Change INDEX plus generated knowledge catalog/baseline after every
+- Rebuild the Skill-owned Change INDEX plus generated knowledge catalog/source baseline after every
   terminal close. Unchanged knowledge retains its existing source fingerprints.
 - Run `evolve check` after terminal close.
 
@@ -25,7 +26,7 @@ passing validation; Git state and Integration intent do not determine whether th
 1. Update summary/review with outcome, validation, risks, and handoff.
 2. Resolve or document every pending task.
 3. Close the Change without requiring a Git commit; optionally record an existing commit boundary.
-4. Publish the compact terminal Registry record and evolution eligibility.
+4. Record the compact terminal Change record and Evolution eligibility in the coordination Registry.
 5. Record known follow-up as a next action. Later work uses a new Change whose spec or summary
    references this archived Change; do not mutate terminal evidence.
 

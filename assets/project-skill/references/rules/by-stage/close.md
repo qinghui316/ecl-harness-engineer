@@ -4,9 +4,9 @@
 
 ## HR-06: Keep Record Types Separate
 
-Integration and Evolution records are not Changes and never count toward the five-Change window.
+Integration and Evolution records are not Changes and never count toward the set of five Changes reviewed by Evolution.
 
-**On violation:** Recompute the eligible window from unique Change records.
+**On violation:** Recompute the eligible set from unique Change records.
 
 ## HR-07: Count Only Qualified Changes
 
@@ -14,11 +14,11 @@ Evolution eligibility requires completed, validation-passed, evidence-complete, 
 
 **On violation:** Exclude the record and repair its evidence or status before recounting.
 
-## HR-08: Evolve At Five
+## HR-08: Review Every Five Qualified Changes
 
-Create pending at five unevaluated qualified Changes; Changes one through four do not start maintenance.
+Create pending review state at five unevaluated qualified Changes; Changes one through four do not start Harness maintenance.
 
-**On violation:** Leave ordinary work unblocked and restore the correct pending window.
+**On violation:** Leave ordinary work unblocked and restore the correct pending set of Change IDs.
 
 ## HR-12: Bound Historical Loading
 

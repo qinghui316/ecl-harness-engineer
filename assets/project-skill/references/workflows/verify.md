@@ -4,7 +4,7 @@
 
 - Acceptance criteria, changed paths, current contract, and implementation evidence.
 - Project command/verification catalogs with configured/candidate/executed status.
-- Review requirements and baseline failures.
+- Review requirements and pre-change verification failures.
 
 ## Agent Judgment
 
@@ -21,7 +21,7 @@ environmental, or blocked; inspection alone is never completion evidence.
 
 1. Verify each acceptance criterion with a command, test, runtime observation, or bounded review.
 2. Validate contracts, compatibility, documentation, encoding, and generated artifacts as applicable.
-3. Compare failures with the captured baseline and record residual risk.
+3. Compare failures with the captured pre-change verification baseline and record residual risk.
 
 ## Outputs
 

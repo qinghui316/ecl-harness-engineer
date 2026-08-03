@@ -1,4 +1,4 @@
-"""Evidence and four-file analysis-bundle validation."""
+"""Evidence and four control-file analysis-bundle validation."""
 
 from __future__ import annotations
 
@@ -448,7 +448,7 @@ def load_analysis_bundle(
                 "priority": "P1",
                 "dimension": "project_knowledge",
                 "issue": "Semantic project audit has not run.",
-                "fix": "Analyze project evidence and supply a complete four-file bundle.",
+                "fix": "Analyze project evidence and supply a complete four control-file bundle.",
                 "evidence": [],
             }],
             "strengths": [],

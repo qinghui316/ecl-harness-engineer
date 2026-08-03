@@ -24,7 +24,7 @@ and validation review. The Runtime validates this attestation mechanically; it d
 ## Prior Change Review (When Applicable)
 
 - Related archive remained unchanged: TBD
-- Inherited facts were rechecked against current baseline/contracts: TBD
+- Inherited facts were rechecked against the current Git integration base and contracts: TBD
 - Remaining or corrective scope is explicit: TBD
 
 ## Code And Validation
@@ -42,6 +42,6 @@ and validation review. The Runtime validates this attestation mechanically; it d
 ## Knowledge And Evolution Signals
 
 - Project-map impact: none recorded
-- Repeated failure/correction/drift signal: none recorded
-- Documentation entropy: retain | merge | retire | archive-only | not applicable
+- Repeated failure/correction/source-change signal: none recorded
+- Documentation retention: retain | merge | retire | archive-only | not applicable
 - Experience candidate: promote | retain | merge | retire | archive-only | none

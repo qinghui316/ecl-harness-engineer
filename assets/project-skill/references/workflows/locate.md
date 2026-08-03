@@ -22,7 +22,7 @@ allowed for locating code; implementation scope still requires source, contract,
 ## Actions
 
 1. Disambiguate the request into plausible technical interpretations.
-2. Select two or three candidate owners from L1/L2.
+2. Select two or three candidate modules/components from L1/L2.
 3. Search for declarations and callers without loading the whole repository.
 4. Trace the relevant call/data path and confirm its tests, contracts, and error path.
 5. Read L3 when terminology, schema, API, UI, provider, or runtime translation is required. Follow
@@ -31,16 +31,17 @@ allowed for locating code; implementation scope still requires source, contract,
 ## Outputs
 
 - Owning module, impacted paths, relevant interfaces/contracts, call or data flow, and tests.
-- Evidence citations and any knowledge drift signal.
+- Evidence citations and any knowledge source-change signal.
 
 ## Exit
 
-The modification point, owner, dependency direction, and verification surface are evidence-backed.
+The modification point, owning module/component, dependency direction, and verification surface are
+evidence-backed.
 
 ## Stop And Escalate
 
-Stop when an L3 mapping lacks evidence, multiple owners remain materially plausible, or the current
-contract conflicts with another Lane.
+Stop when an L3 mapping lacks evidence, multiple owning modules/components remain materially
+plausible, or the current contract conflicts with another parallel work Lane.
 
 ## Rules
 

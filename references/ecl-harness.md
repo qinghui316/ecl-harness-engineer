@@ -5,20 +5,20 @@
 Use the Evolution Constraint Language workflow inside one shared project Harness. It provides
 explicit requirements, planning, task evidence, validation, handoff, history, and Evolution.
 
-## Owners
+## Responsibility Map
 
-| Artifact | Owner and role |
+| Artifact | Responsible source and role |
 | --- | --- |
 | Project Harness `SKILL.md` | Short entry and stage router |
 | `references/workflows/` | Stage instructions and exit criteria |
 | `references/rules/red_lines.yaml` | Only machine rule source |
-| `state/changes/active/` | Current structured Change evidence, one per active Lane |
+| `state/changes/active/` | Current structured Change evidence, one per active parallel work Lane |
 | `state/changes/parking/` | Paused Changes that may resume |
 | `state/changes/archive/` | Complete terminal Change history |
 | `state/changes/INDEX.json` | Generated searchable Change index; never hand-edit |
-| `state/registry/` | Lane, path, contract, baseline, completion, and Integration facts |
+| `state/registry/` | Parallel work Lane, path, contract, Git integration-base, completion, and Integration facts |
 | `state/evolution/` | Five-Change pending, proposals, evaluated IDs, and results |
-| Business Git | Accepted code and authoritative business/project documents |
+| Project repository | Accepted code and authoritative project documentation |
 
 All local worktrees and Codex/Claude runtimes resolve the same physical Skill. Do not create a
 separate Change archive, rule manual, status ledger, or evolution state per worktree.
@@ -33,8 +33,9 @@ A clearly local copy/comment/formatting or single-file fix may remain Small in s
 it has no boundary, runtime, compatibility, or multi-step validation impact. Small work records
 assumptions and verification in the final response and does not count toward Evolution.
 
-In multi-Lane mode, every repository mutation is Structured. Without an atomic path claim, one Lane
-cannot prove that another Lane is not concurrently changing the same path.
+In multi-Lane mode, every repository mutation is Structured. Without an exclusive path claim in the
+coordination Registry, one parallel work Lane cannot prove that another Lane is not concurrently
+changing the same path.
 
 Decision order:
 
@@ -59,7 +60,7 @@ Support requirement-first, plan-first, and mixed input.
 
 ## Change Evidence
 
-Each structured Change owns:
+Each structured Change contains:
 
 ```text
 summary.md
@@ -83,20 +84,21 @@ clarifications. Spec owns WHAT and WHY.
 
 ### Plan
 
-Keep technical approach, impacted modules/owners/paths, interfaces/data/permissions/contracts,
+Keep technical approach, impacted modules/component owners/paths, interfaces/data/permissions/contracts,
 planning-discovered spec gaps, risks/mitigations, AC-mapped verification, and plan-review evidence.
 Plan owns HOW. A planning-discovered requirement gap returns to spec instead of hiding inside tasks.
 
 ### Tasks
 
-Use stable IDs. Each implementation/validation task names AC, owner/path, action, and verification.
-Mark parallel-safe work only when ownership and dependency evidence support it. Pending or deferred
-tasks must remain visible at close.
+Use stable IDs. Each implementation/validation task names AC, assigned owner/path, action, and
+verification. Mark parallel-safe work only when responsibility and dependency evidence support it.
+Pending or deferred tasks must remain visible at close.
 
 ### Review
 
-Record intake/spec/plan/code/validation/contract/Integration/knowledge/entropy review. Structured
-implementation cannot begin until acceptance is observable, high-impact contracts are published,
+Record intake/spec/plan/code/validation/contract/Integration/knowledge and documentation-retention
+review. Structured
+implementation cannot begin until acceptance is observable, high-impact contracts are recorded,
 and plan review is approved.
 
 ## Shared Multi-Lane Lifecycle
@@ -111,31 +113,34 @@ active -> abandoned -> archive
 ```
 
 - Every Change has a globally unique canonical ID before artifacts are created.
-- Every worktree has one Lane; a Lane has at most one active Change.
-- Different Lanes may work concurrently.
+- Every worktree has one parallel work Lane; a Lane has at most one active Change.
+- Different parallel work Lanes may work concurrently.
 - New claims use exclusive create so simultaneous identical IDs have one winner.
-- A terminal Change cannot be reopened by publish.
+- A terminal Change cannot be reopened by `change publish`.
+- Terminal status `blocked` means the accepted scope could not complete because of an external
+  decision or dependency. Use `parking` for work that is expected to resume in the same Change.
 - When work corrects or continues a terminal Change, create a new Change and read the relevant
   archived summary first. In the new spec or summary, name that archive, distinguish inherited
   decisions from superseded assumptions, state the remaining scope, and revalidate those facts
   against current evidence. Keep the archived Change unchanged.
 - Parking preserves complete evidence and frees the Lane for another Change.
-- Resume restores the same owner Lane and fails when that Lane already has active work.
+- Resume restores the same assigned Lane and fails when that Lane already has active work.
 
-## Registry Preflight And Contracts
+## Coordination Registry Preflight And Contracts
 
 Pure explanation, navigation, read-only source research, and single-Lane Small Changes do not require preflight.
-For Structured Changes, create or reuse one Change, publish its initial scope, then run preflight
-before plan approval or editing. Rerun after material path, contract, or baseline changes, before a
-multi-Lane close, and before Integration; do not rerun before every source read or unchanged stage
-boundary. Multi-Lane mutations and any work with Structured impact publish scope before editing.
-Publish project-relative paths. Require a contract for API, schema, event, configuration,
+For Structured Changes, create or reuse one Change, record its initial scope with `change publish`,
+then run preflight before plan approval or editing. Rerun after material path, contract, or Git
+integration-base changes, before a multi-Lane close, and before Integration; do not rerun before
+every source read or unchanged stage
+boundary. Multi-Lane mutations and any work with Structured impact record scope before editing.
+Record project-relative paths. Require a contract for API, schema, event, configuration,
 permission, or module-boundary changes.
 
-Contracts record kind, stable subject, owner module, operation, affected paths, consumers,
+Contracts record kind, stable subject, owning module, operation, affected paths, consumers,
 dependencies, compatibility, migration note, evidence, and status. Preflight identifies overlap,
-dependency, baseline advancement, and related Wiki drift. It returns replan only for affected scope;
-unrelated Lane work continues.
+dependency, Git integration-base advancement, and related Wiki source changes. It returns replan
+only for affected scope; unrelated work in other Lanes continues.
 
 External IDs and paths are untrusted. Reject separators, traversal, absolute paths, non-canonical
 filenames, and mismatched record IDs.
@@ -146,11 +151,11 @@ When Change evidence or shared facts change at a stage boundary:
 
 1. Update summary phase/outcome/next step.
 2. Update spec when WHAT/WHY or acceptance changed.
-3. Update plan when HOW, ownership, contracts, risk, or verification changed.
+3. Update plan when HOW, component responsibility, contracts, risk, or verification changed.
 4. Update tasks immediately when work completes, blocks, or is deferred.
 5. Record review and validation evidence before claiming the stage exit.
-6. Publish changed Registry facts and rerun preflight when paths, contracts, or baseline assumptions
-   materially changed.
+6. Record changed coordination Registry facts and rerun preflight when paths, contracts, or Git
+   integration-base assumptions materially changed.
 
 Hook/check tooling may validate but never auto-write Change docs, move state, or rebuild current
 facts without the explicit lifecycle command.
@@ -169,14 +174,14 @@ never become evolution-eligible.
 
 ## INDEX And Historical Context
 
-`state/changes/INDEX.json` is generated from Registry records and Change summaries after new,
+`state/changes/INDEX.json` is generated from coordination Registry records and Change summaries after new,
 publish, park, resume, close, or explicit reindex. It records Change/Lane/status, scope, paths,
 tags, validation, base/completion commit, summary path/excerpt, and update time.
 
 Normal context:
 
 1. Project Harness entry, critical rules, and L1.
-2. Registry preflight and current Lane/Change.
+2. Coordination Registry preflight and current parallel work Lane/Change.
 3. Current workflow and selected L2/L3.
 4. Current Change summary, then details needed for the stage.
 
@@ -196,49 +201,52 @@ Each acceptance criterion needs a command, scenario, runtime observation, or bou
 Record command, working directory, exit status, report path, and relevant output. Classify failures:
 
 - introduced: caused by the Change and must be fixed or block close;
-- pre-existing: proven against baseline and reported without weakening the gate;
+- pre-existing: proven against the pre-change verification baseline and reported without weakening the check;
 - environmental: missing service/tool/secret or host condition;
 - blocked: requires a decision or dependency outside accepted scope.
 
-Repeated failures, user corrections, Integration conflicts, contract drift, and document drift
+Repeated failures, user corrections, Integration conflicts, contract changes, and knowledge source changes
 become Evolution evidence. A one-off bug is not automatically a permanent rule.
 
-## Five-Change Evolution
+## Periodic Harness Evolution Review
 
 Eligible Changes are unique, completed, validation-passed, evidence-complete, and non-abandoned.
-Integration and Evolution records and Small work are excluded. Any Lane may make the global count
-reach five.
+Integration and Evolution records and Small work are excluded. Any parallel work Lane may make the
+global count reach five.
 
 At five, create pending but do not block ordinary work. After E1:
 
-1. Atomically claim one evolution owner and freeze five IDs; later Changes queue.
+1. Acquire the exclusive write lock followed by one Evolution lease and record the fixed set of five
+   Change IDs; later Changes queue.
 2. Read INDEX and summaries first, then only necessary details and Integration signals.
 3. Classify candidates as Promote, Retain, Merge, Retire, or Archive-only.
 4. Ordinary project documents, rules, workflows, templates, checks, helpers, and routes update
-   directly in their own Structured Changes. During E1, default to a focused delta; build a complete
-   rescan only when renderer-owned current facts or architecture changes.
-5. Search catalog by module, Owner, kind, and task terms; read related owners and direct links,
+   directly in their own Structured Changes. During E1, default to a focused delta; use a
+   full-refresh Evolution only when current facts generated by full project analysis, architecture,
+   reference maps, commands, environment, or related knowledge sources change.
+5. Search catalog by module, knowledge owner, kind, and task terms; read related documents and direct links,
    prefer Merge/Replace, and explain why a new file is necessary.
-6. Stage a complete frozen candidate and run affected Harness checks plus necessary project gates.
-7. Request an independent judge that did not author the proposal.
-8. Apply only for score >= 80, no hard issue, and passing validation/full test.
+6. Stage a complete candidate and run affected Harness checks plus necessary project validation.
+7. Request an independent reviewer that did not author the proposal and bind the review to the
+   candidate content digest.
+8. Apply only for score >= 80, no blocking issue, and passing validation/full test.
 9. Record keep/rejected/noop, mark evaluated IDs, preserve archive/INDEX/Registry, and clear pending.
 
-There is no E2. Passing work applies after E1. Unavailable judge is dry-run noop. Rejected/noop
-must preserve current content; publication is transactional and cannot replace dynamic state with a
-stale candidate copy.
+There is no E2. Passing work applies after E1. When no independent reviewer is available, status
+`noop` records that review completed with no change applied. Rejected/noop must preserve current
+content; the recoverable transaction cannot replace mutable state with a stale candidate copy.
 
-## Experience And Entropy
+## Knowledge Retention And Duplication
 
 - Promote repeated current project constraints into the best existing rule/workflow/template/check.
 - Retain concise current content that still changes correct behavior.
-- Merge duplicate current owners and closeout repetition.
+- Merge duplicate current documents and closeout repetition.
 - Retire contradicted, superseded, or mechanically enforced prose.
 - Keep one-off/historical narrative Archive-only.
 
-Entry is a map, workflows instruct, rules constrain, Wiki maps project facts, Registry coordinates,
-Change files explain one task, and archive preserves history. Do not let any owner become a phase
-ledger or full changelog.
+Entry is a map, workflows instruct, rules constrain, Wiki maps project facts, the coordination
+Registry aligns parallel work, Change files explain one task, and archive preserves history. Do not
+let any current document become a phase ledger or full changelog.
 
 ## Commands
 

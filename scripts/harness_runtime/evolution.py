@@ -1,4 +1,4 @@
-"""E1 ownership, candidate staging, Judge gates, publication, and results."""
+"""Evolution leases, candidate staging, independent review, transactions, and results."""
 
 from __future__ import annotations
 
@@ -74,12 +74,12 @@ def evolution_owner_record(skill_root: Path) -> dict[str, Any]:
 def require_evolution_owner(skill_root: Path, owner_id: str | None = None) -> dict[str, Any]:
     owner = evolution_owner_record(skill_root)
     if not owner:
-        raise HarnessError("Evolution requires an active E1 owner claim.")
+        raise HarnessError("Evolution requires an active exclusive lease after E1 approval.")
     if owner_id and owner.get("owner") != owner_id:
-        raise HarnessError("Evolution owner id does not match the active claim.")
+        raise HarnessError("Evolution lease-holder ID does not match the active lease.")
     writer = read_json(writer_lock_path(skill_root) / "owner.json", {})
     if writer.get("kind") != "evolution" or writer.get("owner_id") != owner.get("owner"):
-        raise HarnessError("Evolution does not own the shared project Harness writer lock.")
+        raise HarnessError("Evolution does not hold the project Harness exclusive write lock.")
     return owner
 
 def copy_non_state_skill(source: Path, destination: Path) -> None:
@@ -153,7 +153,7 @@ def load_evolution_bundle(
     if all((bundle / name).is_file() for name in full_names):
         profile, audit, delta, architecture, loaded = load_analysis_bundle(args, context)
         if loaded is None or profile.get("analysis_status") != "complete":
-            raise HarnessError("Full Evolution staging requires a complete analysis bundle.")
+            raise HarnessError("Full-refresh Evolution staging requires a complete analysis bundle.")
         return "full", profile, audit, delta, architecture, loaded
     delta = load_focused_evolution_bundle(bundle)
     return "focused", None, None, delta, None, bundle
@@ -300,14 +300,14 @@ def evolve_check(args: argparse.Namespace) -> dict[str, Any]:
     if args.claim_owner:
         owner_id = canonical_id(args.claim_owner, "Evolution owner id")
         if not args.e1_confirmed:
-            raise HarnessError("Claiming evolution ownership requires explicit --e1-confirmed.")
+            raise HarnessError("Acquiring the Evolution lease requires explicit --e1-confirmed approval.")
         if not result["pending"]:
             raise HarnessError("Evolution is not pending.")
         owner = skill_root / "state" / "registry" / "locks" / "evolution-owner"
         existing_owner = read_json(owner / "owner.json", {})
         if existing_owner:
             if existing_owner.get("owner") != owner_id:
-                raise HarnessError("Another evolution owner is already active.")
+                raise HarnessError("Another process already holds the exclusive Evolution lease.")
             require_evolution_owner(skill_root, owner_id)
             result["owner"] = owner_id
             result["proposal_path"] = str(skill_root / "state" / "evolution" / "proposals")
@@ -317,7 +317,7 @@ def evolve_check(args: argparse.Namespace) -> dict[str, Any]:
             owner.mkdir()
         except FileExistsError as exc:
             release_writer(skill_root, "evolution", owner_id)
-            raise HarnessError("Another evolution owner is already active.") from exc
+            raise HarnessError("Another process already holds the exclusive Evolution lease.") from exc
         atomic_write_json(owner / "owner.json", {
             "owner": owner_id,
             "claimed_at": utc_now(),
@@ -360,18 +360,18 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         )
         if state.get("last_proposal_id") == proposal_id and not owner_is_current_window:
             if state.get("last_owner_id") != owner_id:
-                raise HarnessError("Completed Evolution owner does not match this retry.")
+                raise HarnessError("Completed Evolution lease-holder ID does not match this retry.")
             owner_path = skill_root / "state" / "registry" / "locks" / "evolution-owner"
             owner = current_owner
             if owner and owner.get("owner") != owner_id:
-                raise HarnessError("Evolution cleanup is owned by another E1 owner.")
+                raise HarnessError("Another process holds the Evolution lease required for cleanup.")
             writer = read_json(writer_lock_path(skill_root) / "owner.json", {})
             if writer and (
                 writer.get("kind") != "evolution" or writer.get("owner_id") != owner_id
             ):
-                raise HarnessError("Evolution cleanup cannot release another operation's writer.")
+                raise HarnessError("Evolution cleanup cannot release another operation's exclusive write lock.")
             if owner_path.exists():
-                remove_owned_tree(owner_path, owner_path.parent, "Evolution owner claim")
+                remove_owned_tree(owner_path, owner_path.parent, "Exclusive Evolution lease")
             if writer:
                 release_writer(skill_root, "evolution", owner_id)
             staging = skill_root / "state" / "evolution" / "staging"
@@ -388,12 +388,12 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
                 "next_window": next_window,
             }
         if not pending_ids:
-            raise HarnessError("No pending evolution window exists.")
+            raise HarnessError("No pending set of Change IDs exists for Evolution review.")
         owner_path = skill_root / "state" / "registry" / "locks" / "evolution-owner"
         owner = require_evolution_owner(skill_root, owner_id)
         owner_pending = owner.get("pending_change_ids", [])
         if owner_pending != pending_ids:
-            raise HarnessError("Evolution owner claim does not match the frozen pending Change window.")
+            raise HarnessError("The Evolution lease does not match the fixed set of Change IDs under review.")
         proposal = skill_root / "state" / "evolution" / "proposals" / f"{proposal_id}.md"
         require_evolution_proposal(proposal)
         base_fingerprint = owner.get("base_fingerprint")
@@ -411,9 +411,9 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
             candidate = skill_root / "state" / "evolution" / "staging" / candidate_id
             metadata = read_json(candidate / "state" / "candidate.json", {})
             if metadata.get("proposal_id") != proposal_id or metadata.get("owner") != owner_id:
-                raise HarnessError("Staged candidate does not match the proposal or evolution owner.")
+                raise HarnessError("Staged candidate does not match the proposal or Evolution lease holder.")
             if metadata.get("base_fingerprint") != base_fingerprint:
-                raise HarnessError("Staged candidate was built from a different Harness baseline.")
+                raise HarnessError("Staged candidate was built from a different pre-review Harness content digest.")
             protect_audit_rubric(skill_root, candidate)
             verify_candidate_binding(candidate, context, metadata, base_fingerprint)
 
@@ -428,7 +428,10 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
             if judge["verdict"] != args.status:
                 raise HarnessError("Evolution status does not match the judge report verdict.")
         elif not (args.status == "noop" and args.judge_unavailable):
-            raise HarnessError("Evolution completion requires --judge-report, except unavailable judge noop.")
+            raise HarnessError(
+                "Evolution completion requires --judge-report; when no independent reviewer is "
+                "available, record noop with --judge-unavailable."
+            )
         validation = judge.get("validation", {}) if judge else {}
         gate = load_audit_rubric(skill_root)["evolution_gate"]
         passed = bool(
@@ -446,7 +449,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         )
         if args.status == "keep" and not passed:
             raise HarnessError(
-                f"keep requires a bound score >= {gate['minimum_score']}, no hard issue, "
+                f"keep requires a bound score >= {gate['minimum_score']}, no blocking issue, "
                 "and passing validation."
             )
         score = judge.get("score") if judge else None
@@ -466,7 +469,9 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
                     state_snapshot_paths=(state_path, pending_path, results_path, manifest_path),
                 )
                 if harness_content_fingerprint(skill_root) != metadata.get("candidate_content_fingerprint"):
-                    raise HarnessError("Published candidate fingerprint does not match the validated candidate.")
+                    raise HarnessError(
+                        "Applied candidate content digest does not match the validated candidate."
+                    )
             atomic_append_tsv(
                 results_path,
                 [
@@ -502,7 +507,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         if transaction is not None:
             commit_content_transaction(transaction)
         if owner_path.exists():
-            remove_owned_tree(owner_path, owner_path.parent, "Evolution owner claim")
+            remove_owned_tree(owner_path, owner_path.parent, "Exclusive Evolution lease")
         release_writer(skill_root, "evolution", owner_id)
         staging = skill_root / "state" / "evolution" / "staging"
         if staging.exists():

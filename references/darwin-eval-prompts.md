@@ -42,7 +42,7 @@ environmental validation, parks, resumes, and completes. What evidence and gates
 Expected: intake classification, at most three high-impact questions, WHAT/WHY spec, HOW plan,
 spec-gap feedback, plan review, AC-task-validation traceability, environmental failure attribution,
 park/resume, review, summary, optional close-time commit metadata, Integration-time exact ranges,
-and generated INDEX. Evidence stays in project Harness `state/changes`, not business Git.
+and generated INDEX. Evidence stays in project Harness `state/changes`, not the project repository.
 
 ## 5. Selective History
 
@@ -97,7 +97,7 @@ baseline/Registry/signals, never Wiki, and is not a Change.
 Canonical landing succeeds, then a Registry write fails.
 ```
 
-Expected: recoverable landing phase and retained writer ownership; retry completes remaining
+Expected: recoverable landing phase and retained exclusive-write-lock record; retry completes remaining
 Registry/cleanup work idempotently. Do not abort or repeat the canonical merge.
 
 ## 11. Fifth-Change Evolution
@@ -106,29 +106,31 @@ Registry/cleanup work idempotently. Do not abort or repeat the canonical merge.
 Five unique validated evidence-complete Changes finish across several Lanes.
 ```
 
-Expected: one pending window, E1, unique owner, current evidence reanalysis, proposal with
-Promote/Retain/Merge/Retire/Archive-only, independent score >= 80, no hard issue, validation, then
+Expected: one pending set of five Change IDs, E1, one exclusive Evolution lease, current evidence
+reanalysis, proposal with
+Promote/Retain/Merge/Retire/Archive-only, independent score >= 80, no blocking issue, validation, then
 automatic apply. There is no E2. Changes 1-4 start no maintenance Agent.
 
 ## 12. Evolution Failure
 
 ```text
-The judge is unavailable, or the staged candidate changes after scoring.
+The independent reviewer is unavailable, or the staged candidate changes after scoring.
 ```
 
-Expected: unavailable judge is noop; tamper is rejected before publication; current Skill and
-dynamic state remain unchanged.
+Expected: unavailable independent review records noop; tamper is rejected before the transaction;
+current Skill and mutable state remain unchanged.
 
 ## 13. Evolution Concurrency
 
 ```text
-Changes 6 and 7 close while the first evolution candidate is staged and published.
+Changes 6 and 7 close while the first Evolution candidate is staged and applied.
 ```
 
-Expected: the frozen first window completes, newer Changes queue, and publication preserves current
-Registry, full Change archive, INDEX, integrations, contracts, baseline, and evolution state.
+Expected: review of the fixed first set completes, newer Changes queue, and the transaction preserves
+the current coordination Registry, full Change archive, INDEX, integrations, contracts, Git
+integration base, and Evolution state.
 
-## 14. Documentation Entropy
+## 14. Documentation Duplication And Stale Content
 
 ```text
 The generated entry, L1, a workflow, and archived summaries repeat the same current-state history.
@@ -145,7 +147,7 @@ verified, and no negative tests for checks.
 ```
 
 Expected: low semantic scores despite file presence. `agents/auditor.md` alone owns the weighting;
-findings name evidence, owner, project Harness effect, and validation.
+findings name evidence, responsible module/document, project Harness effect, and validation.
 
 ## 16. Evidence Extractor Boundary
 
@@ -156,8 +158,8 @@ from that output without an Analyzer, Auditor, or Creator review.
 
 Expected: the scanner returns only `partial` or `bootstrap_only` evidence. It may identify files,
 manifests, imports, tests, CI, and command candidates, but it does not certify purpose, module
-responsibilities, flows, audit scores, or publication artifacts. Semantic initialization requires
-the Agent-reviewed four-file bundle.
+responsibilities, flows, audit scores, or final migration artifacts. Semantic initialization requires
+the Agent-reviewed bundle with four control files and any declared artifact payloads.
 
 ## 17. Reference Source Navigation
 
@@ -169,7 +171,7 @@ future Agent discover and inspect that relationship from a different worktree?
 Expected: target analysis excludes reference source from target modules and commands. The target
 L2/L3 pages link an evidence-backed reference map, which records inspected commit, files, source
 structure, adaptation, boundaries, tests, and citations. The map points to the primary-worktree
-checkout; a secondary worktree follows the same project Harness links and detects source drift without
+checkout; a secondary worktree follows the same project Harness links and detects source changes without
 a reference command, profile, or runtime loading state.
 
 ## 18. Worktree Teardown Safety

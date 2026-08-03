@@ -1,4 +1,4 @@
-"""Read-only knowledge drift, link, citation, and entropy checks."""
+"""Read-only source-change, link, citation, and structural knowledge checks."""
 
 from __future__ import annotations
 
@@ -257,7 +257,7 @@ def _frontmatter_list(value: str) -> list[str]:
 
 
 def parse_agent_knowledge_frontmatter(path: Path) -> dict[str, Any] | None:
-    """Parse the deliberately small ECL YAML subset used by Agent-owned Wiki pages."""
+    """Parse the small ECL YAML subset used by agent-maintained Wiki pages."""
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -309,7 +309,7 @@ def parse_agent_knowledge_frontmatter(path: Path) -> dict[str, Any] | None:
     required = ("id", "layer", "kind", "status", "owner", "evidence")
     missing = [key for key in required if key not in values]
     if missing:
-        raise HarnessError(f"Agent-owned knowledge frontmatter is missing {', '.join(missing)}: {path}")
+        raise HarnessError(f"Agent-maintained knowledge frontmatter is missing {', '.join(missing)}: {path}")
     identifier = values["id"]
     if not isinstance(identifier, str) or canonical_id(identifier, "Knowledge document id") != identifier:
         raise HarnessError(f"Knowledge document id must already be canonical: {identifier!r}")
@@ -323,14 +323,14 @@ def parse_agent_knowledge_frontmatter(path: Path) -> dict[str, Any] | None:
     if values["managed_by"] not in {"agent", "renderer"}:
         raise HarnessError(f"Knowledge managed_by must be agent or renderer: {path}")
     if not isinstance(values["owner"], str) or not values["owner"].strip():
-        raise HarnessError(f"Agent-owned knowledge requires a non-empty owner: {path}")
+        raise HarnessError(f"Agent-maintained knowledge requires a non-empty knowledge owner: {path}")
     for key in ("modules", "evidence"):
         values.setdefault(key, [])
         if not isinstance(values[key], list) or not all(isinstance(item, str) and item.strip() for item in values[key]):
             raise HarnessError(f"Knowledge frontmatter {key} must be a non-empty-string array: {path}")
         values[key] = list(dict.fromkeys(item.strip().replace("\\", "/") for item in values[key]))
     if not values["evidence"]:
-        raise HarnessError(f"Agent-owned knowledge requires evidence: {path}")
+        raise HarnessError(f"Agent-maintained knowledge requires evidence: {path}")
     return values
 
 

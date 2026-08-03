@@ -21,8 +21,8 @@ or indented beneath it.
 - [ ] T003 [AC-001] Run targeted and required aggregate verification.
   - owner/path: validation evidence
   - validation: command/scenario TBD
-- [ ] T004 [AC-001] Complete review, summary, Registry publication, and close evidence.
-  - owner/path: Change evidence and Registry record
+- [ ] T004 [AC-001] Complete review, summary, coordination Registry update, and close evidence.
+  - owner/path: Change evidence and coordination Registry record
   - validation: close-stage artifact gate
 
 ## Deferred

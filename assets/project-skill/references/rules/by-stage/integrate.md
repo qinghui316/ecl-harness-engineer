@@ -4,9 +4,9 @@
 
 ## HR-06: Keep Record Types Separate
 
-Integration and Evolution records are not Changes and never count toward the five-Change window.
+Integration and Evolution records are not Changes and never count toward the set of five Changes reviewed by Evolution.
 
-**On violation:** Recompute the eligible window from unique Change records.
+**On violation:** Recompute the eligible set from unique Change records.
 
 ## HR-13: Keep Coordination Local
 

@@ -25,7 +25,7 @@ Use stage documents to route behavior. Keep the machine truth in
 | Implement | Scoped code and artifact updates | Tasks complete; no unauthorized scope expansion |
 | Verify | Command outcomes and acceptance evidence | Required checks pass or failure is classified and reported |
 | Close | Terminal evidence, validation, handoff, and Registry summary | Evidence complete; status is completed/blocked/abandoned |
-| Integrate | Integration Record and landing candidate | Aggregate review ready for I2 |
+| Integrate | Integration Record and landing candidate | Aggregate review ready for integration approval (I2) |
 | Evolve | Proposal, independent score, result row | Passing delta applied or no modification recorded |
 
 ## Change Classification
@@ -42,8 +42,8 @@ Structured work creates one unique Change with:
 - `tasks.md`: executable checklist mapped to acceptance criteria.
 - `reviews/review.md`: plan, code, validation, contract, optional integration notes, and documentation review.
 
-Keep complete Change files in project Harness `state/changes/` and publish compact machine-readable
-facts to the Registry. Close is one-stage in Git and non-Git projects. A commit boundary is optional
+Keep complete Change files in project Harness `state/changes/` and record compact machine-readable
+facts in the coordination Registry. Close is one-stage in Git and non-Git projects. A commit boundary is optional
 Change metadata and becomes mandatory only when the user selects that Change for Integration.
 
 ## Plan Gate
@@ -51,7 +51,7 @@ Change metadata and becomes mandatory only when the user selects that Change for
 Do not implement structured work until:
 
 - Acceptance criteria are observable.
-- High-impact contract effects are published.
+- High-impact contract effects are recorded in the coordination Registry.
 - Planning identifies the owning module and relevant tests.
 - The project-native plan review is approved.
 

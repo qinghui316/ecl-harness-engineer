@@ -262,23 +262,23 @@ Use `../agents/auditor.md` to assess more than file presence. Check:
 - environment and command reproducibility;
 - project-first routes and progressive context loading;
 - ECL lifecycle and Change evidence;
-- documentation drift and entropy;
+- documentation source changes, duplication, and stale content;
 - mechanical enforcement and actionable errors;
 - local project Harness identity, runtime links, Registry health, Integration, and Evolution;
-- migration ownership and duplicate truth.
+- migration responsibility and duplicate truth.
 
 For migration, classify every existing artifact before edits:
 
 | Decision | Meaning |
 | --- | --- |
-| `retain` | It remains authoritative in its current owner |
-| `move` | Harness-owned current behavior needs a project Harness owner |
+| `retain` | It remains authoritative in its current source |
+| `move` | Current Harness behavior needs a different responsible document or module |
 | `merge` | Multiple current sources must become one rule or knowledge entry |
 | `retire` | Current guidance is contradicted or superseded, with evidence |
 | `archive-only` | Useful history that must not load as current behavior |
 
-For an existing project Harness, record the owner and validation for each retained, merged,
-retired, or archive-only artifact before publication.
+For an existing project Harness, record the responsible module/document and validation for each
+retained, merged, retired, or archive-only artifact before applying the migration.
 
 ## E. Create Or Migrate
 
@@ -286,7 +286,7 @@ retired, or archive-only artifact before publication.
    local project Harness, runtime links, Registry layout, and generated indexes.
 2. Use the creator roles for semantic content:
    - `../agents/creator-docs.md` for repository routes, complete project knowledge, and project Harness
-     knowledge ownership;
+     knowledge maintenance;
    - `../agents/creator-config.md` for command/environment contracts and runtime helpers;
    - `../agents/creator-linters.md` for accepted deterministic checks with actionable errors.
 3. Select concrete templates from `documentation-templates.md`, `linter-templates.md`, and the

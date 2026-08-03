@@ -1884,7 +1884,10 @@ class HarnessCliTests(unittest.TestCase):
         for language in ("Go", "TypeScript", "Python"):
             self.assertIn(language, (ROOT / "references" / "greenfield-templates.md").read_text(encoding="utf-8"))
         self.assertIn("Structured Change", workflow)
-        self.assertIn("Integration + I2", (ROOT / "references" / "greenfield-templates.md").read_text(encoding="utf-8"))
+        self.assertIn(
+            "Integration + integration approval (I2)",
+            (ROOT / "references" / "greenfield-templates.md").read_text(encoding="utf-8"),
+        )
         self.assertIn('"id":"HR-24"', rules)
         capability = (
             skill_root / "references" / "bootstrap" / "project.md"
@@ -2667,7 +2670,7 @@ class HarnessCliTests(unittest.TestCase):
             "--analysis-bundle", str(init_bundle),
             expected=(2,),
         )
-        self.assertIn("publication candidate", rejected["error"])
+        self.assertIn("staged migration or Evolution candidate", rejected["error"])
         self.assertEqual(list((init_project / ".agents" / "skills").glob("*")), [])
 
         project = self.create_git_project("full-migrate-retire-protected")
@@ -2680,8 +2683,8 @@ class HarnessCliTests(unittest.TestCase):
             (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
         )["skill_revision"]
         protected = {
-            "SKILL.md": "required project Harness owner",
-            "references/rules/red_lines.yaml": "required project Harness owner",
+            "SKILL.md": "required project Harness file",
+            "references/rules/red_lines.yaml": "required project Harness file",
             "references/workflows/intake.md": "required workflow",
             "scripts/harness_runtime/rendering.py": "protected or unsupported",
             "state/manifest.json": "protected or unsupported",
@@ -2863,7 +2866,7 @@ class HarnessCliTests(unittest.TestCase):
         rejected = self.cli(
             project, "project", "migrate", "--analysis-bundle", str(bundle), expected=(2,),
         )
-        self.assertIn("complete four-file analysis bundle", rejected["error"])
+        self.assertIn("complete four control-file analysis bundle", rejected["error"])
         decision.unlink()
         self.cli(project, "change", "reindex")
         baselines = json.loads((wiki / ".ecl-baselines.json").read_text(encoding="utf-8"))
@@ -3270,7 +3273,7 @@ class HarnessCliTests(unittest.TestCase):
         runtime = (ROOT / "references" / "runtime-modules.md").read_text(encoding="utf-8")
         self.assertIn("explanation, navigation, or read-only source research", entry)
         self.assertIn("In single-Lane mode, Small Changes", entry)
-        self.assertIn("publish scope", entry)
+        self.assertIn("record its scope", entry)
         self.assertIn("every repository mutation uses", entry)
         self.assertIn("Single-Lane Small work does not require", intake)
         self.assertNotIn("preflight before classification", intake)

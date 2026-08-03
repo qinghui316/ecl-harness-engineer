@@ -10,6 +10,6 @@ development, worktree coordination, Integration, or Harness evolution.
 - Preserve unrelated changes and follow existing project verification.
 - Current Change artifacts and history live in the shared project Harness.
 - Shared Lane and contract facts come from the project Harness Registry.
-- Business Integration requires explicit user I2 confirmation.
+- Business Integration requires explicit user integration approval (I2).
 
 Do not copy the Harness manual into this file.

@@ -15,7 +15,7 @@ Detect an evidence-limited project
 -> render one selected variant into an empty Worker output
 -> adapt source, tests, commands, documentation, and CI to the accepted plan
 -> verify and close complete Change evidence
--> Integration + I2 in Git multi-Lane mode
+-> Integration + integration approval (I2) in Git multi-Lane mode
 ```
 
 Use the renderer only after plan approval:

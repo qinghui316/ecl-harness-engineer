@@ -17,8 +17,8 @@ The CLI owns an idempotent bounded block in existing AGENTS/Claude files:
 <!-- ECL-HARNESS:BEGIN -->
 This project uses the local `<project-id>-harness` project Harness. If its project-level link is
 missing in a new worktree, run `<host-native connector>` and reload the Skill. Single-Lane Small
-Changes proceed with targeted verification; Structured and multi-Lane repository work publish scope
-and run preflight before plan approval or editing.
+Changes proceed with targeted verification; Structured and multi-Lane repository work record scope
+in the coordination Registry and run preflight before plan approval or editing.
 <!-- ECL-HARNESS:END -->
 ```
 
@@ -162,9 +162,9 @@ Statuses are configured/candidate/executed. A candidate is visibly not a project
 Every durable row needs source code, manifest/configuration, an integrated contract, a test, or
 explicit user evidence.
 
-## Agent-Owned Formal Document
+## Agent-Maintained Formal Document
 
-Use an arbitrary meaningful path below `references/project_wiki/` and declare its semantic owner:
+Use an arbitrary meaningful path below `references/project_wiki/` and declare its knowledge owner:
 
 ```yaml
 ---
@@ -179,10 +179,10 @@ ecl:
 ---
 ```
 
-`managed_by` is optional and defaults to `agent`. Search the generated catalog and related Owner
-documents before choosing Create, Merge, Replace, Retire, or Archive-only. Update the Markdown
-directly in a Structured Change, then let `change reindex/close` refresh catalog and fingerprints.
-A full refresh preserves Agent-owned pages.
+`managed_by` is optional and defaults to `agent`. Search the generated catalog and documents with
+the same knowledge owner before choosing Create, Merge, Replace, Retire, or Archive-only. Update the
+Markdown directly in a Structured Change, then let `change reindex/close` refresh the catalog and
+source fingerprints. A full refresh preserves agent-maintained pages.
 
 ## Workflow
 
@@ -210,7 +210,7 @@ owner. They preserve:
 - spec intake/evidence/scenarios/AC/non-goals/constraints/assumptions/clarifications;
 - plan approach/owners/interfaces/data/permissions/spec gaps/risks/verification/review;
 - tasks IDs/AC/path/validation and deferred work;
-- review intake/spec/plan/code/validation/contract/Integration/knowledge/entropy coverage.
+- review intake/spec/plan/code/validation/contract/Integration/knowledge and documentation-retention coverage.
 
 Do not duplicate complete Change templates in this reference; validate the actual assets instead.
 
@@ -228,15 +228,15 @@ Express useful architecture knowledge directly through evidence-backed maps:
 Generate a project Harness mechanical check only when the analyzer proves the invariant and the
 creation delta accepts its owner and validation. Otherwise record an audit recommendation.
 
-## Entropy Review
+## Duplication And Stale-Content Review
 
-Before publishing:
+Before finalizing the generated documents:
 
 - entry contains no phase/archive ledger;
 - L1 contains no Change/Lane history;
-- module facts have one L2 owner;
-- rule text has one YAML owner;
-- current Change facts live in Change summary/Registry;
+- module facts have one responsible L2 document;
+- rule text has one YAML source;
+- current Change facts live in the Change summary/coordination Registry;
 - closeout narrative remains in archive;
 - stale current-plan/baseline language is merged, retired, or archive-only;
 - all links and citations resolve.

@@ -34,27 +34,29 @@
 9. Git close archives complete validated evidence without requiring a commit or clean worktree;
    an optional commit boundary remains available for later Integration.
 10. Single-Lane Small Changes use targeted project validation without Registry preflight. Every
-    multi-Lane mutation is Structured and claims paths atomically; Structured preflight fingerprints
-    only sources related by scoped paths, contracts, or owner module and reads each unique source once.
+    multi-Lane mutation is Structured and records path claims under an exclusive Registry update;
+    Structured preflight computes fingerprints only for sources related by scoped paths, contracts,
+    or owning module and reads each unique source once.
 11. Change evidence permits project-language review headings and multiline task metadata while
     still rejecting unresolved high-impact clarification, incomplete tasks, missing AC mapping,
-    empty/TBD acceptance or owner/path/validation fields, or failed plan/review/validation gates.
+    empty/TBD acceptance or assignment/path/validation fields, or failed plan/review/validation checks.
 12. User-started Integration applies exact selected ranges, permits Integrator edits, binds
-    validation/review to the exact candidate commit, waits for I2, and never refreshes Wiki or
+    validation/review to the exact candidate commit, waits for integration approval (I2), and never refreshes Wiki or
     enters Evolution count.
-13. The fifth eligible Change creates one pending window; later Changes queue.
+13. The fifth eligible Change creates one pending set of Change IDs; later Changes queue.
 14. E1-only Evolution stages a complete candidate, independently scores it, has no E2, preserves
-    Change archive/INDEX/Registry, and atomically keeps/rejects/noops.
-15. Related baseline/knowledge drift returns refresh-needed/replan with Registry/current
-    Change/canonical facts above periodic Wiki. Normal canonical advancement is informational;
-    behind, diverged, or unverifiable baselines remain explicit findings where applicable.
-16. Non-Git to Git transition preserves project identity and state, rebinds Lane ownership to the
+    Change archive/INDEX/Registry, and applies accepted content through a recoverable transaction.
+15. Related integration-base or knowledge source changes return refresh-needed/replan, with
+    coordination Registry/current Change/canonical facts taking precedence over periodic Wiki.
+    Normal canonical advancement is informational; behind, diverged, or unverifiable Git
+    integration bases remain explicit findings where applicable.
+16. Non-Git to Git transition preserves project identity and state, rebinds parallel work Lane assignment to the
     named branch, attaches current worktrees, and leaves a future-worktree connector.
 17. Init and full migrate use one renderer. Ordinary formal documents update directly inside a
     Structured Change; `change reindex/close` rebuilds catalog and refreshes only changed document
-    baselines without analysis, renderer, Judge, or revision publication.
+    source baselines without analysis, full-project renderer, independent review, or revision change.
 18. Agent review searches catalog neighbors before Create and independently judges semantic
-    duplication, current/target meaning, evidence sufficiency, and Owner changes; Runtime does not
+    duplication, current/target meaning, evidence sufficiency, and knowledge-owner changes; Runtime does not
     infer those decisions from prose.
 
 ## Adversarial And Recovery Scenarios
@@ -66,25 +68,26 @@
   collisions fail without partial install.
 - Complete analysis status requires evidence-backed purpose and substantive project facts.
 - Executable artifacts require explicit authorization and passing declared validation.
-- Evolution rejects post-validation candidate tamper and restores content/state after publication
+- Evolution rejects post-validation candidate tamper and restores content/state after transaction
   failure.
 - Integration recovers from pre-merge, canonical-landed, Registry-write, and cleanup failures;
   a retry also releases operation-owned locks left after a terminal record write, and doctor
-  reports stale/recovery ownership.
+  reports stale locks and recovery state.
 - Evolution/change-close concurrency does not lose evaluated IDs or queue Changes.
-- Rejected/noop Evolution leaves non-state content fingerprint unchanged; keep changes it.
+- Rejected/noop Evolution leaves the non-state Harness content digest unchanged; keep changes it.
 
 ## Capability Contract Gate
 
 Every mature capability must name:
 
 ```text
-instruction owner -> project Harness behavior -> semantic forward test
+instruction source -> project Harness behavior -> semantic forward test
 ```
 
 Parity covers intake/plan-first, spec-plan separation, review, active/parking/archive, INDEX search
 and selective context, failure feedback, environment/readiness/security, language adapters,
-mechanical checks, document entropy, and evidence-gated Evolution. File presence and line count do
+mechanical checks, documentation duplication/stale-content review, and evidence-gated Evolution.
+File presence and line count do
 not prove parity.
 
 ## Validation Invalidation

@@ -252,7 +252,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
         else:
             raise HarnessError(
-                "project migrate requires the complete four-file analysis bundle. "
+                "project migrate requires the complete four control-file analysis bundle. "
                 "Update ordinary project Harness documents directly in a Structured Change."
             )
     if not (root / "state" / "manifest.json").exists():

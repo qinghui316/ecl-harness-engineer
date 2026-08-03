@@ -87,9 +87,9 @@ Validate:
 
 Missing sources, bad links, index corruption, unsafe paths, and exact ID/path conflicts are
 mechanical errors. Misplaced detail, stale wording, duplicate semantics, current/target meaning,
-Owner quality, and archive density belong to Agent/Judge review; Runtime does not infer them from
+knowledge-owner quality, and archive density belong to Agent/independent-reviewer judgment; Runtime does not infer them from
 keywords. Knowledge scan/check reports only; ordinary knowledge updates directly in a Structured
-Change, while init, full migrate, and accepted E1 retain their publication boundaries.
+Change, while init, full migrate, and accepted E1 retain their staged transaction boundaries.
 
 ## Stack Adaptation
 
@@ -115,7 +115,7 @@ as a production checker.
 Use Maven/Gradle or Cargo metadata plus language parsers/tooling. Apply workspace/module boundaries
 from manifests rather than directory names.
 
-## Publication
+## Installing An Executable Check
 
 An executable check is installed only through an evidence-backed creation-delta artifact with an
 allowed path, owner, explicit authorization, and passing validation declaration. Register its
