@@ -232,6 +232,89 @@ def change_records(skill_root: Path) -> list[dict[str, Any]]:
 def contract_records(skill_root: Path) -> list[dict[str, Any]]:
     return bound_records(registry_root(skill_root) / "contracts", "change_id", "Contract")
 
+
+def normalize_change_dependencies(value: Any, label: str = "Contract change_dependencies") -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise HarnessError(f"{label} must be a list.")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(value):
+        item_label = f"{label}[{index}]"
+        if not isinstance(item, dict):
+            raise HarnessError(f"{item_label} must be an object.")
+        change_id = canonical_id(item.get("change_id", ""), f"{item_label} Change id")
+        if item.get("change_id") != change_id:
+            raise HarnessError(f"{item_label} contains a non-canonical Change id.")
+        if change_id in seen:
+            raise HarnessError(f"{label} declares Change {change_id} more than once.")
+        seen.add(change_id)
+        kind = item.get("kind")
+        if kind == "integration":
+            expected = {"change_id", "kind"}
+            if set(item) != expected:
+                raise HarnessError(
+                    f"{item_label} integration dependency only accepts change_id and kind."
+                )
+            normalized.append({"change_id": change_id, "kind": kind})
+            continue
+        if kind != "evidence":
+            raise HarnessError(f"{item_label} kind must be integration or evidence.")
+        expected = {
+            "change_id", "kind", "required_status",
+            "require_validation_passed", "require_evidence_complete",
+        }
+        if set(item) != expected:
+            raise HarnessError(
+                f"{item_label} evidence dependency requires exactly: {', '.join(sorted(expected))}."
+            )
+        if item.get("required_status") != "completed":
+            raise HarnessError(f"{item_label} required_status must be completed.")
+        if item.get("require_validation_passed") is not True:
+            raise HarnessError(f"{item_label} require_validation_passed must be true.")
+        if item.get("require_evidence_complete") is not True:
+            raise HarnessError(f"{item_label} require_evidence_complete must be true.")
+        normalized.append({
+            "change_id": change_id,
+            "kind": kind,
+            "required_status": "completed",
+            "require_validation_passed": True,
+            "require_evidence_complete": True,
+        })
+    return sorted(normalized, key=lambda item: item["change_id"])
+
+
+def legacy_change_dependency_ids(contract: dict[str, Any]) -> list[str]:
+    value = contract.get("depends_on_changes")
+    if not isinstance(value, list):
+        raise HarnessError("Legacy contract field depends_on_changes must be a list.")
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        change_id = canonical_id(item, "Legacy dependency Change id")
+        if item != change_id:
+            raise HarnessError("Legacy depends_on_changes contains a non-canonical Change id.")
+        if change_id in seen:
+            raise HarnessError(f"Legacy depends_on_changes declares Change {change_id} more than once.")
+        seen.add(change_id)
+        result.append(change_id)
+    return sorted(result)
+
+
+def explicit_change_dependencies(contract: dict[str, Any]) -> list[dict[str, Any]]:
+    if "depends_on_changes" in contract:
+        if "change_dependencies" in contract:
+            raise HarnessError(
+                "Contract dependency classification is ambiguous: both depends_on_changes and "
+                "change_dependencies are present."
+            )
+        raise HarnessError(
+            "Legacy depends_on_changes has no Integration semantics. Publish change_dependencies, "
+            "or classify an immutable historical declaration with a completed dependency_classification Change."
+        )
+    return normalize_change_dependencies(contract.get("change_dependencies", []))
+
 def require_change_owner(context: dict[str, Any], value: dict[str, Any]) -> None:
     if value.get("lane_id") != lane_id(context):
         raise HarnessError("Only the owning Lane may mutate this Change.")
@@ -393,7 +476,10 @@ def baseline_event_impacts(
                     contract_reasons.add(f"same_subject:{subject}")
                 if subject and subject in current_contract.get("depends_on", []):
                     contract_reasons.add(f"depends_on_subject:{subject}")
-                if contract.get("change_id") in current_contract.get("depends_on_changes", []):
+                dependency_ids = {
+                    item["change_id"] for item in explicit_change_dependencies(current_contract)
+                }
+                if contract.get("change_id") in dependency_ids:
                     contract_reasons.add(f"depends_on_change:{contract.get('change_id')}")
                 if contract.get("owner_module") in current_contract.get("consumers", []):
                     contract_reasons.add(f"consumer_module:{contract.get('owner_module')}")
@@ -575,15 +661,70 @@ def validate_contract(contract: dict[str, Any], change_id: str) -> None:
         raise HarnessError(f"Contract is missing required fields: {', '.join(missing)}")
     if contract.get("change_id") not in {None, change_id}:
         raise HarnessError("Contract change_id does not match the published Change.")
-    if contract.get("kind") not in {"api", "schema", "event", "config", "permission", "module_boundary"}:
-        raise HarnessError("Contract kind must be api, schema, event, config, permission, or module_boundary.")
-    for field in ("affected_paths", "consumers", "depends_on", "depends_on_changes"):
+    allowed_kinds = {"api", "schema", "event", "config", "permission", "module_boundary", "dependency_classification"}
+    if contract.get("kind") not in allowed_kinds:
+        raise HarnessError(
+            "Contract kind must be api, schema, event, config, permission, module_boundary, "
+            "or dependency_classification."
+        )
+    if "depends_on_changes" in contract:
+        raise HarnessError(
+            "Contract field depends_on_changes is ambiguous; use explicit change_dependencies entries."
+        )
+    for field in ("affected_paths", "consumers", "depends_on", "change_dependencies"):
         if field in contract and not isinstance(contract[field], list):
             raise HarnessError(f"Contract field {field} must be a list.")
     contract["affected_paths"] = sorted({normalize_claim(item) for item in contract.get("affected_paths", [])})
-    contract["depends_on_changes"] = sorted({
-        canonical_id(item, "Contract dependency Change id") for item in contract.get("depends_on_changes", [])
-    })
+    contract["change_dependencies"] = normalize_change_dependencies(contract.get("change_dependencies", []))
+    if contract.get("kind") == "dependency_classification":
+        target = canonical_id(contract.get("classifies_change_id", ""), "Classified Change id")
+        if contract.get("classifies_change_id") != target or target == change_id:
+            raise HarnessError("Dependency classification must name a different canonical Change id.")
+        if contract.get("operation") != "classify" or contract.get("status") != "accepted":
+            raise HarnessError("Dependency classification requires operation=classify and status=accepted.")
+        evidence = contract.get("evidence")
+        if not isinstance(evidence, list) or not evidence or not all(
+            isinstance(item, str) and item.strip() for item in evidence
+        ):
+            raise HarnessError("Dependency classification requires non-empty authorization evidence.")
+    elif "classifies_change_id" in contract:
+        raise HarnessError("Only a dependency_classification contract may set classifies_change_id.")
+
+
+def validate_dependency_classification(
+    skill_root: Path,
+    contract: dict[str, Any],
+    correction_change_id: str,
+) -> None:
+    if contract.get("kind") != "dependency_classification":
+        return
+    target_id = contract["classifies_change_id"]
+    target_change = load_change_record(skill_root, target_id, required=True)
+    if target_change.get("status") != "completed":
+        raise HarnessError("Dependency classification may only correct a completed historical Change.")
+    target_contract = load_contract_record(skill_root, target_id)
+    if not target_contract or "depends_on_changes" not in target_contract:
+        raise HarnessError(
+            "Dependency classification target has no immutable legacy depends_on_changes declaration."
+        )
+    if "change_dependencies" in target_contract:
+        raise HarnessError("Dependency classification target already has ambiguous dependency fields.")
+    legacy_ids = legacy_change_dependency_ids(target_contract)
+    classified_ids = [item["change_id"] for item in contract["change_dependencies"]]
+    if classified_ids != legacy_ids:
+        raise HarnessError(
+            "Dependency classification must cover exactly the target's legacy dependency Change ids."
+        )
+    duplicates = [
+        item["change_id"] for item in contract_records(skill_root)
+        if item.get("kind") == "dependency_classification"
+        and item.get("classifies_change_id") == target_id
+        and item.get("change_id") != correction_change_id
+    ]
+    if duplicates:
+        raise HarnessError(
+            f"Dependency classification for {target_id} is ambiguous: {', '.join(sorted(duplicates))}"
+        )
 
 @guard_project_skill
 def change_publish(args: argparse.Namespace) -> dict[str, Any]:
@@ -608,6 +749,7 @@ def change_publish(args: argparse.Namespace) -> dict[str, Any]:
         if not isinstance(contract, dict):
             raise HarnessError("Contract file must contain one JSON object.")
         validate_contract(contract, change_id)
+        validate_dependency_classification(skill_root, contract, change_id)
         contract["schema_version"] = SCHEMA_VERSION
         contract["change_id"] = change_id
         contract["updated_at"] = utc_now()

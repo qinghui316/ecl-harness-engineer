@@ -7,7 +7,7 @@
 
 ## Agent Judgment
 
-Order selected commit ranges by dependency, resolve conflicts as a local PR reviewer, and decide
+Order selected commit ranges by explicit Git Integration dependencies, resolve conflicts as a local PR reviewer, and decide
 whether the combined candidate is ready for integration approval (I2). Integration records
 knowledge/Evolution signals but
 does not rewrite stable L1/L2/L3 or global rules.
@@ -29,11 +29,17 @@ does not rewrite stable L1/L2/L3 or global rules.
 
 1. Verify each selected linear `base_commit..completion_commit` range. Git ancestry proves range
    shape; the Change author and Integrator must also confirm that it contains no unrelated commits.
-2. Apply ranges in dependency order; never merge a long-lived parallel work Lane tip.
+2. Before creating the Integration Record or worktree, resolve every `change_dependencies` entry.
+   Apply exact ranges in topological order for `kind: integration`; require unselected Git
+   dependencies to already belong to a completed Integration Record. Validate `kind: evidence`
+   prerequisites as completed, validated, and evidence-complete without selecting or cherry-picking
+   them. Never infer dependency kind or merge a long-lived parallel work Lane tip.
 3. Resolve conflicts, add compatibility edits, and update authoritative documentation tracked in
    the project repository as needed. Do not update project Harness L1/L2/L3 or other Harness
    references during Integration.
-4. Record conflicts, human corrections, contract effects, documentation source changes, and
+4. Record dependency declaration snapshots and separately record satisfied evidence dependencies.
+   Bind independent review to the candidate commit and dependency content digest, then recompute
+   that digest immediately before landing. Record conflicts, human corrections, contract effects, documentation source changes, and
    knowledge signals.
 5. Present the exact candidate commit, combined diff, validation, independent review report, and
    risks for integration approval (I2). After approval, `integrate complete` revalidates that same

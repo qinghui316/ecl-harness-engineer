@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -20,8 +19,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from .changes import change_record_path, contract_record_path, load_change_record, load_contract_record
-from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, git, git_baseline_relation, git_value, is_within, read_json, safe_relative, stable_hash, tree_junctions, utc_now
+from .changes import (
+    change_evidence_complete,
+    change_record_path,
+    contract_record_path,
+    contract_records,
+    legacy_change_dependency_ids,
+    load_change_record,
+    load_contract_record,
+    locate_change_evidence,
+    normalize_change_dependencies,
+    require_physical_change_evidence,
+    validate_contract,
+)
+from .core import HarnessError, SCHEMA_VERSION, atomic_create_json, atomic_write_json, canonical_id, file_fingerprint, git, git_baseline_relation, git_value, is_within, read_json, safe_relative, stable_hash, tree_junctions, utc_now
 from .links import detach_worktree_links
 from .project import project_context, require_skill
 from .registry import bound_records, lane_id, registry_root
@@ -109,6 +120,199 @@ def exact_change_commits(project_root: Path, change: dict[str, Any]) -> list[str
             )
     return commits
 
+
+def json_content_digest(value: Any) -> str:
+    serialized = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return stable_hash(serialized, 64)
+
+
+def completed_change_snapshot(skill_root: Path, change_id: str) -> dict[str, Any]:
+    change = load_change_record(skill_root, change_id, required=True)
+    if change.get("status") != "completed":
+        raise HarnessError(f"Evidence dependency is not completed: {change_id}")
+    if change.get("validation_passed") is not True:
+        raise HarnessError(f"Evidence dependency validation did not pass: {change_id}")
+    if change.get("evidence_complete") is not True:
+        raise HarnessError(f"Evidence dependency is not evidence-complete: {change_id}")
+    state, evidence_path = locate_change_evidence(skill_root, change_id)
+    if state != "archive" or evidence_path is None:
+        raise HarnessError(f"Completed evidence dependency has no immutable archive: {change_id}")
+    require_physical_change_evidence(evidence_path, "Evidence dependency archive")
+    complete, missing = change_evidence_complete(evidence_path)
+    if not complete:
+        raise HarnessError(
+            f"Evidence dependency archive is incomplete for {change_id}: {'; '.join(missing)}"
+        )
+    evidence_files = [path for path in evidence_path.rglob("*") if path.is_file()]
+    contract = load_contract_record(skill_root, change_id)
+    return {
+        "change_id": change_id,
+        "change_record_digest": json_content_digest(change),
+        "evidence_digest": file_fingerprint(evidence_files, evidence_path),
+        "contract_digest": json_content_digest(contract) if contract else None,
+    }
+
+
+def dependency_correction(
+    skill_root: Path,
+    target_change_id: str,
+    target_contract: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    legacy_ids = legacy_change_dependency_ids(target_contract)
+    matches = [
+        item for item in contract_records(skill_root)
+        if item.get("kind") == "dependency_classification"
+        and item.get("classifies_change_id") == target_change_id
+    ]
+    if len(matches) != 1:
+        detail = "missing" if not matches else "ambiguous"
+        raise HarnessError(
+            f"Historical dependency classification for {target_change_id} is {detail}; "
+            "exactly one completed correction Change is required."
+        )
+    correction_contract = dict(matches[0])
+    correction_change_id = correction_contract["change_id"]
+    validate_contract(correction_contract, correction_change_id)
+    dependencies = correction_contract["change_dependencies"]
+    if [item["change_id"] for item in dependencies] != legacy_ids:
+        raise HarnessError(
+            f"Dependency classification for {target_change_id} does not exactly match its legacy ids."
+        )
+    authorization = completed_change_snapshot(skill_root, correction_change_id)
+    return dependencies, {
+        "dependent_change_id": target_change_id,
+        "source": "dependency_classification",
+        "legacy_contract_digest": json_content_digest(target_contract),
+        "declaration_authorization": completed_change_snapshot(skill_root, target_change_id),
+        "correction_change_id": correction_change_id,
+        "correction_contract_digest": json_content_digest(correction_contract),
+        "correction_authorization": authorization,
+        "dependencies": dependencies,
+    }
+
+
+def dependency_declaration(
+    skill_root: Path,
+    change_id: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    contract = load_contract_record(skill_root, change_id)
+    if not contract:
+        return [], {
+            "dependent_change_id": change_id,
+            "source": "no_contract",
+            "contract_digest": None,
+            "dependencies": [],
+        }
+    if contract.get("kind") == "dependency_classification":
+        raise HarnessError(f"Dependency classification Change cannot be selected for Integration: {change_id}")
+    if "depends_on_changes" in contract:
+        if "change_dependencies" in contract:
+            raise HarnessError(
+                f"Dependency classification is ambiguous for {change_id}: both fields are present."
+            )
+        return dependency_correction(skill_root, change_id, contract)
+    normalized_contract = dict(contract)
+    validate_contract(normalized_contract, change_id)
+    dependencies = normalize_change_dependencies(normalized_contract.get("change_dependencies", []))
+    return dependencies, {
+        "dependent_change_id": change_id,
+        "source": "contract",
+        "contract_digest": json_content_digest(contract),
+        "declaration_authorization": completed_change_snapshot(skill_root, change_id),
+        "dependencies": dependencies,
+    }
+
+
+def resolve_change_dependencies(
+    skill_root: Path,
+    selected: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], str]:
+    by_id = {item["change_id"]: item for item in selected}
+    integration_edges: dict[str, set[str]] = {}
+    declarations: list[dict[str, Any]] = []
+    evidence_required_by: dict[str, set[str]] = {}
+    for item in selected:
+        change_id = item["change_id"]
+        dependencies, declaration = dependency_declaration(skill_root, change_id)
+        declarations.append(declaration)
+        integration_edges[change_id] = set()
+        for dependency in dependencies:
+            dependency_id = dependency["change_id"]
+            if dependency["kind"] == "evidence":
+                evidence_required_by.setdefault(dependency_id, set()).add(change_id)
+                continue
+            if dependency_id in by_id:
+                integration_edges[change_id].add(dependency_id)
+                continue
+            dependency_change = load_change_record(skill_root, dependency_id, required=True)
+            if (
+                dependency_change.get("integration_status") != "integrated"
+                or not dependency_change.get("integrated_by")
+            ):
+                raise HarnessError(
+                    f"Change {change_id} has an integration dependency that is neither selected "
+                    f"nor integrated: {dependency_id}"
+                )
+            integrated_by = canonical_id(
+                dependency_change["integrated_by"], "Dependency Integration id",
+            )
+            integration = load_integration_record(skill_root, integrated_by, required=True)
+            if integration.get("status") != "integrated" or dependency_id not in integration.get("change_ids", []):
+                raise HarnessError(
+                    f"Integrated dependency record does not bind Change {dependency_id}: {integrated_by}"
+                )
+
+    remaining = list(selected)
+    ordered: list[dict[str, Any]] = []
+    ordered_ids: set[str] = set()
+    while remaining:
+        progressed = False
+        for item in list(remaining):
+            if integration_edges[item["change_id"]] <= ordered_ids:
+                ordered.append(item)
+                ordered_ids.add(item["change_id"])
+                remaining.remove(item)
+                progressed = True
+        if not progressed:
+            cycle = ", ".join(item["change_id"] for item in remaining)
+            raise HarnessError(f"Integration dependency cycle among: {cycle}")
+
+    evidence_dependencies = []
+    for dependency_id, required_by in sorted(evidence_required_by.items()):
+        snapshot = completed_change_snapshot(skill_root, dependency_id)
+        snapshot.update({
+            "required_status": "completed",
+            "validation_passed": True,
+            "evidence_complete": True,
+            "required_by": sorted(required_by),
+        })
+        evidence_dependencies.append(snapshot)
+    declarations.sort(key=lambda item: item["dependent_change_id"])
+    binding = {
+        "dependency_declarations": declarations,
+        "satisfied_evidence_dependencies": evidence_dependencies,
+    }
+    return ordered, declarations, evidence_dependencies, json_content_digest(binding)
+
+
+def revalidate_dependency_bindings(skill_root: Path, record: dict[str, Any]) -> None:
+    selected = [
+        load_change_record(skill_root, change_id, required=True)
+        for change_id in record["change_ids"]
+    ]
+    ordered, declarations, evidence_dependencies, digest = resolve_change_dependencies(
+        skill_root, selected,
+    )
+    if [item["change_id"] for item in ordered] != record["change_ids"]:
+        raise HarnessError("Integration dependency order changed after staging.")
+    if (
+        declarations != record.get("dependency_declarations")
+        or evidence_dependencies != record.get("satisfied_evidence_dependencies")
+        or digest != record.get("dependency_binding_digest")
+    ):
+        raise HarnessError("Integration evidence or dependency classification changed after staging.")
+
+
 def parse_completion_commit_overrides(values: list[str], change_ids: set[str]) -> dict[str, str]:
     overrides: dict[str, str] = {}
     for value in values:
@@ -122,35 +326,6 @@ def parse_completion_commit_overrides(values: list[str], change_ids: set[str]) -
             raise HarnessError(f"Completion commit was provided more than once for Change: {identifier}")
         overrides[identifier] = commit.strip()
     return overrides
-
-def order_changes_for_integration(skill_root: Path, selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_id = {item["change_id"]: item for item in selected}
-    remaining = list(selected)
-    ordered: list[dict[str, Any]] = []
-    ordered_ids: set[str] = set()
-    while remaining:
-        progressed = False
-        for item in list(remaining):
-            contract = load_contract_record(skill_root, item["change_id"])
-            dependencies = set(contract.get("depends_on_changes", []))
-            missing = dependencies - set(by_id)
-            unresolved = [
-                change_id for change_id in missing
-                if not load_change_record(skill_root, change_id).get("integrated_by")
-            ]
-            if unresolved:
-                raise HarnessError(
-                    f"Change {item['change_id']} has unintegrated dependencies: {', '.join(sorted(unresolved))}"
-                )
-            if dependencies & set(by_id) <= ordered_ids:
-                ordered.append(item)
-                ordered_ids.add(item["change_id"])
-                remaining.remove(item)
-                progressed = True
-        if not progressed:
-            cycle = ", ".join(item["change_id"] for item in remaining)
-            raise HarnessError(f"Integration dependency cycle or invalid order among: {cycle}")
-    return ordered
 
 def validated_integration_worktree(skill_root: Path, record: dict[str, Any]) -> Path:
     allowed_root = (skill_root / "state" / "integrations").resolve()
@@ -236,7 +411,9 @@ def integrate_start(args: argparse.Namespace) -> dict[str, Any]:
         selected_value = dict(value)
         selected_value["completion_commit"] = completion
         selected.append(selected_value)
-    selected = order_changes_for_integration(skill_root, selected)
+    selected, dependency_declarations, evidence_dependencies, dependency_binding_digest = (
+        resolve_change_dependencies(skill_root, selected)
+    )
     baseline = refresh_baseline_from_canonical(skill_root, context)
     base_commit = baseline.get("canonical_commit") or context["head"]
     ranges = {item["change_id"]: exact_change_commits(context["project_root"], item) for item in selected}
@@ -256,6 +433,9 @@ def integrate_start(args: argparse.Namespace) -> dict[str, Any]:
         "change_ids": [item["change_id"] for item in selected],
         "completion_commits": [item["completion_commit"] for item in selected],
         "change_commit_ranges": ranges,
+        "dependency_declarations": dependency_declarations,
+        "satisfied_evidence_dependencies": evidence_dependencies,
+        "dependency_binding_digest": dependency_binding_digest,
         "applied_commits": [],
         "remaining_commits": flattened,
         "worktree": worktree.relative_to(skill_root).as_posix(),
@@ -515,6 +695,7 @@ def integrate_complete(args: argparse.Namespace) -> dict[str, Any]:
     acquire_writer(skill_root, "integration", record["integration_id"])
     try:
         if phase in {"not_started", "pre_merge"}:
+            revalidate_dependency_bindings(skill_root, record)
             record["status"] = "landing"
             record["landing_phase"] = "pre_merge"
             record["landing_candidate_commit"] = integration_head

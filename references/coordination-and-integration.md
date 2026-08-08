@@ -79,6 +79,41 @@ or module boundary. Record:
 - Compatibility expectation and migration note.
 - Evidence source and current status.
 
+Change-to-Change dependencies use one explicit `change_dependencies` array. Each edge has exactly
+one meaning:
+
+```yaml
+change_dependencies:
+  - change_id: schema-implementation
+    kind: integration
+  - change_id: architecture-approval
+    kind: evidence
+    required_status: completed
+    require_validation_passed: true
+    require_evidence_complete: true
+```
+
+An `integration` edge controls Git ordering. Its Change must be selected in the same Integration or
+already belong to a completed Integration Record. A selected Integration Change requires an exact,
+non-empty, linear `base_commit..completion_commit` range.
+
+An `evidence` edge is a semantic approval or evidence prerequisite. It never enters Git ordering,
+cycle detection, range calculation, cherry-pick, or `integrated_by` updates. Runtime verifies the
+exact Change identity, completed status, passing validation, complete archived evidence, and the
+current content digests of its Change record, archive, and optional contract.
+
+Reject duplicate ids, unknown dependency kinds, incomplete evidence policies, and contracts that
+contain both `change_dependencies` and the historical `depends_on_changes` field. Do not infer a
+kind from commit metadata, paths, or prose.
+
+Terminal Change and contract records are immutable. To classify an existing historical
+`depends_on_changes` declaration, create one new `dependency_classification` contract with
+`operation: classify`, `status: accepted`, `classifies_change_id`, explicit
+`change_dependencies`, and authorization evidence. Its owning correction Change must be completed,
+validated, and evidence-complete. The classified dependency id set must exactly equal the legacy id
+set, and exactly one correction contract may target that Change. Do not rewrite the historical
+record, fabricate Git metadata, or silently remove an edge.
+
 Preflight detects path overlap, same-subject contract overlap, dependency on a changing subject, and
 Git integration-base advancement. It reports facts and required action; it does not auto-stop an
 unrelated parallel work Lane. Planning and active Changes hold blocking claims. A completed,
@@ -110,11 +145,13 @@ clean and its HEAD to equal either the recorded base or the already-landed revie
 uses `git merge --ff-only <reviewed-commit>`; any other target-branch advancement rejects the
 operation instead of overwriting or merging it.
 
-1. Create an Integration Record from selected completed Change ids.
-2. Resolve each exact completion commit from optional Change metadata or Integration input, then
-   verify the boundary and dependencies. Change-to-Change ordering comes only from each selected
-   contract's `depends_on_changes` list. Reject missing dependencies and dependency cycles; do not
-   infer ordering from prose or path similarity.
+1. Resolve every selected Change and its explicit dependency classifications before creating an
+   Integration Record or temporary worktree. Reject missing, duplicate, ambiguous, mismatched, or
+   unsatisfied dependencies without leaving either artifact behind.
+2. Resolve each exact completion commit from optional Change metadata or Integration input. Build
+   the topological order only from `kind: integration` edges. A dependency not selected in the same
+   Integration must already be bound to a completed Integration Record. Evidence edges do not enter
+   the Git graph or Git cycle detection.
 3. Create a temporary worktree from the canonical commit recorded in the coordination Registry.
 4. For each Change, verify a linear `base_commit..completion_commit` range and cherry-pick that
    exact range in dependency order. Never merge the full tip of a long-lived Lane.
@@ -124,12 +161,16 @@ operation instead of overwriting or merging it.
    authoritative project documentation tracked in the repository.
    This means tracked documentation in the project repository, never project Harness L1/L2/L3 or
    other Harness references.
-6. After all candidate edits, run contract review, aggregate tests, and independent review; record
-   the exact reviewed candidate commit. Any later edit requires repeating validation and review.
+6. Store dependency declaration and authorizing Change-evidence snapshots, separately list
+   `satisfied_evidence_dependencies`, and bind their SHA-256 content digest in the Integration Record. After all candidate edits, run
+   contract review, aggregate tests, and independent review; bind that review to both the exact
+   candidate commit and `dependency_binding_digest`. Any later candidate or dependency-evidence
+   change requires repeating validation and review.
 7. Present the combined diff, verification, and risks for integration approval (I2).
 8. After I2, revalidate the structured `--review-report` presented for approval: its reviewed commit
-   must equal the current Integration HEAD and its reviewer must differ from the Integrator. Then
-   acquire the exclusive write lock and advance through
+   must equal the current Integration HEAD, its dependency digest must equal the staged record, and
+   its reviewer must differ from the Integrator. Acquire the exclusive write lock, recompute every
+   evidence and classification digest before landing, then advance through
    recoverable `pre_merge`, `canonical_landed`, `registry_committed`, and
    `cleanup_complete` phases. Record full contract snapshots, previous/new canonical commits, and
    affected paths in `canonical-baseline-advanced`. Do not rewrite L1/L2/L3.
@@ -150,6 +191,11 @@ the remaining range before review.
 An Integration Record is audit evidence, not a Change and not evolution-counted. Record conflicts,
 extra Integrator edits, validation failures, human corrections, and documentation source changes as
 evidence for the next set of five Changes reviewed by Evolution.
+
+The Integration Record's `change_ids`, `completion_commits`, and `change_commit_ranges` contain only
+selected Git Integration Changes. `satisfied_evidence_dependencies` is a separate immutable
+snapshot for evidence-only prerequisites; registry commit must not set `integrated_by` on those
+Changes.
 
 The same teardown protects `integrate complete` and `integrate abort`. A cleanup failure keeps the
 record and exact failure path for retry; it must not repeat canonical landing or Registry writes.

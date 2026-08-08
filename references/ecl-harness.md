@@ -138,7 +138,13 @@ Record project-relative paths. Require a contract for API, schema, event, config
 permission, or module-boundary changes.
 
 Contracts record kind, stable subject, owning module, operation, affected paths, consumers,
-dependencies, compatibility, migration note, evidence, and status. Preflight identifies overlap,
+dependencies, compatibility, migration note, evidence, and status. Change dependencies use explicit
+`change_dependencies` entries: `kind: integration` controls selected Git ordering, while
+`kind: evidence` requires a completed, validated, evidence-complete Change without adding it to the
+Git graph. Duplicate or ambiguous classifications fail; Runtime never infers a kind from commit
+metadata, paths, or prose. A historical `depends_on_changes` declaration requires one completed,
+evidence-complete `dependency_classification` correction contract whose id set matches exactly;
+the historical terminal record remains unchanged. Preflight identifies overlap,
 dependency, Git integration-base advancement, and related Wiki source changes. It returns replan
 only for affected scope; unrelated work in other Lanes continues.
 

@@ -8,7 +8,7 @@
   "affected_paths": [],
   "consumers": [],
   "depends_on": [],
-  "depends_on_changes": [],
+  "change_dependencies": [],
   "compatibility": "TBD",
   "migration": "TBD",
   "evidence": [],

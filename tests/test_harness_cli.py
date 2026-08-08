@@ -570,6 +570,63 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(closed["status"], "closed")
         return commit
 
+    def contract_input(
+        self,
+        change_id: str,
+        dependencies: list[dict] | None = None,
+        **overrides,
+    ) -> Path:
+        contract = {
+            "kind": "api",
+            "subject": f"fixture.{change_id}",
+            "operation": "change",
+            "owner_module": "fixture",
+            "compatibility": "fixture-compatible",
+            "status": "proposed",
+            "affected_paths": [],
+            "consumers": [],
+            "depends_on": [],
+            "change_dependencies": dependencies or [],
+        }
+        contract.update(overrides)
+        path = self.root / "contracts" / f"{change_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
+        return path
+
+    def complete_git_change_with_contract(
+        self,
+        worktree: Path,
+        change_id: str,
+        filename: str,
+        dependencies: list[dict],
+    ) -> str:
+        self.cli(worktree, "change", "new", change_id, "--scope", f"Implement {change_id}")
+        self.complete_change_documents(worktree, change_id)
+        contract = self.contract_input(change_id, dependencies)
+        self.cli(
+            worktree, "change", "publish", change_id, "--status", "active",
+            "--paths", filename, "--contract", str(contract),
+        )
+        (worktree / filename).write_text(f"{change_id}\n", encoding="utf-8")
+        self.git(worktree, "add", filename)
+        self.git(worktree, "commit", "-m", f"complete {change_id}")
+        commit = self.git(worktree, "rev-parse", "HEAD")
+        self.cli(
+            worktree, "change", "close", change_id, "--status", "completed",
+            "--completion-commit", commit, "--validation", "fixture test passed",
+            "--validation-passed",
+        )
+        return commit
+
+    def complete_evidence_change(self, worktree: Path, change_id: str) -> dict:
+        self.cli(worktree, "change", "new", change_id, "--scope", f"Approve {change_id}")
+        self.complete_change_documents(worktree, change_id)
+        return self.cli(
+            worktree, "change", "close", change_id, "--status", "completed",
+            "--validation", "evidence review passed", "--validation-passed",
+        )
+
     def complete_non_git_change(self, project: Path, change_id: str) -> dict:
         self.cli(project, "change", "new", change_id, "--scope", f"Implement {change_id}")
         self.complete_change_documents(project, change_id)
@@ -731,11 +788,15 @@ class HarnessCliTests(unittest.TestCase):
     def write_integration_review(self, skill_root: Path, integration_id: str, commit: str) -> Path:
         path = self.root / "reviews" / f"{integration_id}-{commit[:8]}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
+        record = json.loads((
+            skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+        ).read_text(encoding="utf-8"))
         path.write_text(json.dumps({
             "schema_version": "1.0",
             "integration_id": integration_id,
             "reviewer_id": "independent-reviewer",
             "reviewed_commit": commit,
+            "dependency_binding_digest": record["dependency_binding_digest"],
             "verdict": "approved",
             "validation_commands": ["fixture aggregate validation"],
             "findings": [],
@@ -3771,6 +3832,339 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(before, self.tree_hashes(wiki))
         self.assertTrue(completed["record"]["evolution_signals"]["knowledge_refresh_deferred_to_evolution"])
 
+    def test_integration_distinguishes_evidence_and_git_dependencies(self) -> None:
+        project = self.create_git_project("typed-change-dependencies")
+        initialized = self.init_project(project, self.write_bundle(project, "typed-change-dependencies"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "typed-change-dependencies-lane"
+        self.git(project, "worktree", "add", "-b", "typed-dependencies", str(lane), baseline)
+        self.run_connector(lane)
+
+        evidence = self.complete_evidence_change(lane, "architecture-approval")
+        self.assertIsNone(evidence["change"]["completion_commit"])
+        change_a = self.complete_git_change(lane, "change-a", "a.txt")
+        integration_dependency = {"change_id": "change-a", "kind": "integration"}
+        change_b = self.complete_git_change_with_contract(
+            lane, "change-b", "b.txt", [integration_dependency],
+        )
+        evidence_dependency = {
+            "change_id": "architecture-approval",
+            "kind": "evidence",
+            "required_status": "completed",
+            "require_validation_passed": True,
+            "require_evidence_complete": True,
+        }
+        change_c = self.complete_git_change_with_contract(
+            lane,
+            "change-c",
+            "c.txt",
+            [
+                {"change_id": "change-b", "kind": "integration"},
+                evidence_dependency,
+            ],
+        )
+
+        started = self.cli(
+            project, "integrate", "start", "typed-dependency-integration",
+            "change-c", "change-b", "change-a",
+        )
+        self.assertEqual(started["change_ids"], ["change-a", "change-b", "change-c"])
+        self.assertEqual(started["completion_commits"], [change_a, change_b, change_c])
+        self.assertEqual(
+            [item["change_id"] for item in started["satisfied_evidence_dependencies"]],
+            ["architecture-approval"],
+        )
+        self.assertEqual(
+            started["satisfied_evidence_dependencies"][0]["required_by"], ["change-c"],
+        )
+        self.assertNotIn("architecture-approval", started["change_ids"])
+        self.assertNotIn("architecture-approval", started["change_commit_ranges"])
+        candidate = self.integration_candidate(
+            Path(initialized["skill_root"]), "typed-dependency-integration",
+        )
+        review = self.write_integration_review(
+            Path(initialized["skill_root"]), "typed-dependency-integration", candidate,
+        )
+        completed = self.cli(
+            project, "integrate", "complete", "typed-dependency-integration",
+            "--confirm-i2", "--validation", "aggregate pass", "--validation-passed",
+            "--review-report", str(review),
+        )
+        self.assertEqual(completed["status"], "integrated")
+        evidence_record = json.loads((
+            Path(initialized["skill_root"]) / "state" / "registry" / "changes"
+            / "architecture-approval.json"
+        ).read_text(encoding="utf-8"))
+        self.assertIsNone(evidence_record["integrated_by"])
+        self.assertNotEqual(evidence_record["integration_status"], "integrated")
+
+    def test_integration_rejects_invalid_evidence_dependencies_before_side_effects(self) -> None:
+        project = self.create_git_project("invalid-evidence-dependencies")
+        initialized = self.init_project(project, self.write_bundle(project, "invalid-evidence-dependencies"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "invalid-evidence-dependencies-lane"
+        self.git(project, "worktree", "add", "-b", "invalid-evidence", str(lane), baseline)
+        self.run_connector(lane)
+        self.complete_evidence_change(lane, "approval")
+        dependency = {
+            "change_id": "approval",
+            "kind": "evidence",
+            "required_status": "completed",
+            "require_validation_passed": True,
+            "require_evidence_complete": True,
+        }
+        self.complete_git_change_with_contract(lane, "consumer", "consumer.txt", [dependency])
+        skill_root = Path(initialized["skill_root"])
+        contract_path = skill_root / "state" / "registry" / "contracts" / "consumer.json"
+        change_path = skill_root / "state" / "registry" / "changes" / "approval.json"
+        original_contract = contract_path.read_text(encoding="utf-8")
+        original_change = change_path.read_text(encoding="utf-8")
+
+        cases = []
+        missing_contract = json.loads(original_contract)
+        missing_contract["change_dependencies"][0]["change_id"] = "missing-approval"
+        cases.append(("missing", contract_path, json.dumps(missing_contract, indent=2), "Unknown Change"))
+        for name, field, value, message in (
+            ("not-completed", "status", "active", "not completed"),
+            ("validation-failed", "validation_passed", False, "validation did not pass"),
+            ("evidence-incomplete", "evidence_complete", False, "not evidence-complete"),
+        ):
+            record = json.loads(original_change)
+            record[field] = value
+            cases.append((name, change_path, json.dumps(record, indent=2), message))
+
+        for name, mutation_path, content, message in cases:
+            with self.subTest(name=name):
+                contract_path.write_text(original_contract, encoding="utf-8")
+                change_path.write_text(original_change, encoding="utf-8")
+                mutation_path.write_text(content, encoding="utf-8")
+                integration_id = f"invalid-{name}"
+                failed = self.cli(
+                    project, "integrate", "start", integration_id, "consumer", expected=(2,),
+                )
+                self.assertIn(message, failed["error"])
+                self.assertFalse((
+                    skill_root / "state" / "registry" / "integrations" / f"{integration_id}.json"
+                ).exists())
+                self.assertFalse((skill_root / "state" / "integrations" / integration_id).exists())
+        contract_path.write_text(original_contract, encoding="utf-8")
+        change_path.write_text(original_change, encoding="utf-8")
+
+    def test_integration_dependency_requires_an_exact_git_range(self) -> None:
+        project = self.create_git_project("integration-dependency-range")
+        initialized = self.init_project(project, self.write_bundle(project, "integration-dependency-range"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "integration-dependency-range-lane"
+        self.git(project, "worktree", "add", "-b", "dependency-range", str(lane), baseline)
+        self.run_connector(lane)
+
+        self.cli(lane, "change", "new", "dependency", "--scope", "Implement dependency")
+        self.complete_change_documents(lane, "dependency")
+        (lane / "dependency.txt").write_text("dependency\n", encoding="utf-8")
+        self.git(lane, "add", "dependency.txt")
+        self.git(lane, "commit", "-m", "complete dependency without recorded boundary")
+        self.cli(
+            lane, "change", "close", "dependency", "--status", "completed",
+            "--validation", "fixture passed", "--validation-passed",
+        )
+        self.complete_git_change_with_contract(
+            lane, "consumer", "consumer.txt",
+            [{"change_id": "dependency", "kind": "integration"}],
+        )
+        failed = self.cli(
+            project, "integrate", "start", "missing-dependency-range",
+            "consumer", "dependency", expected=(2,),
+        )
+        self.assertIn("no Integration commit boundary: dependency", failed["error"])
+        skill_root = Path(initialized["skill_root"])
+        self.assertFalse((
+            skill_root / "state" / "registry" / "integrations" / "missing-dependency-range.json"
+        ).exists())
+        self.assertFalse((
+            skill_root / "state" / "integrations" / "missing-dependency-range"
+        ).exists())
+
+    def test_historical_dependency_classification_is_unique_and_exact(self) -> None:
+        project = self.create_git_project("dependency-correction")
+        initialized = self.init_project(project, self.write_bundle(project, "dependency-correction"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "dependency-correction-lane"
+        self.git(project, "worktree", "add", "-b", "dependency-correction", str(lane), baseline)
+        self.run_connector(lane)
+        self.complete_evidence_change(lane, "legacy-approval")
+        self.complete_git_change(lane, "legacy-target", "legacy-target.txt")
+        skill_root = Path(initialized["skill_root"])
+        target_contract_path = skill_root / "state" / "registry" / "contracts" / "legacy-target.json"
+        legacy_contract = {
+            "schema_version": "1.0",
+            "change_id": "legacy-target",
+            "kind": "api",
+            "subject": "fixture.legacy-target",
+            "operation": "change",
+            "owner_module": "fixture",
+            "compatibility": "fixture-compatible",
+            "status": "proposed",
+            "affected_paths": ["legacy-target.txt"],
+            "consumers": [],
+            "depends_on": [],
+            "depends_on_changes": ["legacy-approval"],
+        }
+        target_contract_path.write_text(json.dumps(legacy_contract, indent=2), encoding="utf-8")
+
+        self.cli(lane, "change", "new", "dependency-correction", "--scope", "Classify legacy dependency")
+        self.complete_change_documents(lane, "dependency-correction")
+        mismatch = self.contract_input(
+            "dependency-correction",
+            [{
+                "change_id": "wrong-approval", "kind": "evidence", "required_status": "completed",
+                "require_validation_passed": True, "require_evidence_complete": True,
+            }],
+            kind="dependency_classification",
+            operation="classify",
+            status="accepted",
+            classifies_change_id="legacy-target",
+            evidence=["user:approved dependency classification"],
+        )
+        rejected = self.cli(
+            lane, "change", "publish", "dependency-correction", "--contract", str(mismatch),
+            expected=(2,),
+        )
+        self.assertIn("cover exactly", rejected["error"])
+        correct = self.contract_input(
+            "dependency-correction",
+            [{
+                "change_id": "legacy-approval", "kind": "evidence", "required_status": "completed",
+                "require_validation_passed": True, "require_evidence_complete": True,
+            }],
+            kind="dependency_classification",
+            operation="classify",
+            status="accepted",
+            classifies_change_id="legacy-target",
+            evidence=["user:approved dependency classification"],
+        )
+        self.cli(lane, "change", "publish", "dependency-correction", "--contract", str(correct))
+        self.cli(
+            lane, "change", "close", "dependency-correction", "--status", "completed",
+            "--validation", "classification reviewed", "--validation-passed",
+        )
+
+        self.cli(lane, "change", "new", "duplicate-correction", "--scope", "Duplicate classification")
+        self.complete_change_documents(lane, "duplicate-correction")
+        duplicate = self.contract_input(
+            "duplicate-correction",
+            json.loads(correct.read_text(encoding="utf-8"))["change_dependencies"],
+            kind="dependency_classification",
+            operation="classify",
+            status="accepted",
+            classifies_change_id="legacy-target",
+            evidence=["user:duplicate classification"],
+        )
+        duplicate_result = self.cli(
+            lane, "change", "publish", "duplicate-correction", "--contract", str(duplicate),
+            expected=(2,),
+        )
+        self.assertIn("ambiguous", duplicate_result["error"])
+
+        ambiguous = dict(legacy_contract)
+        ambiguous["change_dependencies"] = []
+        target_contract_path.write_text(json.dumps(ambiguous, indent=2), encoding="utf-8")
+        failed = self.cli(
+            project, "integrate", "start", "ambiguous-dependency", "legacy-target", expected=(2,),
+        )
+        self.assertIn("both fields", failed["error"])
+        self.assertFalse((
+            skill_root / "state" / "registry" / "integrations" / "ambiguous-dependency.json"
+        ).exists())
+
+        duplicate_dependencies = [
+            {"change_id": "legacy-approval", "kind": "integration"},
+            {"change_id": "legacy-approval", "kind": "integration"},
+        ]
+        with self.assertRaisesRegex(self.cli_module.HarnessError, "more than once"):
+            self.runtime_changes.normalize_change_dependencies(duplicate_dependencies)
+
+    def test_dependency_fingerprint_drift_blocks_landing(self) -> None:
+        project = self.create_git_project("dependency-fingerprint-drift")
+        initialized = self.init_project(project, self.write_bundle(project, "dependency-fingerprint-drift"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "dependency-fingerprint-drift-lane"
+        self.git(project, "worktree", "add", "-b", "dependency-drift", str(lane), baseline)
+        self.run_connector(lane)
+        self.complete_evidence_change(lane, "approval")
+        dependency = {
+            "change_id": "approval", "kind": "evidence", "required_status": "completed",
+            "require_validation_passed": True, "require_evidence_complete": True,
+        }
+        self.complete_git_change_with_contract(lane, "consumer", "consumer.txt", [dependency])
+        skill_root = Path(initialized["skill_root"])
+
+        self.cli(project, "integrate", "start", "evidence-drift", "consumer")
+        candidate = self.integration_candidate(skill_root, "evidence-drift")
+        review = self.write_integration_review(skill_root, "evidence-drift", candidate)
+        summary_path = skill_root / "state" / "changes" / "archive" / "approval" / "summary.md"
+        original_summary = summary_path.read_text(encoding="utf-8")
+        summary_path.write_text(original_summary + "\nChanged after staging.\n", encoding="utf-8")
+        failed = self.cli(
+            project, "integrate", "complete", "evidence-drift", "--confirm-i2",
+            "--validation", "aggregate pass", "--validation-passed", "--review-report", str(review),
+            expected=(2,),
+        )
+        self.assertIn("changed after staging", failed["error"])
+        self.assertEqual(self.git(project, "rev-parse", "HEAD"), baseline)
+        summary_path.write_text(original_summary, encoding="utf-8")
+        self.cli(project, "integrate", "abort", "evidence-drift")
+
+        self.cli(project, "integrate", "start", "classification-drift", "consumer")
+        candidate = self.integration_candidate(skill_root, "classification-drift")
+        review = self.write_integration_review(skill_root, "classification-drift", candidate)
+        contract_path = skill_root / "state" / "registry" / "contracts" / "consumer.json"
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        contract["evidence"] = ["changed authorization"]
+        contract_path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
+        failed = self.cli(
+            project, "integrate", "complete", "classification-drift", "--confirm-i2",
+            "--validation", "aggregate pass", "--validation-passed", "--review-report", str(review),
+            expected=(2,),
+        )
+        self.assertIn("changed after staging", failed["error"])
+        self.assertEqual(self.git(project, "rev-parse", "HEAD"), baseline)
+
+    def test_dependency_cycle_detection_only_uses_integration_edges(self) -> None:
+        project = self.create_git_project("typed-dependency-cycles")
+        initialized = self.init_project(project, self.write_bundle(project, "typed-dependency-cycles"))
+        baseline = self.commit_routes(project)
+        lane = self.root / "typed-dependency-cycles-lane"
+        self.git(project, "worktree", "add", "-b", "typed-cycles", str(lane), baseline)
+        self.run_connector(lane)
+        evidence_policy = {
+            "kind": "evidence", "required_status": "completed",
+            "require_validation_passed": True, "require_evidence_complete": True,
+        }
+        self.complete_git_change_with_contract(
+            lane, "cycle-a", "cycle-a.txt", [{"change_id": "cycle-b", **evidence_policy}],
+        )
+        self.complete_git_change_with_contract(
+            lane, "cycle-b", "cycle-b.txt", [{"change_id": "cycle-a", **evidence_policy}],
+        )
+        skill_root = Path(initialized["skill_root"])
+        started = self.cli(
+            project, "integrate", "start", "evidence-cycle", "cycle-b", "cycle-a",
+        )
+        self.assertEqual(started["change_ids"], ["cycle-b", "cycle-a"])
+        self.cli(project, "integrate", "abort", "evidence-cycle")
+
+        for change_id, dependency_id in (("cycle-a", "cycle-b"), ("cycle-b", "cycle-a")):
+            contract_path = skill_root / "state" / "registry" / "contracts" / f"{change_id}.json"
+            contract = json.loads(contract_path.read_text(encoding="utf-8"))
+            contract["change_dependencies"] = [{"change_id": dependency_id, "kind": "integration"}]
+            contract_path.write_text(json.dumps(contract, indent=2), encoding="utf-8")
+        failed = self.cli(
+            project, "integrate", "start", "integration-cycle", "cycle-a", "cycle-b", expected=(2,),
+        )
+        self.assertIn("dependency cycle", failed["error"])
+        self.assertFalse((
+            skill_root / "state" / "registry" / "integrations" / "integration-cycle.json"
+        ).exists())
     def test_fifth_change_evolution_stages_candidate_and_preserves_dynamic_registry(self) -> None:
         project = self.root / "evolution-project"
         (project / "src" / "jobs").mkdir(parents=True)
@@ -5585,7 +5979,7 @@ class HarnessCliTests(unittest.TestCase):
                 "affected_paths": ["src/jobs/service.py"],
                 "consumers": [],
                 "depends_on": [],
-                "depends_on_changes": [],
+                "change_dependencies": [],
             }),
             encoding="utf-8",
         )
@@ -5999,7 +6393,7 @@ class HarnessCliTests(unittest.TestCase):
             "kind": "api", "subject": "portable.v1.sample", "operation": "change",
             "owner_module": "portable-contract", "compatibility": "backward-compatible",
             "status": "proposed", "affected_paths": ["src/api.py"], "consumers": [],
-            "depends_on": [], "depends_on_changes": [],
+            "depends_on": [], "change_dependencies": [],
         }), encoding="utf-8")
         published = self.cli(
             bootstrap, "change", "publish", "portable-contract", "--contract", str(contract_input),

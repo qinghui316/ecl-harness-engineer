@@ -37,7 +37,7 @@ and validation review. The Runtime validates this attestation mechanically; it d
 
 - Integration requested: no
 - Commit boundary: not recorded
-- Dependencies: none recorded
+- Dependencies: list explicit integration/evidence dependencies and their validation, or none recorded
 
 ## Knowledge And Evolution Signals
 

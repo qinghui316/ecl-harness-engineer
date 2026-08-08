@@ -13,11 +13,16 @@ def validate_integration_review(
     canonicalize: Callable[[str, str], str],
 ) -> dict[str, Any]:
     report = load_bound_report(Path(report_path).expanduser().resolve(), "Integration review")
-    required = ("integration_id", "reviewer_id", "reviewed_commit", "verdict", "validation_commands", "findings")
+    required = (
+        "integration_id", "reviewer_id", "reviewed_commit", "dependency_binding_digest",
+        "verdict", "validation_commands", "findings",
+    )
     if not all(field in report for field in required):
         raise ValueError("Integration review report is missing required binding fields.")
     if report["integration_id"] != record["integration_id"] or report["reviewed_commit"] != candidate_commit:
         raise ValueError("Integration review report does not bind the current Integration candidate.")
+    if report["dependency_binding_digest"] != record.get("dependency_binding_digest"):
+        raise ValueError("Integration review report does not bind the staged dependency evidence.")
     reviewer_id = canonicalize(report["reviewer_id"], "Integration reviewer id")
     if reviewer_id == record.get("integrator_id"):
         raise ValueError("Integration reviewer must differ from the recorded Integrator.")
