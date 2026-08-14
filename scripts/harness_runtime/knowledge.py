@@ -350,7 +350,7 @@ def _frontmatter_lines(metadata: dict[str, Any]) -> list[str]:
     return [*lines, "---", ""]
 
 
-def ensure_renderer_knowledge_frontmatter(path: Path, item: dict[str, Any]) -> None:
+def ensure_generated_knowledge_frontmatter(path: Path, item: dict[str, Any]) -> None:
     if parse_agent_knowledge_frontmatter(path) is not None:
         return
     raw_layer = str(item.get("layer", "L3"))
@@ -370,7 +370,7 @@ def ensure_renderer_knowledge_frontmatter(path: Path, item: dict[str, Any]) -> N
         "owner": str(item.get("owner") or item.get("generated_by") or identifier),
         "modules": modules,
         "evidence": sources,
-        "managed_by": "renderer",
+        "managed_by": "agent",
     }
     content = path.read_text(encoding="utf-8")
     atomic_write_text(path, "\n".join([*_frontmatter_lines(metadata), content]))
@@ -397,7 +397,7 @@ def convert_legacy_knowledge_index(
         if not path.is_file() or path.suffix.lower() != ".md":
             raise HarnessError(f"Legacy project knowledge document is missing: {raw_item['path']}")
         if parse_agent_knowledge_frontmatter(path) is None:
-            ensure_renderer_knowledge_frontmatter(path, raw_item)
+            ensure_generated_knowledge_frontmatter(path, raw_item)
 
     items = discover_project_knowledge(
         skill_root, context, include_content_fingerprint=True,
@@ -426,6 +426,57 @@ def convert_legacy_knowledge_index(
     render_knowledge_catalog(skill_root, items)
     index_path.unlink()
     return {"converted": True, "documents": len(documents)}
+
+
+def renderer_owned_knowledge_paths(skill_root: Path) -> list[Path]:
+    wiki = skill_root / "references" / "project_wiki"
+    paths: list[Path] = []
+    for path in sorted(wiki.rglob("*.md")) if wiki.is_dir() else []:
+        if path.name == "catalog.md":
+            continue
+        metadata = parse_agent_knowledge_frontmatter(path)
+        if metadata and metadata.get("managed_by") == "renderer":
+            paths.append(path)
+    return paths
+
+
+def convert_renderer_knowledge_ownership(
+    skill_root: Path,
+    context: dict[str, Any],
+    snapshot: SourceFingerprintSnapshot | None = None,
+) -> dict[str, Any]:
+    """Convert the retired renderer marker without changing knowledge semantics."""
+    wiki = skill_root / "references" / "project_wiki"
+    converted_ids: list[str] = []
+    for path in renderer_owned_knowledge_paths(skill_root):
+        metadata = parse_agent_knowledge_frontmatter(path)
+        if metadata is None:
+            continue
+        text = path.read_text(encoding="utf-8")
+        lines = text.splitlines(keepends=True)
+        try:
+            end = next(index for index, line in enumerate(lines[1:], 1) if line.strip() == "---")
+        except StopIteration as exc:
+            raise HarnessError(f"Knowledge frontmatter has no closing delimiter: {path}") from exc
+        replaced = False
+        for index in range(1, end):
+            if re.fullmatch(r"\s{2}managed_by:\s*renderer\s*", lines[index].rstrip("\r\n")):
+                newline = "\r\n" if lines[index].endswith("\r\n") else "\n"
+                lines[index] = f"  managed_by: agent{newline}"
+                replaced = True
+                break
+        if not replaced:
+            raise HarnessError(f"Renderer-owned knowledge has no convertible ownership marker: {path}")
+        atomic_write_text(path, "".join(lines))
+        converted_ids.append(str(metadata["id"]))
+
+    rebuild_project_wiki_catalog(
+        skill_root,
+        context,
+        snapshot,
+        preserve_existing_source_baselines=True,
+    )
+    return {"converted": bool(converted_ids), "documents": converted_ids}
 
 
 def _markdown_title(path: Path) -> str:
@@ -535,6 +586,7 @@ def rebuild_project_wiki_catalog(
     context: dict[str, Any],
     snapshot: SourceFingerprintSnapshot | None = None,
     refresh_all: bool = False,
+    preserve_existing_source_baselines: bool = False,
 ) -> dict[str, Any]:
     wiki = skill_root / "references" / "project_wiki"
     baseline_path = wiki / KNOWLEDGE_BASELINE_FILE
@@ -563,11 +615,14 @@ def rebuild_project_wiki_catalog(
         if link_findings:
             raise HarnessError(f"Project knowledge has invalid local links: {link_findings}")
         previous_item = previous_documents.get(item["id"], {})
-        unchanged = not refresh_all and (
+        same_existing_document = (
             isinstance(previous_item, dict)
             and previous_item.get("path") == item["path"]
-            and previous_item.get("content_fingerprint") == item["content_fingerprint"]
             and isinstance(previous_item.get("source_fingerprints"), dict)
+        )
+        unchanged = not refresh_all and same_existing_document and (
+            preserve_existing_source_baselines
+            or previous_item.get("content_fingerprint") == item["content_fingerprint"]
         )
         source_fingerprints = (
             previous_item["source_fingerprints"]

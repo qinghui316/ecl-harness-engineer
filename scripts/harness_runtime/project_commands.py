@@ -24,7 +24,7 @@ from .changes import contract_record_path, ecl_integrity_findings, rebuild_chang
 from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_write_json, atomic_write_text, git, git_baseline_relation, git_value, is_within, read_json, remove_owned_tree, run, safe_relative, stable_hash, utc_now
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
-from .knowledge import LEGACY_KNOWLEDGE_INDEX_FILE, SourceFingerprintSnapshot, convert_legacy_knowledge_index, knowledge_check_internal, rebuild_project_wiki_catalog
+from .knowledge import LEGACY_KNOWLEDGE_INDEX_FILE, SourceFingerprintSnapshot, convert_legacy_knowledge_index, convert_renderer_knowledge_ownership, knowledge_check_internal, renderer_owned_knowledge_paths
 from .links import connector_route, copy_runtime, copy_scaffold, ensure_all_project_routes, ensure_runtime_links, generated_command_routes, remove_directory_link, restore_route_snapshots, same_target, worktree_route_findings
 from .project import assign_project_identity, ensure_state, initial_manifest, project_context, require_skill, skill_root_for, worktree_roots
 from .registry import records, registry_root
@@ -244,17 +244,12 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             "routes": init_result.get("routes", {}),
         }
     root = skill_root_for(context, args)
-    profile = audit = delta = architecture = bundle = None
     if getattr(args, "analysis_bundle", None):
-        requested_bundle = Path(args.analysis_bundle).expanduser().resolve()
-        full_names = ("project-profile.json", "audit.json", "creation-delta.json", "architecture.json")
-        if all((requested_bundle / name).is_file() for name in full_names):
-            profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
-        else:
-            raise HarnessError(
-                "project migrate requires the complete four control-file analysis bundle. "
-                "Update ordinary project Harness documents directly in a Structured Change."
-            )
+        raise HarnessError(
+            "project migrate does not accept semantic analysis bundles. It upgrades Runtime, schema, "
+            "and templates while preserving project knowledge. Update knowledge directly in a Structured "
+            "Change, or use project init only when no Harness exists."
+        )
     if not (root / "state" / "manifest.json").exists():
         raise HarnessError(
             "Project routes identify a Harness that is not present on this machine. Place the matching project Harness at the marked Skill path before migrating."
@@ -281,121 +276,93 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         or "worktree" in lane
         for lane in records(registry_root(root) / "lanes")
     )
-    if portable_upgrade and existing_manifest.get("analysis_status") == "complete":
-        if profile is None or profile.get("analysis_status") != "complete":
-            raise HarnessError(
-                "semantic_refresh_required: this complete project Harness must be migrated with a new complete self-contained analysis bundle."
-            )
     if not portable_upgrade:
         root = require_skill(context, args)
     routes: dict[str, dict[str, str]] = {}
     route_snapshots: dict[Path, bytes | None] = {}
     created_links: list[Path] = []
     applied = None
-    if init_result and bundle is not None and init_result.get("status") in {"initialized", "bootstrapped"}:
+    acquire_writer(root, "migration", context["project_id"])
+    transaction: dict[str, Any] | None = None
+    manifest_path = root / "state" / "manifest.json"
+    snapshot_paths = [
+        manifest_path,
+        root / "state" / "changes" / "INDEX.json",
+        *sorted(registry_root(root).rglob("*.json")),
+    ]
+    for lane in records(registry_root(root) / "lanes"):
+        branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
+        snapshot_paths.append(
+            registry_root(root) / "lanes" / f"{portable_lane_id(context['project_id'], branch)}.json"
+        )
+    state_snapshots = capture_file_snapshots(dict.fromkeys(snapshot_paths))
+    candidate = root / "state" / "migration" / "staging" / context["project_id"]
+    try:
+        recover_content_transactions(root, "migration", context["project_id"])
+        if candidate.exists():
+            remove_owned_tree(candidate, candidate.parent, "Migration staging candidate")
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        copy_non_state_skill(root, candidate)
+        (candidate / "state").mkdir(parents=True, exist_ok=True)
+        atomic_write_json(
+            candidate / "state" / "manifest.json",
+            portable_manifest(read_json(manifest_path, {}), context),
+        )
+        launchers = copy_runtime(candidate)
+        fingerprint_snapshot = SourceFingerprintSnapshot(context)
+        legacy_conversion = convert_legacy_knowledge_index(candidate, context)
+        ownership_conversion = convert_renderer_knowledge_ownership(
+            candidate, context, fingerprint_snapshot,
+        )
         applied = {
-            "via": "project_init",
-            "knowledge": init_result.get("knowledge"),
-            "artifacts": init_result.get("artifacts"),
-            "rules": init_result.get("rules"),
+            "runtime_upgrade": True,
+            "portable_state_upgrade": portable_upgrade,
+            "lane_rebound": state_rebind,
+            "legacy_knowledge": legacy_conversion,
+            "legacy_renderer_ownership": ownership_conversion,
         }
-    if profile is not None or portable_upgrade or state_rebind or legacy_knowledge:
-        acquire_writer(root, "migration", context["project_id"])
-        transaction: dict[str, Any] | None = None
-        manifest_path = root / "state" / "manifest.json"
-        snapshot_paths = [
-            manifest_path,
-            root / "state" / "changes" / "INDEX.json",
-            *sorted(registry_root(root).rglob("*.json")),
-        ]
-        for lane in records(registry_root(root) / "lanes"):
-            branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
-            snapshot_paths.append(
-                registry_root(root) / "lanes" / f"{portable_lane_id(context['project_id'], branch)}.json"
-            )
-        state_snapshots = capture_file_snapshots(dict.fromkeys(snapshot_paths))
-        candidate = root / "state" / "migration" / "staging" / context["project_id"]
-        try:
-            recover_content_transactions(root, "migration", context["project_id"])
-            if candidate.exists():
+        candidate_check = knowledge_check_internal(
+            candidate, context, fingerprint_snapshot, include_fingerprints=False,
+        )
+        if not candidate_check["healthy"]:
+            raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
+        transaction = apply_content_transaction(
+            root,
+            candidate,
+            "migration",
+            context["project_id"],
+            state_snapshot_paths=state_snapshots,
+        )
+        links, new_links = ensure_runtime_links(context, args, root)
+        created_links.extend(new_links)
+        routes, route_snapshots = ensure_all_project_routes(context, root)
+        lifecycle_changed = normalize_portable_state(root, context)
+        if state_rebind or lifecycle_changed:
+            rebuild_change_index(root)
+        manifest = read_json(manifest_path, {})
+        manifest["skill_revision"] = int(manifest.get("skill_revision", 1)) + 1
+        manifest["launchers"] = launchers
+        manifest["updated_at"] = utc_now()
+        atomic_write_json(manifest_path, manifest)
+        commit_content_transaction(transaction)
+        transaction = None
+    except Exception as exc:
+        restore_route_snapshots(route_snapshots)
+        for link in reversed(created_links):
+            remove_directory_link(link, root)
+        if transaction is not None:
+            rollback_content_transaction(transaction)
+        restore_file_snapshots(state_snapshots)
+        if candidate.exists():
+            try:
                 remove_owned_tree(candidate, candidate.parent, "Migration staging candidate")
-            candidate.parent.mkdir(parents=True, exist_ok=True)
-            copy_non_state_skill(root, candidate)
-            (candidate / "state").mkdir(parents=True, exist_ok=True)
-            atomic_write_json(
-                candidate / "state" / "manifest.json",
-                portable_manifest(read_json(manifest_path, {}), context),
-            )
-            launchers = copy_runtime(candidate)
-            fingerprint_snapshot = SourceFingerprintSnapshot(context)
-            legacy_conversion = convert_legacy_knowledge_index(candidate, context)
-            if profile is not None and audit is not None and delta is not None and architecture is not None:
-                applied = install_analysis_bundle(
-                    candidate,
-                    context,
-                    profile,
-                    audit,
-                    delta,
-                    architecture,
-                    bundle,
-                    bool(getattr(args, "allow_executable_artifacts", False)),
-                    fingerprint_snapshot=fingerprint_snapshot,
-                    allow_retire=True,
-                )
-            else:
-                applied = {
-                    "portable_state_upgrade": portable_upgrade,
-                    "lane_rebound": state_rebind,
-                    "legacy_knowledge": legacy_conversion,
-                }
-                rebuild_project_wiki_catalog(
-                    candidate, context, fingerprint_snapshot, refresh_all=state_rebind,
-                )
-            candidate_check = knowledge_check_internal(candidate, context, fingerprint_snapshot)
-            if not candidate_check["healthy"]:
-                raise HarnessError(f"Migration candidate knowledge validation failed: {candidate_check['findings']}")
-            transaction = apply_content_transaction(
-                root,
-                candidate,
-                "migration",
-                context["project_id"],
-                state_snapshot_paths=state_snapshots,
-            )
-            links, new_links = ensure_runtime_links(context, args, root)
-            created_links.extend(new_links)
-            routes, route_snapshots = ensure_all_project_routes(context, root)
-            lifecycle_changed = normalize_portable_state(root, context)
-            if state_rebind or lifecycle_changed:
-                rebuild_change_index(root)
-            manifest = read_json(manifest_path, {})
-            if profile is not None:
-                manifest["analysis_status"] = profile.get("analysis_status")
-            manifest["skill_revision"] = int(manifest.get("skill_revision", 1)) + 1
-            manifest["launchers"] = launchers
-            manifest["updated_at"] = utc_now()
-            atomic_write_json(manifest_path, manifest)
-            commit_content_transaction(transaction)
-            transaction = None
-        except Exception as exc:
-            restore_route_snapshots(route_snapshots)
-            for link in reversed(created_links):
-                remove_directory_link(link, root)
-            if transaction is not None:
-                rollback_content_transaction(transaction)
-            restore_file_snapshots(state_snapshots)
-            if candidate.exists():
-                try:
-                    remove_owned_tree(candidate, candidate.parent, "Migration staging candidate")
-                except Exception as cleanup_error:
-                    raise HarnessError(
-                        f"Migration failed and candidate cleanup was refused: {cleanup_error}"
-                    ) from exc
-            raise
-        finally:
-            release_writer(root, "migration", context["project_id"])
-    else:
-        links, _ = ensure_runtime_links(context, args, root)
-        routes, _ = ensure_all_project_routes(context, root)
+            except Exception as cleanup_error:
+                raise HarnessError(
+                    f"Migration failed and candidate cleanup was refused: {cleanup_error}"
+                ) from exc
+        raise
+    finally:
+        release_writer(root, "migration", context["project_id"])
     return {
         "status": "migration_applied" if applied else "migration_checked",
         "init": init_result, "applied": applied,
@@ -548,6 +515,13 @@ def project_doctor_internal(args: argparse.Namespace) -> dict[str, Any]:
             "type": "legacy_knowledge_index",
             "path": str(legacy_index),
             "repair": "Run project migrate without an analysis bundle for the one-time structural conversion.",
+        })
+    legacy_renderer_paths = renderer_owned_knowledge_paths(root)
+    if legacy_renderer_paths:
+        findings.append({
+            "type": "legacy_renderer_ownership",
+            "paths": [str(path) for path in legacy_renderer_paths],
+            "repair": "Run project migrate without an analysis bundle to convert these pages to agent maintenance.",
         })
     launchers = manifest.get("launchers", [])
     if not isinstance(launchers, list):

@@ -8,8 +8,9 @@ Audit behavior, evidence quality, and ownership.
 
 Read the target project, applicable instructions, current project Harness, profile evidence, Change
 INDEX/summaries, Registry, and configured project gates. Return `<analysis-bundle>/audit.json` plus
-a human-readable summary. After authorized init, migrate, or E1 Evolution, the CLI stores them in
-`state/analysis/`; read-only audit returns them without creating a Skill or repository file.
+a human-readable summary. Initialization stores the accepted analysis in `state/analysis/`.
+Migration preserves it, broad E1 uses it only as evidence, and read-only audit creates no project
+Harness or repository file.
 
 ## Weighted Core Dimensions
 
@@ -100,7 +101,8 @@ Check:
 - Proposal precedes mutation and classifies Promote/Retain/Merge/Retire/Archive-only.
 - Unintegrated implementation facts cannot become stable project truth.
 - Independent score is at least 80, no hard issue exists, and declared Harness/project tests pass.
-- Dry run or unavailable judge produces noop without mutation.
+- Dry run cannot keep. An unavailable reviewer rejects an existing candidate; only a review that
+  formed no candidate may record noop.
 - Candidate fingerprint, writer lock, transaction recovery, and dynamic state preservation prevent
   partial or stale publication.
 - Complete Change archive and INDEX remain intact after evaluation; only evaluated IDs advance.
@@ -129,8 +131,8 @@ project gates, secret/path leakage, duplicate current owners, append-only rule g
 merge/retire, mutation before E1, hidden E2, unavailable independent review claimed as keep, or
 publication that can lose Registry/Change state.
 
-`keep` requires score >= 80, no hard issue, and all validation. Otherwise return `rejected` or
-`noop`; dry-run cannot keep.
+`keep` requires score >= 80, no hard issue, and all validation. A staged candidate that does not
+pass returns `rejected`; `noop` is reserved for a review that formed no candidate.
 
 ## Drift And Entropy Findings
 

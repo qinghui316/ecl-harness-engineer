@@ -182,7 +182,7 @@ ecl:
 `managed_by` is optional and defaults to `agent`. Search the generated catalog and documents with
 the same knowledge owner before choosing Create, Merge, Replace, Retire, or Archive-only. Update the
 Markdown directly in a Structured Change, then let `change reindex/close` refresh the catalog and
-source fingerprints. A full refresh preserves agent-maintained pages.
+source fingerprints. Initialization-generated pages follow the same Agent-maintained lifecycle.
 
 ## Workflow
 

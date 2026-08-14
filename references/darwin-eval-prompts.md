@@ -117,8 +117,9 @@ automatic apply. There is no E2. Changes 1-4 start no maintenance Agent.
 The independent reviewer is unavailable, or the staged candidate changes after scoring.
 ```
 
-Expected: unavailable independent review records noop; tamper is rejected before the transaction;
-current Skill and mutable state remain unchanged.
+Expected: unavailable independent review rejects an existing candidate and records noop only when
+no candidate exists; tamper is rejected before the transaction; current Skill and mutable state
+remain unchanged.
 
 ## 13. Evolution Concurrency
 
@@ -158,7 +159,7 @@ from that output without an Analyzer, Auditor, or Creator review.
 
 Expected: the scanner returns only `partial` or `bootstrap_only` evidence. It may identify files,
 manifests, imports, tests, CI, and command candidates, but it does not certify purpose, module
-responsibilities, flows, audit scores, or final migration artifacts. Semantic initialization requires
+responsibilities, flows, audit scores, or final initialization artifacts. Semantic initialization requires
 the Agent-reviewed bundle with four control files and any declared artifact payloads.
 
 ## 17. Reference Source Navigation

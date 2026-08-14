@@ -689,6 +689,25 @@ class HarnessCliTests(unittest.TestCase):
             f"{name}-updated",
             purpose="Accept jobs, coordinate runtime execution, and expose durable results.",
         )
+        artifacts = bundle / "artifacts"
+        artifacts.mkdir(exist_ok=True)
+        workflow = skill_root / "references" / "workflows" / "evolve.md"
+        (artifacts / "evolve.md").write_text(
+            workflow.read_text(encoding="utf-8")
+            + "\nThis candidate records reviewed cross-Change runtime ownership.\n",
+            encoding="utf-8",
+        )
+        delta_path = bundle / "creation-delta.json"
+        delta = json.loads(delta_path.read_text(encoding="utf-8"))
+        delta["artifacts"].append({
+            "path": "references/workflows/evolve.md",
+            "source": "artifacts/evolve.md",
+            "action": "replace",
+            "owner": "Evolution workflow",
+            "validation": "workflow-contract",
+            "evidence": ["registry:change/change-5"],
+        })
+        delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
         if stage:
             self.cli(
                 project,
@@ -918,7 +937,7 @@ class HarnessCliTests(unittest.TestCase):
                     for child in ast.walk(node)
                 )
             })
-        self.assertEqual(semantic_install_callers, {"project_init", "project_migrate", "evolve_stage"})
+        self.assertEqual(semantic_install_callers, {"project_init"})
         links_source = (ROOT / "scripts" / "harness_runtime" / "links.py").read_text(encoding="utf-8")
         self.assertNotIn("python_command = str(Path(sys.executable).resolve())", links_source)
         self.assertIn("ECL_HARNESS_PYTHON", links_source)
@@ -1021,10 +1040,14 @@ class HarnessCliTests(unittest.TestCase):
             self.assertTrue(item["expected"].strip())
         self.assertIn("Architecture Map", (ROOT / "README.md").read_text(encoding="utf-8"))
         migration = (ROOT / "references" / "migration.md").read_text(encoding="utf-8")
+        self.assertIn("rejects `--analysis-bundle`", migration)
+        analysis_contract = (
+            ROOT / "assets" / "project-skill" / "references" / "analysis-contract.md"
+        ).read_text(encoding="utf-8")
         for bundle_file in (
             "project-profile.json", "architecture.json", "audit.json", "creation-delta.json",
         ):
-            self.assertIn(bundle_file, migration)
+            self.assertIn(bundle_file, analysis_contract)
 
     def test_progressive_loading_routes_every_operational_reference(self) -> None:
         entry = (ROOT / "SKILL.md").read_text(encoding="utf-8")
@@ -1477,6 +1500,11 @@ class HarnessCliTests(unittest.TestCase):
         ignored_sources = [
             project / ".agents" / "reference-projects" / "sample" / "src" / "ignored.py",
             project / ".claude" / "skills" / "ignored.ts",
+            project / ".tmp" / "generated" / "ignored.py",
+            project / ".local-tools" / "checkout" / "ignored.ts",
+            project / ".cache" / "analysis" / "ignored.py",
+            project / "Generated" / "client" / "ignored.py",
+            project / ".generated" / "types" / "ignored.ts",
         ]
         for source in ignored_sources:
             source.parent.mkdir(parents=True, exist_ok=True)
@@ -1489,11 +1517,17 @@ class HarnessCliTests(unittest.TestCase):
         builder = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(builder)
         real_scandir = os.scandir
-        ignored = {"node_modules", ".agents", ".claude", "reference-projects"}
+        ignored = {
+            "node_modules", ".agents", ".claude", "reference-projects",
+            ".tmp", ".local-tools", ".cache", "generated", ".generated",
+        }
 
         def guarded_scandir(path: str | bytes | os.PathLike[str]) -> os.ScandirIterator:
             relative = Path(path).relative_to(project)
-            self.assertFalse(ignored.intersection(relative.parts), f"visited ignored tree: {relative}")
+            self.assertFalse(
+                ignored.intersection(part.casefold() for part in relative.parts),
+                f"visited ignored tree: {relative}",
+            )
             return real_scandir(path)
 
         with mock.patch("os.scandir", side_effect=guarded_scandir):
@@ -1536,6 +1570,23 @@ class HarnessCliTests(unittest.TestCase):
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "SENTINEL = 'unchanged'\n")
         finally:
             self.runtime_core.unlink_directory_link_node(linked)
+
+    def test_analysis_source_discovery_prefers_canonical_git_tracked_sources(self) -> None:
+        project = self.create_git_project("tracked-analysis-source")
+        untracked = project / "scratch-checkout" / "fake-module" / "main.py"
+        untracked.parent.mkdir(parents=True)
+        untracked.write_text("FAKE = True\n", encoding="utf-8")
+        spec = importlib.util.spec_from_file_location(
+            f"analysis_builder_tracked_{id(self)}", ROOT / "scripts" / "build_analysis_bundle.py",
+        )
+        assert spec and spec.loader
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+
+        discovered = builder.source_files(project)
+
+        self.assertIn(project / "src" / "jobs" / "service.py", discovered)
+        self.assertNotIn(untracked, discovered)
 
     def test_real_polyglot_analysis_extracts_each_language_boundary(self) -> None:
         project = self.root / "real-polyglot"
@@ -1806,12 +1857,32 @@ class HarnessCliTests(unittest.TestCase):
         refreshed_profile = json.loads(refreshed_profile_path.read_text(encoding="utf-8"))
         refreshed_profile["modules"][0]["responsibility"] += " Expose observable results to callers."
         refreshed_profile_path.write_text(json.dumps(refreshed_profile, indent=2), encoding="utf-8")
+        artifact_dir = fresh_bundle / "artifacts"
+        artifact_dir.mkdir(exist_ok=True)
+        current_workflow = skill_root / "references" / "workflows" / "evolve.md"
+        (artifact_dir / "evolve.md").write_text(
+            current_workflow.read_text(encoding="utf-8")
+            + "\nBroad analysis confirmed this explicit workflow update.\n",
+            encoding="utf-8",
+        )
+        delta_path = fresh_bundle / "creation-delta.json"
+        delta = json.loads(delta_path.read_text(encoding="utf-8"))
+        delta["artifacts"].append({
+            "path": "references/workflows/evolve.md",
+            "source": "artifacts/evolve.md",
+            "action": "replace",
+            "owner": "Evolution workflow",
+            "validation": "workflow-contract",
+            "evidence": ["registry:change/independent-5"],
+        })
+        delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
         audited = self.run_process([
             sys.executable, str(generated_cli), "project", "audit", "--analysis-bundle", str(fresh_bundle),
             "--project-root", str(project),
         ])
         self.assertEqual(json.loads(audited.stdout)["semantic"]["analysis_status"], "complete")
         preserved_changes = self.tree_hashes(skill_root / "state" / "changes")
+        preserved_analysis = self.tree_hashes(skill_root / "state" / "analysis")
         preserved_registry = {
             key: value for key, value in self.tree_hashes(skill_root / "state" / "registry").items()
             if not key.startswith("locks/")
@@ -1822,6 +1893,12 @@ class HarnessCliTests(unittest.TestCase):
             "--allow-executable-artifacts", "--project-root", str(project),
         ])
         staged_payload = json.loads(staged.stdout)
+        self.assertEqual(staged_payload["mode"], "full")
+        self.assertEqual(
+            preserved_analysis,
+            self.tree_hashes(skill_root / "state" / "analysis"),
+        )
+        self.assertFalse((Path(staged_payload["candidate"]) / "state" / "analysis").exists())
         judge = self.write_evolution_judge(skill_root, "independent-refresh", score=90)
         completed = self.run_process([
             sys.executable, str(generated_cli), "evolve", "mark-complete",
@@ -2136,7 +2213,7 @@ class HarnessCliTests(unittest.TestCase):
         unsafe_profile["environment"]["variables"][0]["value"] = "actual-" + "secret"
         unsafe_profile_path.write_text(json.dumps(unsafe_profile, indent=2), encoding="utf-8")
         rejected = self.cli(
-            project, "project", "migrate", "--analysis-bundle", str(unsafe), expected=(2,),
+            project, "project", "audit", "--analysis-bundle", str(unsafe), expected=(2,),
         )
         self.assertIn("Secret-bearing field", rejected["error"])
 
@@ -2594,13 +2671,13 @@ class HarnessCliTests(unittest.TestCase):
         project, skill_root, _ = self.prepare_evolution("focused-evolution", stage=False)
         bundle = self.write_focused_evolution_bundle(skill_root, "focused-evolution")
         with mock.patch.object(
-            self.runtime_evolution,
-            "install_analysis_bundle",
-            side_effect=AssertionError("focused Evolution must not render a full analysis bundle"),
+            self.runtime_rendering,
+            "render_project_wiki",
+            side_effect=AssertionError("Evolution must not render project knowledge"),
         ), mock.patch.object(
-            self.runtime_evolution,
-            "knowledge_check_internal",
-            side_effect=AssertionError("focused Evolution must not run a full knowledge check"),
+            self.runtime_rendering,
+            "persist_analysis",
+            side_effect=AssertionError("Evolution must not install analysis evidence"),
         ):
             staged = self.dispatch(
                 project,
@@ -2661,7 +2738,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(result["applied"], ["scripts/checks/obsolete_check.py"])
         self.assertFalse(target.exists())
 
-    def test_full_project_migrate_can_retire_an_optional_check(self) -> None:
+    def test_project_migrate_rejects_semantic_retirement_bundle(self) -> None:
         project = self.create_git_project("full-migrate-retire")
         initialized = self.init_project(
             project,
@@ -2676,13 +2753,11 @@ class HarnessCliTests(unittest.TestCase):
             "scripts/checks/check_project.py",
         )
 
-        migrated = self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
-
-        self.assertEqual(
-            migrated["applied"]["artifacts"]["applied"],
-            ["scripts/checks/check_project.py"],
+        rejected = self.cli(
+            project, "project", "migrate", "--analysis-bundle", str(bundle), expected=(2,),
         )
-        self.assertFalse(target.exists())
+        self.assertIn("does not accept semantic analysis bundles", rejected["error"])
+        self.assertTrue(target.exists())
 
     def test_full_evolution_can_retire_an_optional_semantic_artifact(self) -> None:
         target_relative = "references/obsolete-project-guidance.md"
@@ -2719,7 +2794,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(completed["status"], "keep")
         self.assertFalse(target.exists())
 
-    def test_init_rejects_retirement_and_full_migrate_preserves_protected_owners(self) -> None:
+    def test_init_rejects_retirement(self) -> None:
         init_project = self.create_git_project("init-retire-rejected")
         init_bundle = self.add_bundle_retirement(
             self.write_bundle(init_project, "init-retire-rejected"),
@@ -2734,108 +2809,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("staged migration or Evolution candidate", rejected["error"])
         self.assertEqual(list((init_project / ".agents" / "skills").glob("*")), [])
 
-        project = self.create_git_project("full-migrate-retire-protected")
-        initialized = self.init_project(
-            project,
-            self.write_bundle(project, "full-migrate-retire-protected-base"),
-        )
-        skill_root = Path(initialized["skill_root"])
-        revision = json.loads(
-            (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
-        )["skill_revision"]
-        protected = {
-            "SKILL.md": "required project Harness file",
-            "references/rules/red_lines.yaml": "required project Harness file",
-            "references/workflows/intake.md": "required workflow",
-            "scripts/harness_runtime/rendering.py": "protected or unsupported",
-            "state/manifest.json": "protected or unsupported",
-        }
-        for index, (target_relative, expected_error) in enumerate(protected.items()):
-            with self.subTest(target=target_relative):
-                bundle = self.add_bundle_retirement(
-                    self.write_bundle(project, f"full-migrate-protected-{index}"),
-                    target_relative,
-                )
-                result = self.cli(
-                    project,
-                    "project", "migrate",
-                    "--analysis-bundle", str(bundle),
-                    expected=(2,),
-                )
-                self.assertIn(expected_error, result["error"])
-                self.assertTrue((skill_root / target_relative).exists())
-                self.assertEqual(
-                    json.loads(
-                        (skill_root / "state" / "manifest.json").read_text(encoding="utf-8")
-                    )["skill_revision"],
-                    revision,
-                )
-
-    def test_full_migrate_retirement_rolls_back_content_and_dynamic_state(self) -> None:
-        project = self.create_git_project("full-migrate-retire-rollback")
-        initialized = self.init_project(
-            project,
-            self.write_bundle(project, "full-migrate-retire-rollback-base", artifact=True),
-            allow_executable_artifacts=True,
-        )
-        skill_root = Path(initialized["skill_root"])
-        target = skill_root / "scripts" / "checks" / "check_project.py"
-        target_bytes = target.read_bytes()
-        self.cli(
-            project,
-            "change", "new", "retirement-rollback",
-            "--scope", "Prove retirement publication rollback",
-        )
-        change_record = skill_root / "state" / "registry" / "changes" / "retirement-rollback.json"
-        legacy_record = json.loads(change_record.read_text(encoding="utf-8"))
-        legacy_record["status"] = "closing"
-        legacy_record["integration_status"] = "not_integrated"
-        change_record.write_text(json.dumps(legacy_record, indent=2), encoding="utf-8")
-        index_path = skill_root / "state" / "changes" / "INDEX.json"
-        legacy_index = json.loads(index_path.read_text(encoding="utf-8"))
-        legacy_index["rollback_sentinel"] = True
-        index_path.write_text(json.dumps(legacy_index, indent=2), encoding="utf-8")
-        before = self.tree_hashes(skill_root)
-        before_state = self.tree_hashes(skill_root / "state")
-        bundle = self.add_bundle_retirement(
-            self.write_bundle(project, "full-migrate-retire-rollback-update"),
-            "scripts/checks/check_project.py",
-            evidence="registry:change/retirement-rollback",
-        )
-        observed_published_retirement = False
-        original_atomic_write_json = self.runtime_project_commands.atomic_write_json
-
-        def fail_after_dynamic_state_normalization(path: Path, value: dict) -> None:
-            nonlocal observed_published_retirement
-            if Path(path) == skill_root / "state" / "manifest.json" and value.get("skill_revision") == 2:
-                self.assertFalse(target.exists())
-                self.assertEqual(
-                    json.loads(change_record.read_text(encoding="utf-8"))["integration_status"],
-                    "not_requested",
-                )
-                self.assertNotIn(
-                    "rollback_sentinel",
-                    json.loads(index_path.read_text(encoding="utf-8")),
-                )
-                observed_published_retirement = True
-                raise self.cli_module.HarnessError("injected post-normalization failure")
-            original_atomic_write_json(path, value)
-
-        with mock.patch.object(
-            self.runtime_project_commands,
-            "atomic_write_json",
-            side_effect=fail_after_dynamic_state_normalization,
-        ):
-            with self.assertRaisesRegex(self.cli_module.HarnessError, "injected post-normalization failure"):
-                self.dispatch(project, "project", "migrate", "--analysis-bundle", str(bundle))
-
-        self.assertTrue(observed_published_retirement)
-        self.assertEqual(target.read_bytes(), target_bytes)
-        self.assertEqual(before_state, self.tree_hashes(skill_root / "state"))
-        self.assertEqual(before, self.tree_hashes(skill_root))
-        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
-
-    def test_open_agent_knowledge_is_directly_edited_and_preserved_by_full_refresh(self) -> None:
+    def test_open_agent_knowledge_is_directly_edited_and_preserved_by_migration(self) -> None:
         project = self.create_git_project("open-agent-knowledge")
         initialized = self.init_project(project, self.write_bundle(project, "open-agent-knowledge"))
         skill_root = Path(initialized["skill_root"])
@@ -2872,8 +2846,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("roadmaps/office/v2.md", catalog)
         self.assertIn("target", catalog)
 
-        refresh = self.write_bundle(project, "open-agent-knowledge-refresh")
-        self.cli(project, "project", "migrate", "--analysis-bundle", str(refresh))
+        self.cli(project, "project", "migrate")
         self.assertIn("Office V2 Target Architecture", target.read_text(encoding="utf-8"))
         self.assertIn("Agent-Owned Job Processing", module.read_text(encoding="utf-8"))
 
@@ -2927,7 +2900,7 @@ class HarnessCliTests(unittest.TestCase):
         rejected = self.cli(
             project, "project", "migrate", "--analysis-bundle", str(bundle), expected=(2,),
         )
-        self.assertIn("complete four control-file analysis bundle", rejected["error"])
+        self.assertIn("does not accept semantic analysis bundles", rejected["error"])
         decision.unlink()
         self.cli(project, "change", "reindex")
         baselines = json.loads((wiki / ".ecl-baselines.json").read_text(encoding="utf-8"))
@@ -3067,6 +3040,65 @@ class HarnessCliTests(unittest.TestCase):
             self.assertEqual("\n".join(lines[end + 1:]).lstrip("\n"), body)
         self.assertTrue(self.cli(project, "knowledge", "check")["healthy"])
 
+    def test_migration_converts_renderer_ownership_and_preserves_source_baseline(self) -> None:
+        project = self.create_git_project("renderer-ownership-conversion")
+        initialized = self.init_project(project, self.write_bundle(project, "renderer-ownership-conversion"))
+        skill_root = Path(initialized["skill_root"])
+        wiki = skill_root / "references" / "project_wiki"
+        document = wiki / "modules" / "job-processing.md"
+        original = document.read_text(encoding="utf-8")
+        self.assertIn("managed_by: agent", original)
+        document.write_text(original.replace("managed_by: agent", "managed_by: renderer", 1), encoding="utf-8")
+        baseline_path = wiki / ".ecl-baselines.json"
+        before_baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        source_fingerprints = before_baseline["documents"]["job-processing"]["source_fingerprints"]
+        unrelated_id, unrelated_baseline = next(
+            (identifier, item)
+            for identifier, item in before_baseline["documents"].items()
+            if identifier != "job-processing"
+            and item.get("source_fingerprints")
+            and (wiki / item["path"]).is_file()
+            and any((project / source).is_file() for source in item["source_fingerprints"])
+        )
+        unrelated_source = next(
+            project / source
+            for source in unrelated_baseline["source_fingerprints"]
+            if (project / source).is_file()
+        )
+        unrelated_document = wiki / unrelated_baseline["path"]
+        unrelated_document.write_text(
+            unrelated_document.read_text(encoding="utf-8") + "\nMigration-local note.\n",
+            encoding="utf-8",
+        )
+        unrelated_source.write_text(
+            unrelated_source.read_text(encoding="utf-8") + "\n# drift before migration\n",
+            encoding="utf-8",
+        )
+        body = document.read_text(encoding="utf-8").split("---", 2)[-1]
+
+        doctor = self.cli(project, "project", "doctor", expected=(1,))
+        self.assertIn("legacy_renderer_ownership", {item["type"] for item in doctor["findings"]})
+        migrated = self.cli(project, "project", "migrate")
+
+        self.assertEqual(
+            migrated["applied"]["legacy_renderer_ownership"]["documents"],
+            ["job-processing"],
+        )
+        converted = document.read_text(encoding="utf-8")
+        self.assertIn("managed_by: agent", converted)
+        self.assertEqual(converted.split("---", 2)[-1], body)
+        after_baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            after_baseline["documents"]["job-processing"]["source_fingerprints"],
+            source_fingerprints,
+        )
+        self.assertEqual(
+            after_baseline["documents"][unrelated_id]["source_fingerprints"],
+            unrelated_baseline["source_fingerprints"],
+        )
+        drift = self.cli(project, "knowledge", "check", expected=(1,))
+        self.assertIn(unrelated_id, {item.get("item") for item in drift["findings"]})
+
     def test_fingerprint_finding_types_share_canonical_audit_names(self) -> None:
         aliases = {
             "changed": "knowledge_drift",
@@ -3130,6 +3162,103 @@ class HarnessCliTests(unittest.TestCase):
                     "--status", "keep",
                 )
         self.assertIn("evidence changed", str(rejected.exception).lower())
+        self.assertTrue((skill_root / "state" / "registry" / "locks" / "evolution-owner").exists())
+
+    def test_rejected_evolution_records_after_source_drift_without_applying_candidate(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("rejected-after-source-drift")
+        before = self.runtime_evolution.harness_content_fingerprint(skill_root)
+        judge = self.write_evolution_judge(skill_root, verdict="rejected", score=70)
+        source = project / "src" / "jobs" / "service.py"
+        source.write_text(source.read_text(encoding="utf-8") + "\n# later canonical edit\n", encoding="utf-8")
+        result = self.cli(
+            project,
+            "evolve",
+            "mark-complete",
+            "--proposal-id",
+            "accepted-knowledge",
+            "--owner",
+            "independent-judge",
+            "--candidate-id",
+            "accepted-knowledge",
+            "--judge-report",
+            str(judge),
+            "--status",
+            "rejected",
+        )
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(before, self.runtime_evolution.harness_content_fingerprint(skill_root))
+
+    def test_noop_cannot_hide_a_staged_evolution_candidate(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("candidate-backed-noop")
+        before = self.runtime_evolution.harness_content_fingerprint(skill_root)
+        rejected = self.cli(
+            project,
+            "evolve",
+            "mark-complete",
+            "--proposal-id",
+            "accepted-knowledge",
+            "--owner",
+            "independent-judge",
+            "--status",
+            "noop",
+            "--judge-unavailable",
+            expected=(2,),
+        )
+        self.assertIn("no Evolution candidate was staged", rejected["error"])
+        self.assertEqual(before, self.runtime_evolution.harness_content_fingerprint(skill_root))
+
+    def test_noop_cannot_hide_a_candidate_for_another_proposal(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("other-candidate-noop", stage=False)
+        other = skill_root / "state" / "evolution" / "staging" / "other-proposal"
+        other.mkdir(parents=True)
+        (other / "sentinel.txt").write_text("preserve\n", encoding="utf-8")
+
+        rejected = self.cli(
+            project,
+            "evolve", "mark-complete",
+            "--proposal-id", "accepted-knowledge",
+            "--owner", "independent-judge",
+            "--status", "noop",
+            "--judge-unavailable",
+            expected=(2,),
+        )
+
+        self.assertIn("no Evolution candidate was staged", rejected["error"])
+        self.assertTrue((other / "sentinel.txt").is_file())
+
+    def test_keep_rechecks_source_snapshot_after_candidate_application(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("source-drift-during-apply")
+        before = self.runtime_evolution.harness_content_fingerprint(skill_root)
+        judge = self.write_evolution_judge(skill_root)
+        source = project / "src" / "jobs" / "service.py"
+        original_apply = self.runtime_evolution.apply_content_transaction
+
+        def apply_then_change_source(*args, **kwargs):
+            transaction = original_apply(*args, **kwargs)
+            source.write_text(
+                source.read_text(encoding="utf-8") + "\n# changed during publication\n",
+                encoding="utf-8",
+            )
+            return transaction
+
+        with mock.patch.object(
+            self.runtime_evolution,
+            "apply_content_transaction",
+            side_effect=apply_then_change_source,
+        ):
+            with self.assertRaises(self.cli_module.HarnessError) as rejected:
+                self.dispatch(
+                    project,
+                    "evolve", "mark-complete",
+                    "--proposal-id", "accepted-knowledge",
+                    "--owner", "independent-judge",
+                    "--candidate-id", "accepted-knowledge",
+                    "--judge-report", str(judge),
+                    "--status", "keep",
+                )
+
+        self.assertIn("evidence changed", str(rejected.exception).lower())
+        self.assertEqual(before, self.runtime_evolution.harness_content_fingerprint(skill_root))
         self.assertTrue((skill_root / "state" / "registry" / "locks" / "evolution-owner").exists())
 
     def test_read_only_knowledge_waits_for_content_publication(self) -> None:
@@ -4208,6 +4337,25 @@ class HarnessCliTests(unittest.TestCase):
             "evolution-updated",
             purpose="Accept jobs, coordinate runtime execution, and expose durable results.",
         )
+        artifacts = evolved_bundle / "artifacts"
+        artifacts.mkdir(exist_ok=True)
+        workflow = skill_root / "references" / "workflows" / "evolve.md"
+        (artifacts / "evolve.md").write_text(
+            workflow.read_text(encoding="utf-8")
+            + "\nThe five-Change review confirmed this explicit candidate update.\n",
+            encoding="utf-8",
+        )
+        delta_path = evolved_bundle / "creation-delta.json"
+        delta = json.loads(delta_path.read_text(encoding="utf-8"))
+        delta["artifacts"].append({
+            "path": "references/workflows/evolve.md",
+            "source": "artifacts/evolve.md",
+            "action": "replace",
+            "owner": "Evolution workflow",
+            "validation": "workflow-contract",
+            "evidence": ["registry:change/change-5"],
+        })
+        delta_path.write_text(json.dumps(delta, indent=2), encoding="utf-8")
         staged = self.cli(
             project,
             "evolve",
@@ -4247,8 +4395,11 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertEqual(kept["status"], "keep")
         updated_overview = (skill_root / "references" / "project_wiki" / "overview.md").read_text(encoding="utf-8")
-        self.assertIn("durable results", updated_overview)
-        self.assertNotEqual(original_overview, updated_overview)
+        self.assertEqual(original_overview, updated_overview)
+        self.assertIn(
+            "The five-Change review confirmed this explicit candidate update.",
+            (skill_root / "references" / "workflows" / "evolve.md").read_text(encoding="utf-8"),
+        )
         self.assertEqual(self.git(skill_root, "rev-parse", "HEAD"), skill_git_head)
         self.assertEqual((skill_root / "README.md").read_bytes(), skill_repository_readme)
         registry_after = self.tree_hashes(skill_root / "state" / "registry")
@@ -4393,13 +4544,11 @@ class HarnessCliTests(unittest.TestCase):
             git_dir = skill_root / git_dir
         index_lock = git_dir / "index.lock"
         index_lock.write_text("busy\n", encoding="utf-8")
-        blocked = self.cli(
-            project, "project", "migrate", "--analysis-bundle", str(bundle), expected=(2,),
-        )
+        blocked = self.cli(project, "project", "migrate", expected=(2,))
         self.assertIn("skill_git_index_locked", blocked["error"])
         index_lock.unlink()
 
-        self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
+        self.cli(project, "project", "migrate")
 
         self.assertEqual(self.git(skill_root, "rev-parse", "HEAD"), head)
         self.assertEqual(
@@ -4433,7 +4582,7 @@ class HarnessCliTests(unittest.TestCase):
                 raise OSError("injected repository-sidecar failure")
             original_move(source, target)
 
-        arguments = ("project", "migrate", "--analysis-bundle", str(bundle))
+        arguments = ("project", "migrate")
         with mock.patch.object(self.runtime_transactions, "transaction_move", side_effect=fail_after_git_sidecar):
             with self.assertRaises(self.cli_module.HarnessError):
                 self.dispatch(project, *arguments)
@@ -4470,13 +4619,7 @@ class HarnessCliTests(unittest.TestCase):
         )
         for relative in forbidden:
             self.assertFalse((project / relative).exists(), relative)
-        migrated = self.cli(
-            project,
-            "project",
-            "migrate",
-            "--analysis-bundle",
-            str(self.write_bundle(project, "single-output-updated")),
-        )
+        migrated = self.cli(project, "project", "migrate")
         self.assertEqual(migrated["status"], "migration_applied")
         for relative in forbidden:
             self.assertFalse((project / relative).exists(), relative)
@@ -5238,7 +5381,7 @@ class HarnessCliTests(unittest.TestCase):
             "--allow-executable-artifacts",
             expected=(2,),
         )
-        self.assertIn("validation failed", failed["error"].lower())
+        self.assertIn("does not accept semantic analysis bundles", failed["error"])
         self.assertEqual(before, self.tree_hashes(skill_root))
 
     def test_evolution_rejects_tampered_candidate_without_touching_current_skill(self) -> None:
@@ -5335,7 +5478,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(completed["status"], "keep")
 
     def test_unavailable_evolution_judge_records_noop_without_modification(self) -> None:
-        project, skill_root, _ = self.prepare_evolution("noop-evolution")
+        project, skill_root, _ = self.prepare_evolution("noop-evolution", stage=False)
         before = self.runtime_evolution.harness_content_fingerprint(skill_root)
         result = self.cli(
             project,
@@ -5356,6 +5499,27 @@ class HarnessCliTests(unittest.TestCase):
         self.assertFalse((skill_root / "state" / "registry" / "locks" / "evolution-owner").exists())
         state = json.loads((skill_root / "state" / "evolution" / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(state["evaluated_change_ids"], [f"change-{index}" for index in range(1, 6)])
+
+    def test_unavailable_evolution_judge_rejects_staged_candidate(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("rejected-no-judge")
+        before = self.runtime_evolution.harness_content_fingerprint(skill_root)
+        result = self.cli(
+            project,
+            "evolve",
+            "mark-complete",
+            "--proposal-id",
+            "accepted-knowledge",
+            "--owner",
+            "independent-judge",
+            "--candidate-id",
+            "accepted-knowledge",
+            "--status",
+            "rejected",
+            "--judge-unavailable",
+        )
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(before, self.runtime_evolution.harness_content_fingerprint(skill_root))
+        self.assertEqual(list((skill_root / "state" / "evolution" / "staging").glob("*")), [])
 
     def test_evolution_completion_serializes_change_close_without_losing_next_window(self) -> None:
         project, skill_root, _ = self.prepare_evolution("concurrent-evolution")
@@ -5432,7 +5596,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertFalse(status["pending"])
 
     def test_evolution_terminal_crash_retry_releases_writer(self) -> None:
-        project, skill_root, _ = self.prepare_evolution("terminal-evolution")
+        project, skill_root, _ = self.prepare_evolution("terminal-evolution", stage=False)
         arguments = (
             "evolve",
             "mark-complete",
@@ -6219,9 +6383,7 @@ class HarnessCliTests(unittest.TestCase):
         record["integration_status"] = "not_integrated"
         record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
 
-        migrated = self.cli(
-            project, "project", "migrate", "--analysis-bundle", str(bundle),
-        )
+        migrated = self.cli(project, "project", "migrate")
         self.assertEqual(migrated["status"], "migration_applied")
         restored = json.loads(record_path.read_text(encoding="utf-8"))
         self.assertEqual(restored["status"], "active")
@@ -6381,7 +6543,7 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertIn("named Git branch", rejected["error"])
 
-    def test_manifest_1_upgrade_is_portable_and_complete_requires_refresh(self) -> None:
+    def test_manifest_1_upgrade_is_portable_without_semantic_refresh(self) -> None:
         bootstrap = self.root / "portable-bootstrap"
         bootstrap.mkdir()
         initialized = self.init_project(bootstrap)
@@ -6430,10 +6592,10 @@ class HarnessCliTests(unittest.TestCase):
         complete_manifest["schema_version"] = "1.0"
         complete_manifest["project_root"] = str(project)
         complete_manifest_path.write_text(json.dumps(complete_manifest, indent=2), encoding="utf-8")
-        rejected = self.cli(project, "project", "migrate", expected=(2,))
-        self.assertIn("semantic_refresh_required", rejected["error"])
+        migrated_complete = self.cli(project, "project", "migrate")
+        self.assertTrue(migrated_complete["applied"]["portable_state_upgrade"])
         self.assertEqual(
-            json.loads(complete_manifest_path.read_text(encoding="utf-8"))["schema_version"], "1.0",
+            json.loads(complete_manifest_path.read_text(encoding="utf-8"))["schema_version"], "2.0",
         )
 
     def test_complete_migrate_refreshes_runtime_owned_scaffold_references(self) -> None:
@@ -6463,7 +6625,7 @@ class HarnessCliTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        self.cli(project, "project", "migrate", "--analysis-bundle", str(bundle))
+        self.cli(project, "project", "migrate")
 
         for name in ("analysis-contract.md", "runtime-modules.md", "git-collaboration.md"):
             self.assertEqual(

@@ -13,8 +13,8 @@ crash-recoverable transactions.
 An atomic write replaces one file or performs one filesystem rename. A complete Harness update is
 a recoverable multi-file transaction with a journal, rollback, and crash recovery. A content digest
 identifies exact Harness or candidate content; a source-state digest identifies the source snapshot
-used for validation. The compatible `managed_by: renderer|agent` values mean generated document and
-agent-maintained document in prose.
+used for validation. `managed_by: agent` is the current knowledge model; the compatible `renderer`
+value exists only for one-time migration of older project Harnesses.
 
 The public entry is `scripts/harness_cli.py`. Project Harness installations expose
 `project audit|doctor`; project creation and migration are performed by ECL Harness Engineer.

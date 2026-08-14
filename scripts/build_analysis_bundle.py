@@ -18,6 +18,18 @@ if str(_SCRIPT_ROOT) not in sys.path:
 from harness_runtime.core import is_link_like
 
 
+IGNORED_SOURCE_DIRECTORIES = {
+    ".git", ".agents", ".claude", ".tmp", ".local-tools", ".cache",
+    ".pytest_cache", ".mypy_cache", ".ruff_cache", ".next", ".turbo",
+    "node_modules", "vendor", "dist", "build", "out", "target", "coverage",
+    "reference-projects", "generated", ".generated", "tmp", "temp", "__pycache__",
+}
+
+
+def ignored_source_path(path: Path) -> bool:
+    return any(part.casefold() in IGNORED_SOURCE_DIRECTORIES for part in path.parts)
+
+
 def relative(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
@@ -61,10 +73,25 @@ def raise_walk_error(error: OSError) -> None:
 
 def source_files(root: Path) -> list[Path]:
     suffixes = {".py", ".go", ".ts", ".tsx", ".js", ".java", ".rs"}
-    ignored = {
-        ".git", "node_modules", "vendor", "dist", "build", ".agents", ".claude",
-        "reference-projects",
-    }
+    tracked = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if tracked.returncode == 0 and tracked.stdout:
+        files: list[Path] = []
+        for raw in tracked.stdout.split(b"\0"):
+            if not raw:
+                continue
+            relative_path = Path(raw.decode("utf-8", errors="strict"))
+            if ignored_source_path(relative_path):
+                continue
+            path = root / relative_path
+            if path.suffix in suffixes and path.is_file() and not is_link_like(path):
+                files.append(path)
+        if files:
+            return sorted(files)
     files: list[Path] = []
     for current, directories, names in os.walk(
         root, topdown=True, onerror=raise_walk_error, followlinks=False,
@@ -72,7 +99,7 @@ def source_files(root: Path) -> list[Path]:
         current_path = Path(current)
         directories[:] = sorted(
             name for name in directories
-            if name not in ignored and not is_link_like(current_path / name)
+            if name.casefold() not in IGNORED_SOURCE_DIRECTORIES and not is_link_like(current_path / name)
         )
         files.extend(
             path for name in sorted(names)

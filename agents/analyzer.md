@@ -190,7 +190,9 @@ The CLI validates it with the other bundle files and publishes it to
 }
 ```
 
-Do not write L1/L2/L3 directly during the read-only analysis stage. The approved profile is the
-single input from which init, migrate, or Evolution renders project Wiki content. Keep detailed
-structure in `architecture.json`; do not introduce a second architecture-summary owner or duplicate
-repository prose as a durable architecture dependency.
+Do not write L1/L2/L3 directly during the read-only analysis stage. Initialization uses the
+approved profile to render initial project Wiki content. During E1, profile and architecture may
+support a wider review, but only artifacts named by `creation-delta.json` can change knowledge.
+Migration never renders semantic content. Keep detailed structure in `architecture.json`; do not
+introduce a second architecture-summary owner or duplicate repository prose as a durable
+architecture dependency.

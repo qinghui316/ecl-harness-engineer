@@ -22,7 +22,7 @@ Create pending review state at five unevaluated qualified Changes; Changes one t
 
 ## HR-10: Apply Accepted Evolution Without E2
 
-After E1 approval, apply a proposal automatically only when every acceptance check passes; unavailable independent review records noop, meaning no change was applied.
+After E1 approval, apply a proposal automatically only when every acceptance check passes. Unavailable independent review records a staged candidate as rejected and a candidate-free review as noop.
 
 **On violation:** Do not record keep and preserve the pre-E1 Harness content digest.
 
@@ -40,9 +40,9 @@ Do not introduce daemons, remote locks, cross-machine synchronization, automatic
 
 ## HR-16: Verify Evolution Result
 
-Rejected and noop results preserve the pre-E1 Harness content digest; keep must change it and pass project Harness validation.
+Keep and rejected require a candidate bound to the independent review; only keep applies it. Noop requires no candidate. Rejected and noop preserve the pre-E1 Harness content digest.
 
-**On violation:** Reject the terminal result until the content digest and decision agree.
+**On violation:** Reject the terminal result until candidate presence, review binding, and content digest agree.
 
 ## HR-18: Preserve Command Evidence Status
 

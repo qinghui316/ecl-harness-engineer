@@ -9,7 +9,7 @@ project Harness. Apply the complete ECL behavior through its current owners and 
   bridges, boundaries, unknowns, and evidence.
 - `audit.json` with semantic gaps, drift, duplication, and enforcement findings.
 - Shared `creation-delta.json` plus its artifact directory.
-- Current project Harness content when updating through migrate or E1 Evolution.
+- Current project Harness content when updating through a Structured Change or E1 Evolution.
 
 ## Output Boundary
 
@@ -23,8 +23,8 @@ references/rules/red_lines.yaml
 assets/templates/
 ```
 
-The CLI owns deterministic Wiki rendering from the profile, generated indexes, rule views, links,
-Registry state, and atomic publication. Creator artifacts may replace or merge complete candidate
+The CLI owns deterministic initial Wiki rendering from the profile, generated catalogs, rule views,
+links, Registry state, and recoverable transactions. Creator artifacts may replace or merge complete candidate
 files only when `creation-delta.json` names their owner, evidence, action, and validation.
 
 The business repository owns product code and optional human-facing documents. Write verified
@@ -132,8 +132,9 @@ Judgment, Deterministic Commands, Actions, Outputs, Exit, Stop And Escalate, and
   INDEX without requiring Git; an optional boundary can be recorded for later Integration.
 - Integrate applies selected exact commit ranges, permits Integrator corrections, runs aggregate
   validation/review, and waits for I2.
-- Evolve freezes five qualified Changes after E1, performs Promote/Retain/Merge/Retire/Archive-only,
-  applies only after independent score and validation gates, and has no E2.
+- Evolve reviews five qualified Changes after E1, performs Promote/Retain/Merge/Retire/Archive-only,
+  widens scope only with evidence, applies explicit delta artifacts only after independent score and
+  validation gates, and has no E2.
 
 ## Change Templates
 

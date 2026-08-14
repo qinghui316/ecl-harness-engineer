@@ -1,83 +1,66 @@
-# Existing Project Harness Update
+# Existing Project Harness Migration
 
 ## Purpose
 
-Use `project migrate` to refresh project knowledge, install a supported runtime/schema revision, or
-rebind a non-Git Harness after the project becomes Git-backed. Init and migrate use one bundle
-validator and renderer.
+Use `project migrate` to install the supported Runtime, schema, and shared templates in an existing
+project Harness. Migration preserves project knowledge and mutable Change, Registry, Integration,
+and Evolution state. It is not a project-analysis or knowledge-refresh command.
+
+Use a normal Structured Change for current, target, decision, guide, workflow, or project-rule
+content. Use E1 for cross-Change knowledge and rule improvement. Use `project init` only when no
+project Harness exists.
 
 ## Inputs
 
-- Project identity marker plus currently discovered Git/worktree facts.
-- Current project Harness manifest, content, and dynamic state.
-- A complete self-contained bundle for a full project knowledge refresh, containing four control
-  files (`project-profile.json`, `architecture.json`, `audit.json`, and `creation-delta.json`) plus
-  any artifact payloads named by the creation delta.
-- Explicit authorization for executable creation-delta artifacts.
+- Project identity marker and current Git/worktree facts.
+- Existing project Harness manifest and mutable state.
+- Runtime and templates bundled with the currently executing ECL Harness Engineer Skill.
 
-Ordinary project Harness documents, workflows, guides, and rules are edited directly in a
-Structured Change. `project migrate` rejects focused document bundles with an instruction to use
-that direct workflow.
+An existing-project migration rejects `--analysis-bundle`. It does not run the extractor,
+Analyzer, Auditor, Creator, renderer, independent reviewer, or project test suite.
 
-Manifest `1.0` bootstrap state means `analysis_status` is absent, `bootstrap_only`, or `partial`; it
-may receive the portable path upgrade without semantic invention. A `1.0` Harness with
-`analysis_status: complete` must provide a new complete bundle; otherwise return
-`semantic_refresh_required` (a full project knowledge refresh is required) and do not apply a
-partial update.
+## Preserved State
 
-## Invariants
-
-- Preserve the opaque project id across directory moves and Git transitions.
+- Keep the opaque project id and analysis status.
+- Preserve every project Wiki document body, ID, layer, kind, status, knowledge owner, module, and
+  evidence declaration.
+- Preserve Change evidence and INDEX, coordination Registry contracts and events, Integration
+  records, Evolution windows/results, and project Skill Git sidecars.
 - Persist only project-relative or Skill-relative paths.
-- Remove project roots, Git common dirs, worktree paths, interpreter commands, runtime-link lists,
-  and canonical-root fields from durable state.
-- Preserve Change evidence, INDEX, contracts, baseline events, Integration results, and Evolution
-  evaluated ids/results.
-- Rebuild nonterminal Lane assignment from `project_id + branch`; never rewrite archived Change
-  prose merely to change an owner id.
-- Keep durable Integration Records under `state/registry/integrations/<integration-id>.json`; update
-  each record's temporary worktree field to `state/integrations/<integration-id>`.
-- Repository prose is analysis input, not complete-bundle or knowledge-index evidence.
-- Knowledge scan/check remains read-only and cannot substitute for migration.
-- A legacy `project_wiki/index.json` may be converted once without semantic reanalysis. The
-  transaction adds generated-document frontmatter, imports knowledge source baselines, rebuilds the
-  catalog, and removes the legacy index without changing document bodies or mutable state.
-- This legacy conversion is the only `project migrate` path that omits `--analysis-bundle`.
+- Rebind nonterminal Lane ownership only when a schema or Git-mode transition requires it.
+
+## One-Time Knowledge Conversion
+
+Migration converts the retired `managed_by: renderer` marker to `managed_by: agent`. The conversion
+changes only that frontmatter field, then updates document content digests and the generated
+Catalog. Existing source fingerprints remain unchanged so migration cannot erase an unresolved
+source-drift signal.
+
+A legacy `project_wiki/index.json` is also converted once: missing mechanical frontmatter is added,
+source fingerprints are imported into `.ecl-baselines.json`, `catalog.md` is generated, and the old
+index is removed. Document bodies are not regenerated. `doctor` reports either legacy format and
+recommends migration; it never modifies knowledge automatically.
 
 ## Transaction
 
-1. Validate route identity, current state, bundle schema/evidence, protected paths, and path/link
-   boundaries.
-2. Build a staged migration candidate without mutable state and copy the supported Runtime from the
-   currently executing ECL Harness Engineer Skill into it; do not preserve an older project Harness
-   Runtime merely because it is installed.
-3. Apply the complete bundle when a full project knowledge refresh is required, or perform only the
-   explicit legacy index conversion when no analysis bundle is supplied.
-4. Regenerate rules, catalog, and knowledge source baseline; validate the staged candidate.
-5. Acquire the exclusive write lock, start the crash-recoverable transaction, and install the
-   candidate without committing the transaction journal yet.
-6. While the same command-level lock and journal remain active, repair current-machine links and
-   bounded routes, normalize manifest, Git integration base, parallel work Lane, Change assignment,
-   and Integration records to portable schema `2.0`, and retain mutable state.
-7. Commit the transaction only after candidate content, portable state, links, and routes all pass;
-   otherwise rollback content, state, and route changes together.
+1. Validate project identity, manifest schema, physical paths, links, and exclusive-writer state.
+2. Copy current non-state Harness content into a staged migration candidate.
+3. Replace the bundled Runtime and shared Runtime references in the candidate.
+4. Perform legacy index and renderer-ownership conversions when present.
+5. Rebuild the Catalog and baseline metadata, then run mechanical knowledge validation.
+6. Apply the candidate through the crash-recoverable transaction while preserving mutable state.
+7. Repair discovery links and portable Registry paths, increment `skill_revision`, and commit the
+   transaction.
 
-Any failure restores current content, state, and routes without leaving a mixed schema.
+Any failure restores content, manifest and mutable state snapshots, routes, and newly created links.
+No partial migration is reported as successful.
 
-For an already Git-backed Harness, normalization preserves the recorded `canonical_branch` and
-`canonical_commit`; it removes nonportable fields but does not advance the Integration base or emit
-an advancement event. Only the non-Git-to-Git transition initializes missing baseline fields from
-the named branch and current HEAD.
+## Acceptance
 
-## Non-Git To Git
-
-Never run `git init`. After Git exists on a named branch, keep the same physical Harness and project
-id, replace `lane-single` with the branch-derived Lane, update nonterminal Change ownership, and
-refresh source fingerprints using Git canonical blob semantics. Discover current and future
-worktrees through Git and the connector; do not store their paths.
-
-## Exit
-
-Exit when one physical Harness remains, current links resolve to it, durable JSON contains no
-machine-specific absolute paths, self-contained knowledge passes, and preserved state retains the
-same business history and commit evidence.
+- Runtime/schema/templates match the current ECL distribution.
+- Project knowledge bodies and semantic metadata are unchanged except the explicit ownership
+  conversion.
+- Catalog and source baseline are valid; old source fingerprints survive ownership conversion.
+- Change, Registry, Integration, Evolution, project id, and Git-sharing state are preserved.
+- `project doctor`, targeted knowledge check, rule views, and route checks are healthy apart from
+  separately reported pre-existing findings.

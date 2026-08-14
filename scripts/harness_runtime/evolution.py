@@ -23,9 +23,9 @@ from .analysis import load_analysis_bundle
 from .changes import evolve_check_internal, evolve_check_locked
 from .contracts import load_audit_rubric
 from .core import HarnessError, SCHEMA_VERSION, atomic_append_tsv, atomic_write_json, canonical_id, is_link_like, read_json, reject_tree_links, remove_owned_tree, utc_now
-from .knowledge import SourceFingerprintSnapshot, knowledge_check_internal
+from .knowledge import SourceFingerprintSnapshot
 from .project import project_context, require_skill
-from .rendering import apply_creation_delta, install_analysis_bundle, load_focused_creation_bundle
+from .rendering import apply_creation_delta, load_focused_creation_bundle
 from .reviews import validate_evolution_judge
 from .transactions import CONTENT_TRANSACTION_PATHS, acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
 
@@ -172,9 +172,8 @@ def verify_source_snapshot(context: dict[str, Any], metadata: dict[str, Any]) ->
         raise HarnessError("Project evidence changed after Evolution candidate validation; restage the candidate.")
 
 
-def verify_candidate_binding(
+def verify_candidate_integrity(
     candidate: Path,
-    context: dict[str, Any],
     metadata: dict[str, Any],
     base_fingerprint: str,
 ) -> str:
@@ -190,8 +189,7 @@ def verify_candidate_binding(
     ) != metadata.get("candidate_fingerprint"):
         raise HarnessError("Staged Evolution candidate metadata was modified after validation.")
     if content_fingerprint == base_fingerprint:
-        raise HarnessError("keep requires a candidate that changes Harness content.")
-    verify_source_snapshot(context, metadata)
+        raise HarnessError("An Evolution candidate must change Harness content.")
     return content_fingerprint
 
 @guard_project_skill
@@ -208,46 +206,31 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
     source_snapshot.prime(_local_evidence_sources(profile, audit, delta, architecture))
     staging_root = skill_root / "state" / "evolution" / "staging"
     candidate = staging_root / proposal_id
-    if candidate.exists():
-        raise HarnessError(f"Evolution candidate already exists: {proposal_id}")
+    staged_candidates = list(staging_root.iterdir()) if staging_root.is_dir() else []
+    if staged_candidates:
+        raise HarnessError(
+            "An Evolution candidate is already staged for the current lease; complete or recover it first."
+        )
     staging_root.mkdir(parents=True, exist_ok=True)
     copy_non_state_skill(skill_root, candidate)
     (candidate / "state").mkdir(parents=True, exist_ok=True)
     atomic_write_json(candidate / "state" / "manifest.json", read_json(skill_root / "state" / "manifest.json", {}))
     try:
-        if mode == "full":
-            installed = install_analysis_bundle(
-                candidate,
-                context,
-                profile or {},
-                audit or {},
-                delta,
-                architecture or {},
-                bundle,
-                bool(getattr(args, "allow_executable_artifacts", False)),
-                fingerprint_snapshot=source_snapshot,
-                allow_retire=True,
-            )
-        else:
-            artifacts = apply_creation_delta(
-                candidate,
-                bundle,
-                delta,
-                context,
-                bool(getattr(args, "allow_executable_artifacts", False)),
-                allow_retire=True,
-                fingerprint_snapshot=source_snapshot,
-            )
-            installed = {
-                "knowledge": {"refreshed": False},
-                "artifacts": artifacts,
-                "rules": {"affected_only": True},
-            }
+        artifacts = apply_creation_delta(
+            candidate,
+            bundle,
+            delta,
+            context,
+            bool(getattr(args, "allow_executable_artifacts", False)),
+            allow_retire=True,
+            fingerprint_snapshot=source_snapshot,
+        )
+        installed = {
+            "knowledge": {"refreshed": False},
+            "artifacts": artifacts,
+            "rules": {"affected_only": True},
+        }
         protect_audit_rubric(skill_root, candidate)
-        if mode == "full":
-            check = knowledge_check_internal(candidate, context, source_snapshot)
-            if not check["healthy"]:
-                raise HarnessError(f"Evolution candidate knowledge validation failed: {check['findings']}")
         bound_sources = source_snapshot.local_sources()
         source_digest = source_snapshot.digest(bound_sources)
         verification_snapshot = SourceFingerprintSnapshot(context)
@@ -258,6 +241,11 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
             remove_owned_tree(candidate, staging_root, "Evolution candidate")
         raise
     candidate_content_fingerprint = harness_content_fingerprint(candidate)
+    if candidate_content_fingerprint == owner.get("base_fingerprint"):
+        remove_owned_tree(candidate, staging_root, "Evolution candidate")
+        raise HarnessError(
+            "Evolution delta produced no Harness change. Complete this review as noop without staging a candidate."
+        )
     candidate_fingerprint = candidate_binding_fingerprint(candidate_content_fingerprint, source_digest)
     atomic_write_json(
         candidate / "state" / "candidate.json",
@@ -277,8 +265,6 @@ def evolve_stage(args: argparse.Namespace) -> dict[str, Any]:
     changed_paths = list(installed.get("artifacts", {}).get("applied", []))
     if "references/rules/red_lines.yaml" in changed_paths:
         changed_paths.extend(["references/rules/critical.md", "references/rules/by-stage"])
-    if mode == "full":
-        changed_paths.extend(["references/project_wiki", "state/analysis"])
     return {
         "status": "candidate_staged",
         "mode": mode,
@@ -404,18 +390,38 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         candidate: Path | None = None
         metadata: dict[str, Any] = {}
         candidate_id: str | None = None
-        if args.status == "keep":
+        staging = skill_root / "state" / "evolution" / "staging"
+        staged_for_proposal = staging / proposal_id
+        staged_candidates = sorted(
+            path.name for path in staging.iterdir()
+            if path.is_dir() or path.is_symlink()
+        ) if staging.is_dir() else []
+        if args.status in {"keep", "rejected"}:
             if not args.candidate_id:
-                raise HarnessError("A keep result requires --candidate-id for the validated staged candidate.")
+                raise HarnessError(
+                    f"A {args.status} result requires --candidate-id for the staged candidate."
+                )
             candidate_id = canonical_id(args.candidate_id, "Evolution candidate id")
-            candidate = skill_root / "state" / "evolution" / "staging" / candidate_id
+            if staged_candidates != [candidate_id]:
+                raise HarnessError(
+                    "Evolution completion requires exactly the named staged candidate for the current lease."
+                )
+            candidate = staging / candidate_id
+            if not candidate.is_dir():
+                raise HarnessError(f"Staged Evolution candidate does not exist: {candidate_id}")
             metadata = read_json(candidate / "state" / "candidate.json", {})
             if metadata.get("proposal_id") != proposal_id or metadata.get("owner") != owner_id:
                 raise HarnessError("Staged candidate does not match the proposal or Evolution lease holder.")
             if metadata.get("base_fingerprint") != base_fingerprint:
                 raise HarnessError("Staged candidate was built from a different pre-review Harness content digest.")
             protect_audit_rubric(skill_root, candidate)
-            verify_candidate_binding(candidate, context, metadata, base_fingerprint)
+            verify_candidate_integrity(candidate, metadata, base_fingerprint)
+            if args.status == "keep":
+                verify_source_snapshot(context, metadata)
+        elif args.candidate_id or staged_for_proposal.exists() or staged_candidates:
+            raise HarnessError(
+                "noop is valid only when no Evolution candidate was staged. Record a staged candidate as keep or rejected."
+            )
 
         judge: dict[str, Any] | None = None
         if args.judge_report:
@@ -427,10 +433,17 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
             )
             if judge["verdict"] != args.status:
                 raise HarnessError("Evolution status does not match the judge report verdict.")
-        elif not (args.status == "noop" and args.judge_unavailable):
+        elif not args.judge_unavailable:
             raise HarnessError(
-                "Evolution completion requires --judge-report; when no independent reviewer is "
-                "available, record noop with --judge-unavailable."
+                "Evolution completion requires --judge-report or an explicit --judge-unavailable result."
+            )
+        elif candidate is not None and args.status != "rejected":
+            raise HarnessError(
+                "When independent review is unavailable, a staged candidate must be recorded as rejected."
+            )
+        elif candidate is None and args.status != "noop":
+            raise HarnessError(
+                "When independent review is unavailable and no candidate exists, record noop."
             )
         validation = judge.get("validation", {}) if judge else {}
         gate = load_audit_rubric(skill_root)["evolution_gate"]
@@ -458,8 +471,9 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         snapshots = capture_file_snapshots((state_path, pending_path, results_path, manifest_path))
         transaction: dict[str, Any] | None = None
         try:
-            if candidate is not None and candidate_id is not None:
-                verify_candidate_binding(candidate, context, metadata, base_fingerprint)
+            if args.status == "keep" and candidate is not None and candidate_id is not None:
+                verify_candidate_integrity(candidate, metadata, base_fingerprint)
+                verify_source_snapshot(context, metadata)
                 recover_content_transactions(skill_root, "evolution", candidate_id)
                 transaction = apply_content_transaction(
                     skill_root,
@@ -468,6 +482,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
                     candidate_id,
                     state_snapshot_paths=(state_path, pending_path, results_path, manifest_path),
                 )
+                verify_source_snapshot(context, metadata)
                 if harness_content_fingerprint(skill_root) != metadata.get("candidate_content_fingerprint"):
                     raise HarnessError(
                         "Applied candidate content digest does not match the validated candidate."
@@ -509,7 +524,6 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
         if owner_path.exists():
             remove_owned_tree(owner_path, owner_path.parent, "Exclusive Evolution lease")
         release_writer(skill_root, "evolution", owner_id)
-        staging = skill_root / "state" / "evolution" / "staging"
         if staging.exists():
             for staged_candidate in staging.iterdir():
                 if staged_candidate.is_dir() or staged_candidate.is_symlink():

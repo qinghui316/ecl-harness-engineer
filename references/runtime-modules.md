@@ -36,8 +36,8 @@ project workflow, add internal functions to the facade, or bypass a public comma
   project Harness root replacement.
 - **Short coordination Registry lock:** serializes one bounded Registry update. The
   `evolution-state` lock is this lock applied to pending/evaluated/result state.
-- **Generated document / agent-maintained document:** prose descriptions of the compatible
-  `managed_by: renderer|agent` values.
+- **Agent-maintained document:** the current knowledge model. The compatible
+  `managed_by: renderer` value exists only for one-time migration of older Harnesses.
 - **E1 approval:** user approval to start one periodic Harness review; `E1` is not the review result.
 - **Integration approval (I2):** user approval after aggregate validation and independent review of
   the exact Integration candidate commit.

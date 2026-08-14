@@ -22,7 +22,7 @@ from typing import Any, Iterable
 
 from .analysis import DISPLAY_TEXT_FIELDS, evidence_values, reference_project_sources, semantic_display_text, validate_project_evidence
 from .core import HarnessError, SCHEMA_VERSION, TEXT_SUFFIXES, atomic_write_json, atomic_write_text, file_fingerprint, is_within, read_json, reject_linked_ancestors, run, safe_relative, slugify, stable_hash, utc_now
-from .knowledge import KNOWLEDGE_BASELINE_FILE, LEGACY_KNOWLEDGE_INDEX_FILE, SourceFingerprintSnapshot, context_source_fingerprints, discover_agent_knowledge, discover_project_knowledge, ensure_renderer_knowledge_frontmatter, parse_agent_knowledge_frontmatter, rebuild_project_wiki_catalog
+from .knowledge import KNOWLEDGE_BASELINE_FILE, LEGACY_KNOWLEDGE_INDEX_FILE, SourceFingerprintSnapshot, context_source_fingerprints, ensure_generated_knowledge_frontmatter, parse_agent_knowledge_frontmatter, rebuild_project_wiki_catalog
 from .project import primary_worktree_root
 
 REQUIRED_WORKFLOW_PATHS = {
@@ -121,37 +121,6 @@ def render_project_wiki(
     wiki = skill_root / "references" / "project_wiki"
     for directory in ("modules", "systems", "bridges", "reference_projects/maps"):
         (wiki / directory).mkdir(parents=True, exist_ok=True)
-    existing_items = discover_project_knowledge(skill_root, context)
-    agent_items = discover_agent_knowledge(skill_root, context, fingerprint_snapshot)
-    agent_by_id = {item["id"]: item for item in agent_items}
-    agent_by_path = {item["path"]: item for item in agent_items}
-    if len(agent_by_id) != len(agent_items) or len(agent_by_path) != len(agent_items):
-        raise HarnessError("Agent-maintained project knowledge contains a duplicate ID or path.")
-
-    def agent_owns(identifier: str, relative: Path | str) -> bool:
-        path = Path(relative).as_posix()
-        by_id = agent_by_id.get(identifier)
-        by_path = agent_by_path.get(path)
-        if not by_id and not by_path:
-            return False
-        if by_id is by_path and by_id is not None:
-            return True
-        raise HarnessError(
-            f"Agent-maintained knowledge conflicts with generated output ID/path: {identifier} / {path}"
-        )
-
-    for item in existing_items:
-        if item.get("managed_by") != "renderer":
-            continue
-        relative = item.get("path")
-        if not isinstance(relative, str) or relative == "overview.md":
-            continue
-        if item.get("id") in agent_by_id or relative in agent_by_path:
-            continue
-        target = wiki / relative
-        if target.is_file() and is_within(target, wiki):
-            target.unlink()
-
     purpose = profile.get("purpose") or {}
     modules = profile.get("modules", [])
     commands = profile.get("commands", [])
@@ -271,8 +240,6 @@ def render_project_wiki(
             "## Evidence", "", *[f"- `{value}`" for value in sources],
         ]
         relative = Path("modules") / f"{module['id']}.md"
-        if agent_owns(module["id"], relative):
-            continue
         atomic_write_text(wiki / relative, "\n".join(content))
         index_items.append({
             "id": module["id"], "layer": "L2", "kind": "module", "path": relative.as_posix(),
@@ -379,8 +346,6 @@ def render_project_wiki(
         systems.append(("verification", "verification.md", lines, sources))
     for identifier, filename, lines, sources in systems:
         relative = Path("systems") / filename
-        if agent_owns(identifier, relative):
-            continue
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": identifier, "layer": "L2", "kind": "system", "path": relative.as_posix(),
@@ -417,8 +382,6 @@ def render_project_wiki(
                 f"{', '.join(f'`{value}`' for value in evidence_values(mapping))}{reference_note} |"
             )
         relative = Path("bridges") / f"{bridge['id']}.md"
-        if agent_owns(bridge["id"], relative):
-            continue
         atomic_write_text(wiki / relative, "\n".join(lines))
         index_items.append({
             "id": bridge["id"], "layer": "L3", "kind": "bridge", "path": relative.as_posix(),
@@ -436,8 +399,6 @@ def render_project_wiki(
         sources = evidence_values(code_path)
         identifier = f"critical-flow-{slugify(str(code_path.get('name', 'flow')))}"
         relative = Path("bridges") / f"{identifier}.md"
-        if agent_owns(identifier, relative):
-            continue
         lines = [
             f"# {code_path.get('name', 'Critical Flow')}", "",
             "This sequence is an evidence-backed semantic/runtime bridge.", "",
@@ -535,8 +496,6 @@ def render_project_wiki(
                 *[f"- `{value}`" for value in reference_sources],
             ])
             relative = Path("reference_projects") / "maps" / f"{reference_id}.md"
-            if agent_owns(f"reference-{reference_id}", relative):
-                continue
             atomic_write_text(wiki / relative, "\n".join(map_lines))
             index_items.append({
                 "id": f"reference-{reference_id}", "layer": "reference", "kind": "reference-map",
@@ -546,16 +505,15 @@ def render_project_wiki(
                 "generated_by": "project-profile", "updated_at": utc_now(),
             })
         reference_index_relative = Path("reference_projects") / "index.md"
-        if not agent_owns("reference-projects", reference_index_relative):
-            atomic_write_text(wiki / reference_index_relative, "\n".join(reference_index_lines))
-            reference_index_sources = list(dict.fromkeys(reference_index_sources))
-            index_items.append({
-                "id": "reference-projects", "layer": "index", "kind": "reference-index",
-                "path": reference_index_relative.as_posix(), "sources": reference_index_sources,
-                "source_fingerprints": context_source_fingerprints(context, reference_index_sources, fingerprint_snapshot),
-                "content_fingerprint": file_fingerprint([wiki / reference_index_relative], wiki),
-                "generated_by": "project-profile", "updated_at": utc_now(),
-            })
+        atomic_write_text(wiki / reference_index_relative, "\n".join(reference_index_lines))
+        reference_index_sources = list(dict.fromkeys(reference_index_sources))
+        index_items.append({
+            "id": "reference-projects", "layer": "index", "kind": "reference-index",
+            "path": reference_index_relative.as_posix(), "sources": reference_index_sources,
+            "source_fingerprints": context_source_fingerprints(context, reference_index_sources, fingerprint_snapshot),
+            "content_fingerprint": file_fingerprint([wiki / reference_index_relative], wiki),
+            "generated_by": "project-profile", "updated_at": utc_now(),
+        })
 
     overview_sources: list[str] = []
     overview_items = [
@@ -585,7 +543,6 @@ def render_project_wiki(
         "bridges": len(profile.get("bridges", [])),
         "reference_projects": len(reference_projects),
         "_generated_items": generated_items,
-        "_agent_items": agent_items,
     }
 
 def render_architecture_system(
@@ -593,7 +550,6 @@ def render_architecture_system(
     context: dict[str, Any],
     architecture: dict[str, Any],
     generated_items: list[dict[str, Any]],
-    agent_items: list[dict[str, Any]],
     fingerprint_snapshot: SourceFingerprintSnapshot | None = None,
 ) -> bool:
     meaningful = any(architecture.get(key) for key in (
@@ -601,18 +557,6 @@ def render_architecture_system(
     ))
     wiki = skill_root / "references" / "project_wiki"
     target = wiki / "systems" / "architecture.md"
-    by_id = next((item for item in agent_items if item["id"] == "architecture"), None)
-    by_path = next((item for item in agent_items if item["path"] == "systems/architecture.md"), None)
-    if by_id or by_path:
-        if by_id is not by_path or by_id is None:
-            raise HarnessError(
-                "Agent-maintained architecture knowledge conflicts with a generated ID or path."
-            )
-        generated_items[:] = [
-            item for item in generated_items
-            if item.get("id") != "architecture" and item.get("path") != "systems/architecture.md"
-        ]
-        return True
     generated_items[:] = [item for item in generated_items if item.get("id") != "architecture"]
     if not meaningful:
         target.unlink(missing_ok=True)
@@ -878,12 +822,6 @@ def apply_creation_delta(
             validate_project_evidence(context["project_root"], evidence, f"artifact {target_relative}")
             if not target.is_file() or target.is_symlink():
                 raise HarnessError(f"Staged-candidate retire target must be a physical file: {target_relative}")
-            if target_relative.startswith("references/project_wiki/"):
-                metadata = parse_agent_knowledge_frontmatter(target)
-                if not metadata or metadata.get("managed_by") != "agent":
-                    raise HarnessError(
-                        "A staged candidate may retire only agent-maintained project knowledge."
-                    )
             target.unlink()
             applied.append(target_relative)
             if target_relative.startswith("references/project_wiki/"):
@@ -1034,20 +972,18 @@ def install_analysis_bundle(
         skill_root, context, profile, architecture, fingerprint_snapshot,
     )
     generated_items = knowledge.pop("_generated_items")
-    agent_items = knowledge.pop("_agent_items")
     knowledge["architecture"] = render_architecture_system(
         skill_root,
         context,
         architecture,
         generated_items,
-        agent_items,
         fingerprint_snapshot,
     )
     wiki = skill_root / "references" / "project_wiki"
     for item in generated_items:
         path = wiki / str(item.get("path", ""))
         if path.is_file():
-            ensure_renderer_knowledge_frontmatter(path, item)
+            ensure_generated_knowledge_frontmatter(path, item)
     artifacts = apply_creation_delta(
         skill_root,
         bundle,

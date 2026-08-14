@@ -127,11 +127,10 @@ therefore one inner Git working tree.
 Initialization and migration apply updates through the existing recoverable content transaction. Preserve all
 pre-existing routes and collisions. Remove only links created by the failed operation.
 
-Migration from manifest `1.0` keeps the opaque project ID, removes machine fields, normalizes
-parallel work Lane assignments and Integration paths, and preserves Change/INDEX/Registry/Evolution state. A complete old
-Harness with repository-prose knowledge dependencies requires a new complete self-contained bundle;
-otherwise return `semantic_refresh_required` (full project knowledge refresh required) without
-applying a partial update.
+Migration keeps the opaque project ID, removes obsolete machine fields, normalizes parallel work
+Lane assignments and Integration paths, upgrades Runtime/schema/templates, and preserves
+Change/INDEX/Registry/Evolution state. It converts legacy knowledge indexes and renderer ownership
+mechanically, but never requires an analysis bundle or regenerates project knowledge.
 
 Non-Git-to-Git transition never runs `git init`. Once Git exists, migrate Lane assignment to the
 current named branch and refresh mechanical source fingerprints without changing semantic content.

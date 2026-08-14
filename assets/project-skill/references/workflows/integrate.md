@@ -9,8 +9,8 @@
 
 Order selected commit ranges by explicit Git Integration dependencies, resolve conflicts as a local PR reviewer, and decide
 whether the combined candidate is ready for integration approval (I2). Integration records
-knowledge/Evolution signals but
-does not rewrite stable L1/L2/L3 or global rules.
+knowledge/Evolution signals. The Integration transaction does not rewrite L1/L2/L3; after canonical
+landing and lock release, the same task synchronizes only affected current Markdown.
 
 ## Deterministic Commands
 
@@ -35,8 +35,8 @@ does not rewrite stable L1/L2/L3 or global rules.
    prerequisites as completed, validated, and evidence-complete without selecting or cherry-picking
    them. Never infer dependency kind or merge a long-lived parallel work Lane tip.
 3. Resolve conflicts, add compatibility edits, and update authoritative documentation tracked in
-   the project repository as needed. Do not update project Harness L1/L2/L3 or other Harness
-   references during Integration.
+   the project repository as needed. Do not update project Harness L1/L2/L3 while the Integration
+   transaction holds the exclusive write lock.
 4. Record dependency declaration snapshots and separately record satisfied evidence dependencies.
    Bind independent review to the candidate commit and dependency content digest, then recompute
    that digest immediately before landing. Record conflicts, human corrections, contract effects, documentation source changes, and
@@ -46,6 +46,9 @@ does not rewrite stable L1/L2/L3 or global rules.
    report against the unchanged candidate commit.
 6. After the coordination Registry update, verify and detach Codex/Claude project Harness links, reject unknown
    directory Junctions, then remove the temporary worktree without `--force`.
+7. After landing and lock release, update affected `current/implemented` Markdown from canonical
+   evidence and run `change reindex`. If synchronization fails, report `refresh-needed`; do not
+   roll back canonical code or start E1/migrate/Judge.
 
 ## Outputs
 
@@ -56,9 +59,9 @@ does not rewrite stable L1/L2/L3 or global rules.
 
 After I2, canonical contains the exact reviewed candidate, full contract/affected-path
 integration-base event and input Change states are durable, `landing_phase=cleanup_complete`, the
-exclusive write lock is released, and the temporary worktree is removed. Shared project knowledge
-waits for Evolution; affected old parallel work Lanes see
-`refresh-needed` at preflight.
+exclusive write lock is released, the temporary worktree is removed, and affected current
+knowledge is synchronized or explicitly marked `refresh-needed`. Old parallel work Lanes see
+related drift at preflight.
 
 ## Stop And Escalate
 

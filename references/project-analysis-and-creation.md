@@ -65,7 +65,8 @@ explain a current rule.
 
 ### Analysis Bundle Contract
 
-Before calling semantic `init`, `migrate`, or Evolution staging, create one temporary bundle:
+Before semantic `init`, a bundle-backed audit, or Evolution staging that needs broad project
+analysis, create one temporary bundle:
 
 ```text
 <bundle>/

@@ -1,10 +1,10 @@
-# Project Audit And Full Refresh Contract
+# Project Analysis And Evolution Bundle Contract
 
-Use this contract during read-only semantic audit and full migration. Accepted E1 reads it only
-when a complete project rescan is required. Ordinary project Harness documents are edited directly
-inside a Structured Change; they do not use a migration bundle. Agent judgment analyzes project
-semantics; `scripts/harness_cli.py` validates deterministic artifacts for a full project knowledge
-refresh.
+Use this contract during read-only semantic audit, project initialization, and accepted E1 when
+wider project analysis is justified. Existing-project migration does not read analysis bundles or
+regenerate knowledge. Ordinary project Harness documents are edited directly inside a Structured
+Change. Agent judgment analyzes semantics; Runtime validates bundle structure, explicit artifacts,
+and candidate integrity.
 
 ## Evidence Funnel
 
@@ -35,7 +35,7 @@ knowledge owner, modules, evidence, and optional `managed_by: agent`. Retirement
 state, and Runtime remain protected. A focused bundle does not run the evidence extractor or a full
 source-fingerprint scan.
 
-## Full Refresh Bundle
+## Complete Analysis Bundle
 
 Create one directory containing:
 
@@ -47,7 +47,7 @@ creation-delta.json
 artifacts/                    # only sources named by creation-delta
 ```
 
-Start with `python scripts/build_analysis_bundle.py --project-root <canonical-root> --output
+For initialization or broad E1 evidence, start with `python scripts/build_analysis_bundle.py --project-root <canonical-root> --output
 <empty-bundle-dir>`. The extractor always emits `partial` or `bootstrap_only`; it cannot certify
 semantic completion, score the audit, or authorize artifacts. Agent judgment reviews implementation
 evidence and writes the four control files plus any artifact payloads declared by
@@ -114,7 +114,10 @@ views are protected.
 ## Candidate Acceptance Checks
 
 `evolve stage` validates either bundle shape directly; a separate `project audit` is optional
-diagnosis, not a staging prerequisite. The candidate must preserve the audit rubric and live
-Change/INDEX/Registry state, pass rule/Wiki/stage checks and project validation, bind an independent
-review report to its content digest, score at least 80, and have no blocking issue. Status `noop`
-means review completed with no change applied; there is no E2.
+diagnosis, not a staging prerequisite. In E1, both bundle shapes apply only explicit
+`creation-delta.json` artifacts. Complete profile, architecture, and audit files remain evidence;
+they are not installed and do not invoke the renderer. The candidate must preserve the audit rubric
+and live Change/INDEX/Registry state, pass affected checks and required project validation, and bind
+independent review to its content digest. `keep` requires the review gate and applies the candidate;
+`rejected` requires a bound candidate but does not apply it; `noop` requires no candidate. There is
+no E2.
