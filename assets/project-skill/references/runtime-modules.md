@@ -10,11 +10,16 @@ reference relationships, and Evolution proposals. The runtime protects IDs, path
 links, coordination Registry records, commit identity, locks, review bindings, and
 crash-recoverable transactions.
 
-An atomic write replaces one file or performs one filesystem rename. A complete Harness update is
-a recoverable multi-file transaction with a journal, rollback, and crash recovery. A content digest
-identifies exact Harness or candidate content; a source-state digest identifies the source snapshot
-used for validation. `managed_by: agent` is the current knowledge model; the compatible `renderer`
-value exists only for one-time migration of older project Harnesses.
+An atomic write replaces one file or performs one filesystem rename. Migration and accepted
+Evolution use a file-set transaction: a recoverable multi-file update with affected-file backups,
+an external journal, rollback, and crash recovery. It uses same-directory atomic file replacement
+and never renames the project Harness root. A content digest identifies exact Harness or candidate
+content; a source-state digest identifies the source snapshot used for validation.
+The content digest preserves the compatible managed-root order `SKILL.md`, `references`, `scripts`,
+`assets`, `agents`, with paths sorted inside each root. Before `committing`, recovery rolls content
+and state back together; after `committing`, it keeps both and completes external cleanup.
+`managed_by: agent` is the current knowledge model; the compatible `renderer` value exists only for
+one-time migration of older project Harnesses.
 
 The public entry is `scripts/harness_cli.py`. Project Harness installations expose
 `project audit|doctor`; project creation and migration are performed by ECL Harness Engineer.
@@ -32,7 +37,7 @@ duplication findings.
 | `project.py` | Project identity, Git/common-dir/worktree discovery, manifest facts |
 | `links.py` | Launchers, managed routes, connectors, project-level links |
 | `registry.py` | Bound coordination Registry record reads and parallel work Lane identity |
-| `transactions.py` | Exclusive write/Registry locks, transaction journal, rollback, recovery |
+| `transactions.py` | Exclusive write/Registry locks, file-set and legacy transaction journals, rollback, recovery |
 | `knowledge.py` | Markdown metadata, generated catalog/source baseline, source fingerprints, source-change findings, and legacy index conversion |
 | `rendering.py` | L1/L2/L3, architecture, rules, workflows, checks |
 | `changes.py` | Change lifecycle, INDEX, preflight, contracts, Evolution eligibility |
@@ -45,5 +50,6 @@ duplication findings.
 
 1. Reproduce through the public launcher and preserve JSON error output.
 2. Start with the deepest `harness_runtime/<module>.py` frame.
-3. Patch the module that owns the failed operation.
+3. Patch the module that owns the failed operation. New Migration/Evolution failure injection uses
+   file-operation helpers; root-move injection applies only to legacy journal recovery.
 4. Run its failure/recovery test, the full runtime suite, and project Harness independence test.

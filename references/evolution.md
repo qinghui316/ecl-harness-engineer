@@ -84,9 +84,15 @@ weaken the acceptance checks used for its own review.
 ## Apply The Accepted Update
 
 There is no E2. A passing proposal applies automatically after E1. Validate intended files before
-applying the update and use atomic writes for individual files. Temporary staging is an
-implementation detail and must be
-deleted; do not create a persistent snapshot, rollback product, or second project Harness root.
+applying the update. Apply the complete candidate through a file-set transaction: back up affected
+files in the external recovery journal, replace each changed file atomically in its own directory,
+and rollback the original file set if any operation or terminal-state write fails. Temporary
+staging and recovery backups are implementation details and must be deleted after commit; do not
+create a persistent snapshot, rollback product, or second project Harness root.
+
+Before the transaction enters `committing`, recovery rolls back content and Evolution state
+together. After `committing`, the accepted content and terminal state remain authoritative;
+recovery only completes candidate, backup, journal, and completion-marker cleanup.
 
 Record one terminal row in `state/evolution/results.tsv` with timestamp, proposal id, evaluated
 Change ids, score, status, eval mode, and note. Allowed statuses are `keep`, `rejected`, and `noop`.
@@ -109,16 +115,20 @@ evidence. It still applies only the Create/Replace/Merge/Retire entries explicit
 `creation-delta.json`; profile, architecture, and audit are not installed into `state/analysis` and
 do not invoke the project Wiki renderer. An explicit semantic audit remains read-only.
 
-Stage a complete non-state Skill candidate. Recompute its content digest immediately before the
-transaction and reject any candidate modification after validation. For `keep`, also reject a
+Stage a complete non-state Skill candidate. Recompute its managed-content digest immediately before
+the transaction and reject any candidate modification after validation. For `keep`, also reject a
 source-state change made after staging. A rejected candidate may still be recorded after source
-drift because it is never applied. Prepare a
-complete replacement root, move the current mutable `state` into it, and replace the Skill root
-through a crash-recoverable filesystem transaction with rollback; never copy stale coordination
-Registry state from the candidate. The transaction journal, previous root, and state-file backups
-exist only until commit or rollback and are not persistent snapshots. The filesystem operation lock
-serializes short coordination Registry mutations during root replacement, while the exclusive
-write lock prevents Integration finalization from overlapping Evolution.
+drift because it is never applied. Compute the exact Create, Replace, Retire, and required path-type
+conversion operations from that candidate. Apply ordinary content first, generated navigation and
+source baselines next, `SKILL.md` as the final content entrypoint, and retire unreferenced files
+last. Recompute the complete managed-content digest before writing terminal Evolution state.
+
+Never rename the project Harness root, move mutable `state`, or move project Skill repository
+sidecars. The external recovery journal stores affected-file backups, operation progress, and
+state-file snapshots only until commit or rollback. The filesystem operation lock serializes
+Runtime readers and writers during the file-set transaction, while the exclusive write lock
+prevents Integration finalization from overlapping Evolution. Direct filesystem readers do not
+participate in that lock and must not scan Harness content during an accepted Evolution update.
 
 Hold the Evolution state lock while validating the fixed set of Change IDs, applying the candidate,
 appending the terminal result, updating evaluated IDs, and computing the next set. On failure,

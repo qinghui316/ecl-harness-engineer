@@ -48,12 +48,22 @@ recommends migration; it never modifies knowledge automatically.
 3. Replace the bundled Runtime and shared Runtime references in the candidate.
 4. Perform legacy index and renderer-ownership conversions when present.
 5. Rebuild the Catalog and baseline metadata, then run mechanical knowledge validation.
-6. Apply the candidate through the crash-recoverable transaction while preserving mutable state.
+6. Compute the exact managed-file differences and apply them through the crash-recoverable file-set
+   transaction while leaving mutable state and repository sidecars in place.
 7. Repair discovery links and portable Registry paths, increment `skill_revision`, and commit the
    transaction.
 
-Any failure restores content, manifest and mutable state snapshots, routes, and newly created links.
-No partial migration is reported as successful.
+Before the transaction enters `committing`, a failure restores content, manifest and mutable state
+snapshots, routes, and newly created links. After `committing`, content and terminal state are kept
+together and recovery only finishes candidate, backup, journal, and completion-marker cleanup. No
+partial migration is reported as successful.
+
+The transaction never renames the project Harness root. Each changed file is written through a
+same-directory temporary file, flushed, and atomically replaced. The external recovery journal
+stores affected-file backups and progress so the next Runtime command can rollback an interrupted
+update. Ordinary Retire operations may leave empty directories; only an explicit file/directory
+path conversion removes a required empty directory. Runtime commands wait for the filesystem
+operation lock, and direct filesystem readers must not scan Harness content during migration.
 
 ## Acceptance
 

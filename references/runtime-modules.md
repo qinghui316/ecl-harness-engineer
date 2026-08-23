@@ -22,9 +22,13 @@ project workflow, add internal functions to the facade, or bypass a public comma
 - **Atomic write:** one file replacement or one filesystem rename performed as a single operation.
 - **Recoverable transaction:** a multi-file update with a journal, rollback, and crash recovery; the
   complete Harness update is not described as one atomic write.
-- **Content digest:** SHA-256 over sorted project-relative paths and raw bytes for physical files
-  under `SKILL.md`, `references/`, `scripts/`, `assets/`, and `agents/`; exclude `state/`,
-  `__pycache__/`, and `.pyc` files. Candidate validation rejects unsafe links separately.
+- **File-set transaction:** the recoverable transaction used by Migration and accepted Evolution
+  updates. It computes exact managed-file operations, backs up affected files externally, and uses
+  same-directory atomic file replacement without renaming the project Harness root.
+- **Content digest:** SHA-256 over project-relative paths and raw bytes for physical files, preserving
+  the compatible managed-root order `SKILL.md`, `references/`, `scripts/`, `assets/`, `agents/` and
+  sorting paths within each root; exclude `state/`, `__pycache__/`, and `.pyc` files. Candidate
+  validation rejects unsafe links separately.
 - **Source-state digest:** SHA-256 over the sorted evidence-source path, status, and source
   fingerprint tuples used by one command. A tracked source fingerprint uses its Git blob; other
   UTF-8 text normalizes line endings before hashing relative path plus content.
@@ -32,8 +36,8 @@ project workflow, add internal functions to the facade, or bypass a public comma
   Harness content at the same time.
 - **Exclusive Evolution lease:** records which process is performing periodic Harness review (E1)
   and the fixed set of Change IDs under review.
-- **Filesystem operation lock:** an OS-level command lock that keeps readers and writers outside a
-  project Harness root replacement.
+- **Filesystem operation lock:** an OS-level command lock that keeps Runtime readers and writers
+  outside an in-progress file-set transaction or legacy transaction recovery.
 - **Short coordination Registry lock:** serializes one bounded Registry update. The
   `evolution-state` lock is this lock applied to pending/evaluated/result state.
 - **Agent-maintained document:** the current knowledge model. The compatible
@@ -47,7 +51,7 @@ The exclusive write lock and Evolution lease are longer-lived records used acros
 invert this order or acquire a command-level lock from inside a short Registry lock.
 Only Runtime commands and read-only Runtime checks participate in the filesystem operation lock.
 Direct Agent reads of Markdown do not. Agents must not inspect the Harness filesystem while a
-migration or accepted Evolution update is replacing the root; use the public status or doctor
+migration or accepted Evolution update is applying its file set; use the public status or doctor
 command after the operation completes.
 
 ## Module Map
@@ -110,7 +114,8 @@ test isolation, and diagnostics rather than line-count targets.
 2. Start with the deepest `harness_runtime/<module>.py` frame, then use the command table above.
 3. Patch the module where a symbol is looked up. For failure injection, patch
    `integration.git`, `integration.atomic_write_json`, `evolution.release_writer`, or
-   `transactions.transaction_move`, rather than facade attributes.
+   `transactions.apply_file_set_operation`, rather than facade attributes.
+   `transactions.transaction_move` remains only for legacy root-swap journal recovery.
 4. Run the focused failure/recovery test, then the full CLI suite and project Harness independence
    scenario.
 5. Keep behavior changes out of a mechanical module move. New command or state semantics require a

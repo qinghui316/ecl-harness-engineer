@@ -27,7 +27,7 @@ from .knowledge import SourceFingerprintSnapshot
 from .project import project_context, require_skill
 from .rendering import apply_creation_delta, load_focused_creation_bundle
 from .reviews import validate_evolution_judge
-from .transactions import CONTENT_TRANSACTION_PATHS, acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
+from .transactions import CONTENT_TRANSACTION_PATHS, acquire_writer, apply_content_transaction, capture_file_snapshots, commit_content_transaction, guard_project_skill, managed_content_digest, recover_content_transactions, release_writer, restore_file_snapshots, rollback_content_transaction, short_registry_lock, writer_lock_path
 
 @guard_project_skill
 def evolve_status(args: argparse.Namespace) -> dict[str, Any]:
@@ -43,21 +43,7 @@ def evolve_status(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 def harness_content_fingerprint(skill_root: Path) -> str:
-    digest = hashlib.sha256()
-    for owner in CONTENT_TRANSACTION_PATHS:
-        root = skill_root / owner
-        paths = [root] if root.is_file() else sorted(root.rglob("*"), key=lambda item: item.as_posix()) if root.is_dir() else []
-        for path in paths:
-            if not path.is_file():
-                continue
-            relative = path.relative_to(skill_root)
-            if "__pycache__" in relative.parts or path.suffix == ".pyc":
-                continue
-            digest.update(relative.as_posix().encode("utf-8"))
-            with path.open("rb") as handle:
-                for block in iter(lambda: handle.read(64 * 1024), b""):
-                    digest.update(block)
-    return digest.hexdigest()
+    return managed_content_digest(skill_root)
 
 
 def candidate_binding_fingerprint(content_fingerprint: str, source_snapshot_digest: str) -> str:
@@ -481,6 +467,7 @@ def evolve_mark_complete(args: argparse.Namespace) -> dict[str, Any]:
                     "evolution",
                     candidate_id,
                     state_snapshot_paths=(state_path, pending_path, results_path, manifest_path),
+                    expected_content_digest=metadata.get("candidate_content_fingerprint"),
                 )
                 verify_source_snapshot(context, metadata)
                 if harness_content_fingerprint(skill_root) != metadata.get("candidate_content_fingerprint"):

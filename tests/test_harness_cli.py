@@ -91,6 +91,41 @@ class HarnessCliTests(unittest.TestCase):
     def dispatch(self, project: Path, *arguments: str) -> dict:
         return self.cli_module.dispatch(self.cli_args(project, *arguments))
 
+    @contextlib.contextmanager
+    def hold_directory_without_delete_share(self, path: Path):
+        if os.name != "nt":
+            yield None
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        create_file.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+        )
+        create_file.restype = wintypes.HANDLE
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+        handle = create_file(
+            str(path),
+            0x0001,
+            0x00000001 | 0x00000002,
+            None,
+            3,
+            0x02000000,
+            None,
+        )
+        invalid = ctypes.c_void_p(-1).value
+        if handle == invalid:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            yield handle
+        finally:
+            close_handle(handle)
+
     def git(self, project: Path, *arguments: str) -> str:
         return self.run_process(["git", "-C", str(project), *arguments]).stdout.strip()
 
@@ -4563,7 +4598,397 @@ class HarnessCliTests(unittest.TestCase):
         (skill_root / "README.md").write_text("repository-side change\n", encoding="utf-8")
         self.assertEqual(after_migrate, self.runtime_evolution.harness_content_fingerprint(skill_root))
 
-    def test_skill_repository_sidecars_roll_back_after_partial_preservation_failure(self) -> None:
+    def test_managed_content_digest_preserves_legacy_candidate_order(self) -> None:
+        skill_root = self.root / "legacy-digest-order"
+        for directory in ("references", "scripts", "assets", "agents"):
+            (skill_root / directory).mkdir(parents=True, exist_ok=True)
+        (skill_root / "SKILL.md").write_bytes(b"# Skill\n")
+        (skill_root / "references" / "a.md").write_bytes(b"reference a\n")
+        (skill_root / "references" / "z.md").write_bytes(b"reference z\n")
+        (skill_root / "scripts" / "tool.py").write_bytes(b"script\n")
+        (skill_root / "assets" / "icon.txt").write_bytes(b"asset\n")
+        (skill_root / "agents" / "role.md").write_bytes(b"agent\n")
+
+        expected = "4c820da9836ff472c17fbef5829fc7f6aaef85db039fad1392de81c0e0973b7d"
+        self.assertEqual(expected, self.runtime_transactions.managed_content_digest(skill_root))
+        self.assertEqual(expected, self.runtime_evolution.harness_content_fingerprint(skill_root))
+
+    def test_file_set_transaction_updates_files_and_path_types_without_root_move(self) -> None:
+        skill_root = self.root / "file-set-skill"
+        references = skill_root / "references"
+        (references / "to-file").mkdir(parents=True)
+        (skill_root / "state").mkdir()
+        (skill_root / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        (references / "replace.md").write_text("old\n", encoding="utf-8")
+        (references / "retire.md").write_text("retire\n", encoding="utf-8")
+        (references / "to-directory").write_text("old file\n", encoding="utf-8")
+        (references / "to-file" / "child.md").write_text("old child\n", encoding="utf-8")
+        state_sentinel = skill_root / "state" / "sentinel.json"
+        state_sentinel.write_text('{"keep": true}\n', encoding="utf-8")
+        repository_readme = skill_root / "README.md"
+        repository_readme.write_text("repository sidecar\n", encoding="utf-8")
+
+        candidate = skill_root / "state" / "candidate"
+        candidate_references = candidate / "references"
+        (candidate_references / "nested").mkdir(parents=True)
+        (candidate_references / "to-directory").mkdir()
+        (candidate / "SKILL.md").write_text("# Candidate\n", encoding="utf-8")
+        (candidate_references / "replace.md").write_text("new\n", encoding="utf-8")
+        (candidate_references / "nested" / "created.md").write_text("created\n", encoding="utf-8")
+        (candidate_references / "to-directory" / "child.md").write_text("new child\n", encoding="utf-8")
+        (candidate_references / "to-file").write_text("new file\n", encoding="utf-8")
+        expected_digest = self.runtime_transactions.managed_content_digest(candidate)
+
+        with mock.patch.object(
+            self.runtime_transactions,
+            "transaction_move",
+            side_effect=AssertionError("new transactions must not move the Harness root"),
+        ):
+            transaction = self.runtime_transactions.apply_content_transaction(
+                skill_root,
+                candidate,
+                "migration",
+                "file-set",
+                state_snapshot_paths=(state_sentinel,),
+                expected_content_digest=expected_digest,
+            )
+            self.assertEqual(transaction["transaction_mode"], "file-set-v1")
+            self.assertEqual(expected_digest, self.runtime_transactions.managed_content_digest(skill_root))
+            self.runtime_transactions.commit_content_transaction(transaction)
+
+        self.assertEqual((skill_root / "SKILL.md").read_text(encoding="utf-8"), "# Candidate\n")
+        self.assertEqual((references / "replace.md").read_text(encoding="utf-8"), "new\n")
+        self.assertFalse((references / "retire.md").exists())
+        self.assertEqual((references / "nested" / "created.md").read_text(encoding="utf-8"), "created\n")
+        self.assertEqual((references / "to-directory" / "child.md").read_text(encoding="utf-8"), "new child\n")
+        self.assertEqual((references / "to-file").read_text(encoding="utf-8"), "new file\n")
+        self.assertEqual(state_sentinel.read_text(encoding="utf-8"), '{"keep": true}\n')
+        self.assertEqual(repository_readme.read_text(encoding="utf-8"), "repository sidecar\n")
+
+    def test_file_set_transaction_recovers_an_applying_operation_after_crash(self) -> None:
+        skill_root = self.root / "file-set-crash"
+        references = skill_root / "references"
+        references.mkdir(parents=True)
+        (skill_root / "state").mkdir()
+        (skill_root / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        target = references / "owner.md"
+        target.write_text("before\n", encoding="utf-8")
+        before_digest = self.runtime_transactions.managed_content_digest(skill_root)
+        candidate = skill_root / "state" / "candidate"
+        (candidate / "references").mkdir(parents=True)
+        (candidate / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        (candidate / "references" / "owner.md").write_text("after\n", encoding="utf-8")
+        original_apply = self.runtime_transactions.apply_file_set_operation
+        crashed = False
+
+        def crash_after_write(*arguments) -> None:
+            nonlocal crashed
+            original_apply(*arguments)
+            if not crashed:
+                crashed = True
+                raise SystemExit("simulated process crash")
+
+        with mock.patch.object(
+            self.runtime_transactions,
+            "apply_file_set_operation",
+            side_effect=crash_after_write,
+        ):
+            with self.assertRaises(SystemExit):
+                self.runtime_transactions.apply_content_transaction(
+                    skill_root, candidate, "evolution", "crash-recovery",
+                )
+        self.assertTrue(self.runtime_transactions.content_transaction_store(skill_root).exists())
+        self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertEqual(before_digest, self.runtime_transactions.managed_content_digest(skill_root))
+        self.assertEqual(target.read_text(encoding="utf-8"), "before\n")
+        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
+
+    def test_file_set_recovery_refuses_to_overwrite_an_external_edit(self) -> None:
+        skill_root = self.root / "file-set-conflict"
+        references = skill_root / "references"
+        references.mkdir(parents=True)
+        (skill_root / "state").mkdir()
+        (skill_root / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        target = references / "owner.md"
+        target.write_text("before\n", encoding="utf-8")
+        candidate = skill_root / "state" / "candidate"
+        (candidate / "references").mkdir(parents=True)
+        (candidate / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        (candidate / "references" / "owner.md").write_text("after\n", encoding="utf-8")
+        original_apply = self.runtime_transactions.apply_file_set_operation
+
+        def crash_after_write(*arguments) -> None:
+            original_apply(*arguments)
+            raise SystemExit("simulated process crash")
+
+        with mock.patch.object(
+            self.runtime_transactions,
+            "apply_file_set_operation",
+            side_effect=crash_after_write,
+        ):
+            with self.assertRaises(SystemExit):
+                self.runtime_transactions.apply_content_transaction(
+                    skill_root, candidate, "evolution", "conflict-recovery",
+                )
+        target.write_text("external edit\n", encoding="utf-8")
+        with self.assertRaisesRegex(self.cli_module.HarnessError, "External edit conflicts"):
+            self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertTrue(self.runtime_transactions.content_transaction_store(skill_root).exists())
+        target.write_text("after\n", encoding="utf-8")
+        self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertEqual(target.read_text(encoding="utf-8"), "before\n")
+
+    def test_committed_file_set_cleanup_recovers_from_external_marker(self) -> None:
+        skill_root = self.root / "file-set-commit-cleanup"
+        references = skill_root / "references"
+        references.mkdir(parents=True)
+        (skill_root / "state").mkdir()
+        (skill_root / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        target = references / "owner.md"
+        target.write_text("before\n", encoding="utf-8")
+        state_path = skill_root / "state" / "sentinel.json"
+        state_path.write_text('{"version": 1}\n', encoding="utf-8")
+        candidate = skill_root / "state" / "candidate"
+        (candidate / "references").mkdir(parents=True)
+        (candidate / "SKILL.md").write_text("# Current\n", encoding="utf-8")
+        (candidate / "references" / "owner.md").write_text("after\n", encoding="utf-8")
+        transaction = self.runtime_transactions.apply_content_transaction(
+            skill_root,
+            candidate,
+            "evolution",
+            "commit-cleanup",
+            state_snapshot_paths=(state_path,),
+        )
+        state_path.write_text('{"version": 2}\n', encoding="utf-8")
+        transaction_root = Path(transaction["transaction_root"])
+        marker_path = self.runtime_transactions.committed_transaction_marker_path(transaction_root)
+        original_rmdir = self.runtime_transactions.rmdir_with_retry
+        failed_once = False
+
+        def fail_transaction_directory_cleanup(path: Path) -> None:
+            nonlocal failed_once
+            if path == transaction_root and not failed_once:
+                failed_once = True
+                raise OSError("injected transaction directory cleanup failure")
+            original_rmdir(path)
+
+        with mock.patch.object(
+            self.runtime_transactions,
+            "rmdir_with_retry",
+            side_effect=fail_transaction_directory_cleanup,
+        ):
+            with self.assertRaises(OSError):
+                self.runtime_transactions.commit_content_transaction(transaction)
+
+        self.assertEqual(transaction["phase"], "committed")
+        self.assertTrue(marker_path.is_file())
+        self.assertTrue(transaction_root.is_dir())
+        self.assertFalse(any(transaction_root.iterdir()))
+        self.assertEqual(target.read_text(encoding="utf-8"), "after\n")
+        self.assertEqual(state_path.read_text(encoding="utf-8"), '{"version": 2}\n')
+        with self.assertRaisesRegex(self.cli_module.HarnessError, "cannot be rolled back"):
+            self.runtime_transactions.rollback_content_transaction(transaction)
+
+        self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
+        self.assertEqual(target.read_text(encoding="utf-8"), "after\n")
+        self.assertEqual(state_path.read_text(encoding="utf-8"), '{"version": 2}\n')
+
+    def test_migration_commit_cleanup_failure_preserves_new_content_and_state(self) -> None:
+        project = self.create_git_project("migration-commit-cleanup")
+        initialized = self.init_project(project, self.write_bundle(project, "migration-commit-cleanup"))
+        skill_root = Path(initialized["skill_root"])
+        runtime_file = skill_root / "scripts" / "harness_runtime" / "core.py"
+        with runtime_file.open("a", encoding="utf-8") as handle:
+            handle.write("\nSTALE_COMMIT_CLEANUP_FIXTURE = True\n")
+        manifest_path = skill_root / "state" / "manifest.json"
+        revision = json.loads(manifest_path.read_text(encoding="utf-8"))["skill_revision"]
+        original_remove = self.runtime_transactions.remove_transaction_path
+        failed_once = False
+
+        def fail_first_commit_cleanup(path: Path) -> None:
+            nonlocal failed_once
+            if not failed_once:
+                failed_once = True
+                raise OSError("injected commit cleanup failure")
+            original_remove(path)
+
+        with mock.patch.object(
+            self.runtime_transactions,
+            "remove_transaction_path",
+            side_effect=fail_first_commit_cleanup,
+        ):
+            with self.assertRaises(OSError):
+                self.dispatch(project, "project", "migrate")
+
+        self.assertNotIn("STALE_COMMIT_CLEANUP_FIXTURE", runtime_file.read_text(encoding="utf-8"))
+        self.assertEqual(
+            json.loads(manifest_path.read_text(encoding="utf-8"))["skill_revision"],
+            revision + 1,
+        )
+        store = self.runtime_transactions.content_transaction_store(skill_root)
+        transaction_roots = [path for path in store.iterdir() if path.is_dir()]
+        self.assertEqual(len(transaction_roots), 1)
+        journal = json.loads((transaction_roots[0] / "journal.json").read_text(encoding="utf-8"))
+        self.assertEqual(journal["phase"], "committing")
+
+        self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertFalse(store.exists())
+        self.assertNotIn("STALE_COMMIT_CLEANUP_FIXTURE", runtime_file.read_text(encoding="utf-8"))
+        self.assertEqual(
+            json.loads(manifest_path.read_text(encoding="utf-8"))["skill_revision"],
+            revision + 1,
+        )
+
+    def test_migration_commit_journal_failure_rolls_back_content_and_state(self) -> None:
+        project = self.create_git_project("migration-commit-journal")
+        initialized = self.init_project(project, self.write_bundle(project, "migration-commit-journal"))
+        skill_root = Path(initialized["skill_root"])
+        runtime_file = skill_root / "scripts" / "harness_runtime" / "core.py"
+        with runtime_file.open("a", encoding="utf-8") as handle:
+            handle.write("\nSTALE_COMMIT_JOURNAL_FIXTURE = True\n")
+        manifest_path = skill_root / "state" / "manifest.json"
+        manifest_before = manifest_path.read_bytes()
+        original_journal = self.runtime_transactions.transaction_journal
+
+        def fail_before_committing_journal(transaction_root: Path, value: dict) -> None:
+            if value.get("phase") == "committing":
+                raise OSError("injected committing journal failure")
+            original_journal(transaction_root, value)
+
+        with mock.patch.object(
+            self.runtime_transactions,
+            "transaction_journal",
+            side_effect=fail_before_committing_journal,
+        ):
+            with self.assertRaises(OSError):
+                self.dispatch(project, "project", "migrate")
+
+        self.assertIn("STALE_COMMIT_JOURNAL_FIXTURE", runtime_file.read_text(encoding="utf-8"))
+        self.assertEqual(manifest_path.read_bytes(), manifest_before)
+        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
+
+    def test_legacy_root_swap_journals_still_recover_and_commit(self) -> None:
+        skill_root = self.root / "legacy-root-swap"
+        (skill_root / "references").mkdir(parents=True)
+        (skill_root / "state").mkdir()
+        (skill_root / "SKILL.md").write_text("# Original\n", encoding="utf-8")
+        (skill_root / "references" / "owner.md").write_text("original\n", encoding="utf-8")
+        store = self.runtime_transactions.content_transaction_store(skill_root)
+        transaction_root = store / "evolution-legacy-deadbeef"
+        replacement = transaction_root / "next"
+        backup = transaction_root / "previous"
+        shutil.copytree(skill_root, backup)
+        (replacement / "references").mkdir(parents=True)
+        (replacement / "state").mkdir()
+        (replacement / "SKILL.md").write_text("# Replacement\n", encoding="utf-8")
+        (replacement / "references" / "owner.md").write_text("replacement\n", encoding="utf-8")
+        shutil.rmtree(skill_root)
+        journal = {
+            "schema_version": "1.0",
+            "operation": "evolution",
+            "transaction_id": "legacy",
+            "skill_root": str(skill_root),
+            "candidate": str(skill_root / "state" / "evolution" / "staging" / "legacy"),
+            "transaction_root": str(transaction_root),
+            "replacement": str(replacement),
+            "backup": str(backup),
+            "original_analysis": str(transaction_root / "original-analysis"),
+            "state_snapshots": {},
+            "repository_sidecars": [],
+            "phase": "current_moved",
+        }
+        (transaction_root / "journal.json").write_text(json.dumps(journal), encoding="utf-8")
+        self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertEqual((skill_root / "SKILL.md").read_text(encoding="utf-8"), "# Original\n")
+
+        candidate = skill_root / "state" / "evolution" / "staging" / "legacy-commit"
+        candidate.mkdir(parents=True)
+        transaction_root = store / "evolution-legacy-commit-deadbeef"
+        backup = transaction_root / "previous"
+        replacement = transaction_root / "next"
+        transaction_root.mkdir(parents=True)
+        backup.mkdir()
+        replacement.mkdir()
+        (backup / "sentinel.txt").write_text("old\n", encoding="utf-8")
+        journal.update({
+            "transaction_id": "legacy-commit",
+            "candidate": str(candidate),
+            "transaction_root": str(transaction_root),
+            "replacement": str(replacement),
+            "backup": str(backup),
+            "original_analysis": str(transaction_root / "original-analysis"),
+            "phase": "committing",
+        })
+        (transaction_root / "journal.json").write_text(json.dumps(journal), encoding="utf-8")
+        self.runtime_transactions.recover_all_content_transactions(skill_root)
+        self.assertEqual((skill_root / "SKILL.md").read_text(encoding="utf-8"), "# Original\n")
+        self.assertFalse(candidate.exists())
+        self.assertFalse(store.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory sharing semantics")
+    def test_windows_open_subdirectory_does_not_block_migration(self) -> None:
+        project = self.create_git_project("windows-file-set-migration")
+        initialized = self.init_project(project, self.write_bundle(project, "windows-file-set-migration"))
+        skill_root = Path(initialized["skill_root"])
+        runtime_file = skill_root / "scripts" / "harness_runtime" / "core.py"
+        with runtime_file.open("a", encoding="utf-8") as handle:
+            handle.write("\nSTALE_WINDOWS_RUNTIME = True\n")
+        with self.hold_directory_without_delete_share(skill_root / "references"):
+            migrated = self.cli(project, "project", "migrate")
+        self.assertEqual(migrated["status"], "migration_applied")
+        self.assertNotIn("STALE_WINDOWS_RUNTIME", runtime_file.read_text(encoding="utf-8"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory sharing semantics")
+    def test_windows_open_subdirectory_does_not_block_evolution_keep(self) -> None:
+        project, skill_root, _ = self.prepare_evolution("windows-file-set-evolution")
+        judge_report = self.write_evolution_judge(skill_root)
+        with self.hold_directory_without_delete_share(skill_root / "references"):
+            completed = self.cli(
+                project,
+                "evolve", "mark-complete",
+                "--proposal-id", "accepted-knowledge",
+                "--owner", "independent-judge",
+                "--candidate-id", "accepted-knowledge",
+                "--judge-report", str(judge_report),
+                "--status", "keep",
+            )
+        self.assertEqual(completed["status"], "keep")
+
+    def test_migration_and_evolution_never_call_root_move_for_new_transactions(self) -> None:
+        project = self.create_git_project("portable-file-set-migration")
+        initialized = self.init_project(project, self.write_bundle(project, "portable-file-set-migration"))
+        skill_root = Path(initialized["skill_root"])
+        runtime_file = skill_root / "scripts" / "harness_runtime" / "core.py"
+        with runtime_file.open("a", encoding="utf-8") as handle:
+            handle.write("\nSTALE_PORTABLE_RUNTIME = True\n")
+        with mock.patch.object(
+            self.runtime_transactions,
+            "transaction_move",
+            side_effect=AssertionError("new Migration must not move the Harness root"),
+        ):
+            migrated = self.dispatch(project, "project", "migrate")
+        self.assertEqual(migrated["status"], "migration_applied")
+
+        evolution_project, evolution_root, _ = self.prepare_evolution("portable-file-set-evolution")
+        judge_report = self.write_evolution_judge(evolution_root)
+        with mock.patch.object(
+            self.runtime_transactions,
+            "transaction_move",
+            side_effect=AssertionError("new Evolution must not move the Harness root"),
+        ):
+            completed = self.dispatch(
+                evolution_project,
+                "evolve", "mark-complete",
+                "--proposal-id", "accepted-knowledge",
+                "--owner", "independent-judge",
+                "--candidate-id", "accepted-knowledge",
+                "--judge-report", str(judge_report),
+                "--status", "keep",
+            )
+        self.assertEqual(completed["status"], "keep")
+
+    def test_skill_repository_sidecars_stay_outside_file_set_rollback(self) -> None:
         project = self.create_git_project("skill-sidecar-rollback")
         bundle = self.write_bundle(project, "skill-sidecar-rollback")
         initialized = self.init_project(project, bundle)
@@ -4572,18 +4997,21 @@ class HarnessCliTests(unittest.TestCase):
         head = self.initialize_skill_git_repository(skill_root)
         manifest_before = (skill_root / "state" / "manifest.json").read_bytes()
         readme_before = (skill_root / "README.md").read_bytes()
-        original_move = self.runtime_transactions.transaction_move
+        runtime_file = skill_root / "scripts" / "harness_runtime" / "core.py"
+        with runtime_file.open("a", encoding="utf-8") as handle:
+            handle.write("\nSTALE_MIGRATION_FIXTURE = True\n")
+        original_apply = self.runtime_transactions.apply_file_set_operation
         failed_once = False
 
-        def fail_after_git_sidecar(source: Path, target: Path) -> None:
+        def fail_after_first_file(*arguments) -> None:
             nonlocal failed_once
-            if not failed_once and target.name == ".gitignore":
+            original_apply(*arguments)
+            if not failed_once:
                 failed_once = True
-                raise OSError("injected repository-sidecar failure")
-            original_move(source, target)
+                raise OSError("injected file-set failure")
 
         arguments = ("project", "migrate")
-        with mock.patch.object(self.runtime_transactions, "transaction_move", side_effect=fail_after_git_sidecar):
+        with mock.patch.object(self.runtime_transactions, "apply_file_set_operation", side_effect=fail_after_first_file):
             with self.assertRaises(self.cli_module.HarnessError):
                 self.dispatch(project, *arguments)
 
@@ -4592,6 +5020,7 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual((skill_root / "state" / "manifest.json").read_bytes(), manifest_before)
         self.assertEqual((skill_root / "README.md").read_bytes(), readme_before)
         self.assertTrue((skill_root / ".gitignore").is_file())
+        self.assertIn("STALE_MIGRATION_FIXTURE", runtime_file.read_text(encoding="utf-8"))
         self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
 
     def test_init_and_migrate_never_create_repository_harness(self) -> None:
@@ -5429,16 +5858,16 @@ class HarnessCliTests(unittest.TestCase):
         before_content = self.runtime_evolution.harness_content_fingerprint(skill_root)
         state_path = skill_root / "state" / "evolution" / "state.json"
         before_state = state_path.read_bytes()
-        original_move = self.runtime_transactions.transaction_move
+        original_apply = self.runtime_transactions.apply_file_set_operation
         failed_once = False
         judge_report = self.write_evolution_judge(skill_root)
 
-        def fail_during_state_preservation(source: Path, target: Path) -> None:
+        def fail_after_first_content_operation(*arguments) -> None:
             nonlocal failed_once
-            if not failed_once and target.name == "state":
+            original_apply(*arguments)
+            if not failed_once:
                 failed_once = True
-                raise OSError("injected state-preservation failure")
-            original_move(source, target)
+                raise OSError("injected file-set content failure")
 
         arguments = (
             "evolve",
@@ -5454,7 +5883,11 @@ class HarnessCliTests(unittest.TestCase):
             "--status",
             "keep",
         )
-        with mock.patch.object(self.runtime_transactions, "transaction_move", side_effect=fail_during_state_preservation):
+        with mock.patch.object(
+            self.runtime_transactions,
+            "apply_file_set_operation",
+            side_effect=fail_after_first_content_operation,
+        ):
             with self.assertRaises(self.cli_module.HarnessError):
                 self.dispatch(project, *arguments)
         self.assertTrue(failed_once)
@@ -5474,8 +5907,18 @@ class HarnessCliTests(unittest.TestCase):
         self.assertEqual(before_state, state_path.read_bytes())
         self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
 
+        with mock.patch.object(
+            self.runtime_evolution,
+            "commit_content_transaction",
+            side_effect=SystemExit("injected crash before transaction commit"),
+        ):
+            with self.assertRaises(SystemExit):
+                self.dispatch(project, *arguments)
+        self.assertTrue(self.runtime_transactions.content_transaction_store(skill_root).exists())
+
         completed = self.cli(project, *arguments)
         self.assertEqual(completed["status"], "keep")
+        self.assertFalse(self.runtime_transactions.content_transaction_store(skill_root).exists())
 
     def test_unavailable_evolution_judge_records_noop_without_modification(self) -> None:
         project, skill_root, _ = self.prepare_evolution("noop-evolution", stage=False)
@@ -5527,14 +5970,14 @@ class HarnessCliTests(unittest.TestCase):
         self.complete_change_documents(project, "change-6")
         entered = threading.Event()
         release = threading.Event()
-        original_move = self.runtime_transactions.transaction_move
+        original_apply = self.runtime_transactions.apply_file_set_operation
         judge_report = self.write_evolution_judge(skill_root)
 
-        def pause_before_publication(source: Path, target: Path) -> None:
-            if target.name == "previous" and not entered.is_set():
+        def pause_before_publication(*arguments) -> None:
+            if not entered.is_set():
                 entered.set()
                 self.assertTrue(release.wait(timeout=20))
-            original_move(source, target)
+            original_apply(*arguments)
 
         mark_arguments = (
             "evolve",
@@ -5558,7 +6001,11 @@ class HarnessCliTests(unittest.TestCase):
             except Exception as exc:
                 thread_result["error"] = exc
 
-        with mock.patch.object(self.runtime_transactions, "transaction_move", side_effect=pause_before_publication):
+        with mock.patch.object(
+            self.runtime_transactions,
+            "apply_file_set_operation",
+            side_effect=pause_before_publication,
+        ):
             thread = threading.Thread(target=run_mark)
             thread.start()
             self.assertTrue(entered.wait(timeout=20))

@@ -347,6 +347,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         commit_content_transaction(transaction)
         transaction = None
     except Exception as exc:
+        if transaction is not None and transaction.get("phase") in {"committing", "committed"}:
+            raise
         restore_route_snapshots(route_snapshots)
         for link in reversed(created_links):
             remove_directory_link(link, root)
