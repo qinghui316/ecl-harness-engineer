@@ -25,7 +25,7 @@ from .core import HarnessError, MANIFEST_SCHEMA_VERSION, SCHEMA_VERSION, atomic_
 from .evolution import copy_non_state_skill
 from .integration import load_integration_record
 from .knowledge import LEGACY_KNOWLEDGE_INDEX_FILE, SourceFingerprintSnapshot, convert_legacy_knowledge_index, convert_renderer_knowledge_ownership, knowledge_check_internal, renderer_owned_knowledge_paths
-from .links import connector_route, copy_runtime, copy_scaffold, ensure_all_project_routes, ensure_runtime_links, generated_command_routes, remove_directory_link, restore_route_snapshots, same_target, worktree_route_findings
+from .links import copy_runtime, copy_scaffold, ensure_all_project_routes, ensure_runtime_links, remove_directory_link, restore_route_snapshots, route_replacements, same_target, sync_project_route_templates, worktree_route_findings
 from .project import assign_project_identity, ensure_state, initial_manifest, project_context, require_skill, skill_root_for, worktree_roots
 from .registry import records, registry_root
 from .rendering import install_analysis_bundle
@@ -40,15 +40,7 @@ def project_init(args: argparse.Namespace) -> dict[str, Any]:
     if (skill_root / "state" / "manifest.json").exists():
         raise HarnessError(f"Project Harness Skill already exists: {skill_root}")
     profile, audit, delta, architecture, bundle = load_analysis_bundle(args, context)
-    replacements = {
-        "SKILL_NAME": context["skill_name"],
-        "PROJECT_NAME": context["project_name"],
-        "PROJECT_ID": context["project_id"],
-        "MODE": context["mode"],
-        **generated_command_routes(),
-    }
-    connector_name, connector_command = connector_route()
-    replacements["CONNECTOR_COMMAND"] = connector_command
+    replacements, _, _ = route_replacements(context)
     created_links: list[Path] = []
     route_snapshots: dict[Path, bytes | None] = {}
     skill_root.mkdir(parents=True, exist_ok=False)
@@ -268,13 +260,17 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
     legacy_knowledge = (
         root / "references" / "project_wiki" / LEGACY_KNOWLEDGE_INDEX_FILE
     ).is_file()
+    existing_lanes = records(registry_root(root) / "lanes")
+    git_mode_transition = context.get("mode") == "multi_lane" and any(
+        lane.get("lane_id") == "lane-single" for lane in existing_lanes
+    )
     state_rebind = any(
         lane.get("lane_id") != portable_lane_id(
             context["project_id"],
             lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None),
         )
         or "worktree" in lane
-        for lane in records(registry_root(root) / "lanes")
+        for lane in existing_lanes
     )
     if not portable_upgrade:
         root = require_skill(context, args)
@@ -290,7 +286,7 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         root / "state" / "changes" / "INDEX.json",
         *sorted(registry_root(root).rglob("*.json")),
     ]
-    for lane in records(registry_root(root) / "lanes"):
+    for lane in existing_lanes:
         branch = lane.get("branch") or (context.get("branch") if lane.get("lane_id") == "lane-single" else None)
         snapshot_paths.append(
             registry_root(root) / "lanes" / f"{portable_lane_id(context['project_id'], branch)}.json"
@@ -309,6 +305,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
             portable_manifest(read_json(manifest_path, {}), context),
         )
         launchers = copy_runtime(candidate)
+        replacements, _, _ = route_replacements(context)
+        sync_project_route_templates(candidate, replacements)
         fingerprint_snapshot = SourceFingerprintSnapshot(context)
         legacy_conversion = convert_legacy_knowledge_index(candidate, context)
         ownership_conversion = convert_renderer_knowledge_ownership(
@@ -335,7 +333,8 @@ def project_migrate(args: argparse.Namespace) -> dict[str, Any]:
         )
         links, new_links = ensure_runtime_links(context, args, root)
         created_links.extend(new_links)
-        routes, route_snapshots = ensure_all_project_routes(context, root)
+        if git_mode_transition:
+            routes, route_snapshots = ensure_all_project_routes(context, root)
         lifecycle_changed = normalize_portable_state(root, context)
         if state_rebind or lifecycle_changed:
             rebuild_change_index(root)

@@ -40,8 +40,10 @@ Skill paths to Git common `info/exclude`; do not alter `.gitignore` only for loc
 
 The tracked connector discovers the current Git primary worktree, reads the project marker, finds
 the matching physical Harness, and creates only the current worktree links. It rejects path escape,
-identity mismatch, and existing-content collision. `project doctor --repair-links` diagnoses all
-current worktrees and repairs local links without storing a link inventory.
+identity mismatch, and existing-content collision. `project doctor --repair-links` explicitly
+repairs tracked routes from the current templates installed in the project Harness; normal
+Migration leaves those tracked files unchanged. Doctor diagnoses all current worktrees and repairs
+local links without storing a link inventory.
 
 Before removing a secondary worktree, run that worktree's connector in detach mode. The connector
 prevalidates both Codex and Claude paths against the marked physical Harness, removes only matching
@@ -124,8 +126,10 @@ therefore one inner Git working tree.
 
 ## Failure And Migration
 
-Initialization and migration apply updates through the existing recoverable content transaction. Preserve all
-pre-existing routes and collisions. Remove only links created by the failed operation.
+Initialization and migration apply Harness updates through the existing recoverable content
+transaction. Preserve all pre-existing routes and collisions. A single-Lane-to-Git transition may
+install the newly required multi-Lane routes; otherwise only explicit route repair changes tracked
+business-project files. Remove only links created by the failed operation.
 
 Migration keeps the opaque project ID, removes obsolete machine fields, normalizes parallel work
 Lane assignments and Integration paths, upgrades Runtime/schema/templates, and preserves

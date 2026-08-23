@@ -35,7 +35,7 @@ duplication findings.
 | `contracts.py` | Analysis, architecture, audit-rubric, Change, and secret-safe validation |
 | `analysis.py` | Bundle evidence, reference-source isolation, artifact authorization |
 | `project.py` | Project identity, Git/common-dir/worktree discovery, manifest facts |
-| `links.py` | Launchers, managed routes, connectors, project-level links |
+| `links.py` | Launchers, installed route templates, explicit managed-route repair, connectors, project-level links |
 | `registry.py` | Bound coordination Registry record reads and parallel work Lane identity |
 | `transactions.py` | Exclusive write/Registry locks, file-set and legacy transaction journals, rollback, recovery |
 | `knowledge.py` | Markdown metadata, generated catalog/source baseline, source fingerprints, source-change findings, and legacy index conversion |

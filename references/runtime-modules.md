@@ -62,7 +62,7 @@ command after the operation completes.
 | `contracts.py` | Machine validation for analysis, Change, architecture, audit, and secret-safe records |
 | `reviews.py` | Structured Integration review and independent Evolution review validation |
 | `project.py` | Project identity, Git/common-dir/worktree discovery, physical project Harness paths, and manifest setup |
-| `links.py` | Runtime copying, launchers, managed routes, connectors, junctions/symlinks, and worktree link repair |
+| `links.py` | Runtime copying, current route-template synchronization, explicit managed-route repair, connectors, junctions/symlinks, and worktree link repair |
 | `analysis.py` | Four control-file analysis-bundle schema, evidence, reference-source isolation, and artifact authorization |
 | `rendering.py` | L1/L2/L3, architecture, rules, workflows, checks, and migration-bundle application |
 | `registry.py` | Bound coordination Registry record reads and parallel work Lane identity |

@@ -2885,6 +2885,73 @@ class HarnessCliTests(unittest.TestCase):
         self.assertIn("Office V2 Target Architecture", target.read_text(encoding="utf-8"))
         self.assertIn("Agent-Owned Job Processing", module.read_text(encoding="utf-8"))
 
+    def test_migration_preserves_business_routes_until_explicit_repair(self) -> None:
+        project = self.create_git_project("migration-route-boundary")
+        initialized = self.init_project(
+            project, self.write_bundle(project, "migration-route-boundary"),
+        )
+        skill_root = Path(initialized["skill_root"])
+        self.commit_routes(project)
+        connectors = [project / "scripts" / name for name in self.runtime_links.CONNECTOR_NAMES]
+        for connector in connectors:
+            connector.write_text(
+                connector.read_text(encoding="utf-8") + "\n# tracked project connector extension\n",
+                encoding="utf-8",
+            )
+        self.git(project, "add", *(str(path.relative_to(project)) for path in connectors))
+        self.git(project, "commit", "-m", "extend tracked harness connectors")
+        self.cli(
+            project, "change", "new", "migration-route-boundary",
+            "--scope", "preserve stable business routes during Runtime migration",
+        )
+
+        tracked_routes = [project / "AGENTS.md", project / "CLAUDE.md", *connectors]
+        routes_before = {path: path.read_bytes() for path in tracked_routes}
+        template_root = skill_root / "assets" / "templates"
+        for name in self.runtime_links.ROUTE_TEMPLATE_NAMES:
+            (template_root / name).write_text(f"stale rendered template: {name}\n", encoding="utf-8")
+            (template_root / f"{name}.tpl").write_text(
+                f"obsolete duplicate template: {name}\n", encoding="utf-8",
+            )
+        lane_path = next((skill_root / "state" / "registry" / "lanes").glob("*.json"))
+        lane = json.loads(lane_path.read_text(encoding="utf-8"))
+        lane["worktree"] = str(project)
+        lane_path.write_text(json.dumps(lane, indent=2), encoding="utf-8")
+
+        with mock.patch.object(
+            self.runtime_project_commands,
+            "ensure_all_project_routes",
+            side_effect=AssertionError("stable Migration must not rewrite business-project routes"),
+        ):
+            migrated = self.dispatch(project, "project", "migrate")
+
+        self.assertEqual(migrated["routes"], {})
+        self.assertTrue(migrated["applied"]["lane_rebound"])
+        self.assertEqual(self.git(project, "status", "--porcelain"), "")
+        self.assertEqual(routes_before, {path: path.read_bytes() for path in tracked_routes})
+        context = self.runtime_project.project_context(project)
+        replacements, _, _ = self.runtime_links.route_replacements(context)
+        distribution_templates = (
+            ROOT / "assets" / "project-skill" / "assets" / "templates"
+        )
+        for name in self.runtime_links.ROUTE_TEMPLATE_NAMES:
+            expected = self.runtime_core.render(
+                (distribution_templates / f"{name}.tpl").read_text(encoding="utf-8"),
+                replacements,
+            )
+            self.assertEqual((template_root / name).read_text(encoding="utf-8"), expected)
+            self.assertFalse((template_root / f"{name}.tpl").exists())
+
+        repaired = self.cli(project, "project", "doctor", "--repair-links")
+        project_routes = repaired["repaired_routes"][str(project)]
+        for connector in connectors:
+            relative = connector.relative_to(project).as_posix()
+            self.assertEqual(project_routes[relative], "updated")
+            self.assertEqual(
+                connector.read_text(encoding="utf-8"),
+                (template_root / connector.name).read_text(encoding="utf-8"),
+            )
+
     def test_document_reindex_scales_and_focused_migrate_is_rejected(self) -> None:
         project = self.create_git_project("focused-document-migrate")
         initialized = self.init_project(project, self.write_bundle(project, "focused-document-migrate"))

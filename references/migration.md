@@ -26,6 +26,9 @@ Analyzer, Auditor, Creator, renderer, independent reviewer, or project test suit
   evidence declaration.
 - Preserve Change evidence and INDEX, coordination Registry contracts and events, Integration
   records, Evolution windows/results, and project Skill Git sidecars.
+- Preserve tracked business-project routes and connectors during a normal migration. Repair them
+  only through an explicit `project doctor --repair-links` operation. A single-Lane-to-Git mode
+  transition may install the required multi-Lane route and connectors as part of that transition.
 - Persist only project-relative or Skill-relative paths.
 - Rebind nonterminal Lane ownership only when a schema or Git-mode transition requires it.
 
@@ -45,13 +48,15 @@ recommends migration; it never modifies knowledge automatically.
 
 1. Validate project identity, manifest schema, physical paths, links, and exclusive-writer state.
 2. Copy current non-state Harness content into a staged migration candidate.
-3. Replace the bundled Runtime and shared Runtime references in the candidate.
+3. Replace the bundled Runtime, shared Runtime references, and rendered route-repair templates in
+   the candidate. Remove obsolete duplicate `.tpl` copies from an installed project Harness.
 4. Perform legacy index and renderer-ownership conversions when present.
 5. Rebuild the Catalog and baseline metadata, then run mechanical knowledge validation.
 6. Compute the exact managed-file differences and apply them through the crash-recoverable file-set
    transaction while leaving mutable state and repository sidecars in place.
-7. Repair discovery links and portable Registry paths, increment `skill_revision`, and commit the
-   transaction.
+7. Repair untracked Runtime discovery links and portable Registry paths, increment
+   `skill_revision`, and commit the transaction. Do not rewrite tracked business-project routes
+   unless the migration is performing a single-Lane-to-Git mode transition.
 
 Before the transaction enters `committing`, a failure restores content, manifest and mutable state
 snapshots, routes, and newly created links. After `committing`, content and terminal state are kept
@@ -68,6 +73,9 @@ operation lock, and direct filesystem readers must not scan Harness content duri
 ## Acceptance
 
 - Runtime/schema/templates match the current ECL distribution.
+- A normal migration leaves tracked `AGENTS.md`, `CLAUDE.md`, and
+  `scripts/harness-skill-link.*` bytes unchanged; explicit route repair uses the templates installed
+  by the migration.
 - Project knowledge bodies and semantic metadata are unchanged except the explicit ownership
   conversion.
 - Catalog and source baseline are valid; old source fingerprints survive ownership conversion.

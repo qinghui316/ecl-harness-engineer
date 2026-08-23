@@ -32,6 +32,7 @@ CONNECTOR_NAMES = (
     "harness-skill-link.mjs",
     "harness-skill-link.py",
 )
+ROUTE_TEMPLATE_NAMES = ("AGENTS.md", "CLAUDE.md", *CONNECTOR_NAMES)
 
 def distribution_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
@@ -60,6 +61,27 @@ def copy_scaffold(destination: Path, replacements: dict[str, str]) -> None:
             atomic_write_text(target, render(content, replacements))
         else:
             shutil.copy2(item, target)
+
+def sync_project_route_templates(destination: Path, replacements: dict[str, str]) -> None:
+    """Install current distribution templates without touching business-project routes."""
+    source_root = scaffold_root() / "assets" / "templates"
+    target_root = destination / "assets" / "templates"
+    target_root.mkdir(parents=True, exist_ok=True)
+    for name in ROUTE_TEMPLATE_NAMES:
+        source = source_root / f"{name}.tpl"
+        if not source.is_file():
+            raise HarnessError(f"Bundled project route template is missing: {source}")
+        target = target_root / name
+        if is_link_like(target):
+            raise HarnessError(f"Managed project route template must not be a link: {target}")
+        atomic_write_text(target, render(source.read_text(encoding="utf-8"), replacements))
+        legacy_source = target_root / f"{name}.tpl"
+        if legacy_source.exists() or legacy_source.is_symlink():
+            if is_link_like(legacy_source) or not legacy_source.is_file():
+                raise HarnessError(
+                    f"Legacy project route template must be a physical file: {legacy_source}"
+                )
+            legacy_source.unlink()
 
 
 def ensure_git_collaboration_route(destination: Path) -> None:
