@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/readme/hero.png" alt="ECL Harness Engineer" />
+  <img src="assets/readme/hero.png?v=20260902" alt="ECL Harness Engineer" />
 </p>
 
 <div align="center">
@@ -56,7 +56,7 @@ ECL 是 **Evolution Constraint Language**，即演进约束语言。
 
 ## 核心循环
 
-![从项目证据到可靠交付](assets/readme/core-loop.png)
+![从项目证据到可靠交付](assets/readme/core-loop.png?v=20260902)
 
 ECL Harness Engineer 使用一条统一路径：
 
@@ -72,7 +72,7 @@ Registry、锁和发布事务。
 
 ## Project Harness 提供什么
 
-![Project Harness 能力结构](assets/readme/directory-map.png)
+![Project Harness 能力结构](assets/readme/directory-map.png?v=20260902)
 
 | 能力 | 带来的结果 |
 | --- | --- |
@@ -120,7 +120,7 @@ Integration 以 Change 的精确完成边界为单位组合候选，而不是笼
 
 ## 五 Change Evolution
 
-![五 Change Evolution](assets/readme/auto-evolve.png)
+![五 Change Evolution](assets/readme/auto-evolve.png?v=20260902)
 
 每积累五个证据和验证完整的 Change，project Harness 会形成一个 Evolution 窗口：
 
