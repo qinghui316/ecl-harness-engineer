@@ -15,6 +15,11 @@
 [![Runtime](https://img.shields.io/badge/runtime-Codex%20%2B%20Claude-5db8a6)](#快速开始)
 [![Awesome Skills](https://img.shields.io/badge/awesome--skills-accepted-2ea44f)](https://github.com/sickn33/antigravity-awesome-skills/pull/678)
 
+GitHub repo：[qinghui316/ecl-harness-engineer](https://github.com/qinghui316/ecl-harness-engineer)
+
+已被 40k+ stars 的 [sickn33/antigravity-awesome-skills](https://github.com/sickn33/antigravity-awesome-skills)
+收录：[PR #678](https://github.com/sickn33/antigravity-awesome-skills/pull/678)。
+
 ```bash
 npx skills add qinghui316/ecl-harness-engineer
 ```
