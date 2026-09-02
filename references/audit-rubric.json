@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "score_range": {
+    "minimum": 0,
+    "maximum": 10
+  },
+  "dimensions": {
+    "project_knowledge": 25,
+    "mechanical_checks": 20,
+    "environment": 15,
+    "coordination": 15,
+    "ecl_changes": 15,
+    "evolution": 10
+  },
+  "overall_score": "weighted_mean",
+  "hard_issue_gate": "none",
+  "evolution_gate": {
+    "minimum_score": 80,
+    "require_no_hard_issues": true,
+    "require_harness_validation": true,
+    "require_project_validation": true,
+    "require_full_test_when_declared": true,
+    "allow_dry_run_keep": false
+  }
+}

@@ -87,7 +87,7 @@ adapter:
 # Generic Adapter (Auto-Discovery Fallback)
 
 This adapter activates when no language-specific adapter matches. Instead of
-assuming a specific language (previous behavior: defaulting to Go), it discovers
+assuming a specific language, it discovers
 commands from project conventions.
 
 ## Discovery Strategy
@@ -113,7 +113,7 @@ Common target mappings:
 
 ### 2. README Discovery
 
-If no Makefile, scan `README.md` for code blocks with common commands:
+If no Makefile, scan `README.md` only for candidate commands:
 
 ```bash
 # Look for fenced code blocks with build/test commands
@@ -143,7 +143,7 @@ The generic adapter is the **last resort**. It activates only when:
 
 | Aspect | Language Adapter | Generic Adapter |
 |--------|-----------------|-----------------|
-| Build command | Hardcoded default | Discovered from Makefile/README |
+| Build command | Hardcoded default | Verified from Makefile/manifest or executed candidate from README |
 | Route detection | Framework-specific regex | Generic HTTP patterns only |
 | Layer conventions | Language-idiomatic paths | Common directory names |
 | Linter | Language-specific template | None (rely on existing tools) |

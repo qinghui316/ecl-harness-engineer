@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "proposal_id": "<proposal-id>",
+  "reviewer_id": "<independent-reviewer-id>",
+  "candidate_fingerprint": "<staged candidate fingerprint>",
+  "score": 0,
+  "hard_issues": [],
+  "eval_mode": "independent_review",
+  "validation": {
+    "harness_passed": false,
+    "project_passed": false,
+    "full_test_required": false,
+    "full_test_passed": false
+  },
+  "verdict": "rejected"
+}

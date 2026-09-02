@@ -1,297 +1,239 @@
-﻿# ECL Harness Engineer
+<p align="center">
+  <img src="assets/readme/hero.png" alt="ECL Harness Engineer" />
+</p>
 
-![ECL Harness Engineer hero](assets/readme/hero.png)
+<div align="center">
 
-给项目装上 AI Agent 协作操作系统。
+# ECL Harness Engineer
 
-`ecl-harness-engineer` 是一个 Codex / Agent Skill，用来为代码仓库创建 **演进约束式 Agent Harness**：项目入口地图、ECL 变更流程、任务状态交接、机械校验、CI gate，以及基于历史变更的轻量 auto-evolve。
+**让 Codex、Claude Code 和多个 worktree 共享项目知识、Change 证据与可靠交付流程。**
 
-![License: MIT](https://img.shields.io/badge/License-MIT-cc785c)
-![Agent Skill](https://img.shields.io/badge/Agent%20Skill-ecl--harness--engineer-181715)
-![ECL](https://img.shields.io/badge/ECL-evolution%20constraint%20language-5db8a6)
-![Auto Evolve](https://img.shields.io/badge/auto--evolve-independent%20review-e8a55a)
-![Awesome Skills](https://img.shields.io/badge/awesome--skills-accepted-2ea44f)
+一个面向长期软件项目的 Agent Skill：分析真实项目，创建项目专属 Harness，并让开发经验持续回流为更可靠的知识、规则与验证。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-cc785c)](LICENSE)
+[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-ecl--harness--engineer-181715)](https://skills.sh)
+[![Runtime](https://img.shields.io/badge/runtime-Codex%20%2B%20Claude-5db8a6)](#快速开始)
+[![Awesome Skills](https://img.shields.io/badge/awesome--skills-accepted-2ea44f)](https://github.com/sickn33/antigravity-awesome-skills/pull/678)
 
 ```bash
 npx skills add qinghui316/ecl-harness-engineer
 ```
 
-GitHub repo: [qinghui316/ecl-harness-engineer](https://github.com/qinghui316/ecl-harness-engineer)
-
-已被 40k+ stars 的 [sickn33/antigravity-awesome-skills](https://github.com/sickn33/antigravity-awesome-skills) 收录：
-[PR #678](https://github.com/sickn33/antigravity-awesome-skills/pull/678)。
+</div>
 
 ---
+
+## 为什么做这个
+
+AI Agent 可以快速写代码，但长期项目真正困难的是保持连续性：
+
+- 新会话需要重新理解项目目的、模块边界和验证命令。
+- 需求、计划、实现与测试散落在对话中，难以交接和复盘。
+- 多个 Worker 并行开发时，路径和 contract 冲突往往到合并阶段才暴露。
+- 代码完成后缺少一致的验收、review 和集成证据。
+- 同类问题重复发生，却没有回流为项目知识、规则或机械检查。
+
+ECL Harness Engineer 为项目创建一套专属 **project Harness**。它把项目地图、开发流程、Change
+历史、协作事实和验证规则组织成 Agent 可以渐进读取、持续使用和可靠演进的工作环境。
 
 ## ECL 是什么
 
-ECL 是 **Evolution Constraint Language**，可以理解为 **演进约束语言**。
+ECL 是 **Evolution Constraint Language**，即演进约束语言。
 
-它不是一种编程语言，而是一套让 AI Agent 开发更稳的项目协作约束：
+它不是新的编程语言，而是一套把开发意图变成可执行约束的工作方式：
 
-- **Evolution**：项目会持续演进，不是一次性改完。
-- **Constraint**：每次改动都要明确目标、边界、验收标准、验证命令和风险记录。
-- **Language**：用统一格式把这些约束写进仓库，让不同 Agent、不同会话都能读懂并接着做。
+- **Evolution**：每次开发都为后续工作留下可复用证据。
+- **Constraint**：实现前明确目标、边界、风险、验收标准和验证方式。
+- **Language**：用统一的 Change 结构连接需求、计划、实现、测试和 review。
 
-简单说，ECL 就是把“这次为什么改、怎么改、不能破坏什么、怎么验证、做完留下些什么”写成仓库里的标准流程。
-
-在默认创建的 Harness 里，ECL 主要由这些文件和目录承载：
-
-- `docs/ECL.md`
-- `harness/changes/active/`（当前任务上下文：`summary.md` / `spec.md` / `plan.md` / `tasks.md` / `reviews/`）
-- `harness/changes/archive/`
-- `harness/changes/INDEX.json`
-- `docs/STATUS.md`
-
-所以 **ECL Harness Engineer** 可以理解为：一个给项目创建“演进约束式 Agent Harness”的 skill。
-
----
-
-## 为什么需要 Harness Engineering
-
-普通项目交给 AI Agent 时，经常遇到这些问题：
-
-- 冷启动：Agent 不知道项目是什么、从哪里开始、哪些文件重要。
-- 误完成：代码写完就宣布完成，但没有跑验证。
-- 上下文污染：一次性经验、文章建议、通用最佳实践被写进项目规则。
-- 任务断档：上一次做到哪里、还有什么风险、下一步是什么，都散在对话里。
-- 流程漂移：同类错误重复发生，但没有沉淀成 lint、测试或文档约束。
-
-Harness Engineering 的目标是让仓库自己成为 Agent 的工作环境：**上下文在仓库里，约束在仓库里，验证在仓库里，历史也能回流到仓库里。**
-
----
+简单说，ECL 让 Agent 不只“完成这次修改”，还知道为什么改、不能破坏什么、怎样证明完成，
+以及哪些经验值得留给下一次开发。
 
 ## 核心循环
 
-![Core loop](assets/readme/core-loop.png)
+![从项目证据到可靠交付](assets/readme/core-loop.png)
 
-`ecl-harness-engineer` 采用一条统一流程：
+ECL Harness Engineer 使用一条统一路径：
 
-1. **Detect**：识别项目状态、技术栈、已有 harness 缺口。
-2. **Analyze**：分析架构、环境、文档、验证命令。
-3. **Synthesize**：生成最小 delta，并区分 small change 与 structured change。
-4. **Create**：写入 AGENTS、ECL、STATUS、脚本、lint、CI。
-5. **Verify**：跑 harness 检查和业务 gate，区分新回归与历史债。
-6. **Evolve**：从已关闭变更里提取证据，提出 harness 改进。
+1. **分析**：从源码、manifest、接口、配置和测试理解真实项目。
+2. **创建 Harness**：生成项目知识、工作流、规则和确定性辅助能力。
+3. **Structured Change**：把非平凡需求收敛为 spec、plan 和可验证任务。
+4. **验证**：运行与当前项目和 scope 对应的 build、test、lint 与检查。
+5. **Integration**：聚合多个 Change，通过独立 review 和 I2 后进入 canonical branch。
+6. **Evolution**：从真实 Change 历史中提炼经验，只发布通过独立验证的改进。
 
----
+Agent 负责理解项目、判断语义和制定方案；Harness runtime 负责需要机械一致性的索引、身份、
+Registry、锁和发布事务。
 
-## 它会创建什么
+## Project Harness 提供什么
 
-默认创建的是 **core ECL harness**，不是完整 agent 平台。
+![Project Harness 能力结构](assets/readme/directory-map.png)
 
-![Core harness directory map](assets/readme/directory-map.png)
+| 能力 | 带来的结果 |
+| --- | --- |
+| **Project Knowledge** | L1 项目总览、L2 模块与系统、L3 语义桥和 Architecture Map |
+| **Change System** | spec、plan、tasks、validation、review、archive 和可检索 INDEX |
+| **Environment** | build、test、lint、start、service、readiness、cleanup 和变量契约 |
+| **Reference Maps** | 参考项目的机制、接口、调用流、测试、可借鉴点和适配边界 |
+| **Coordination** | Lane、Registry、affected paths、contracts 和并行冲突预检 |
+| **Integration** | 精确 Change 边界、候选集成、独立 review 和 CHECKPOINT I2 |
+| **Evolution** | 五 Change 窗口、经验生命周期、独立 Judge 和 CHECKPOINT E1 |
+| **Greenfield** | Go、TypeScript、Python 的 CLI/Web API 六种成熟项目起点 |
 
-```text
-AGENTS.md                         # Agent 入口地图，不是长篇手册
-docs/
-  ECL.md                          # 演进约束语言操作手册
-  STATUS.md                       # 无 active change 时的轻量交接状态
-  ARCHITECTURE.md                 # 项目架构说明
-  DEVELOPMENT.md                  # 开发与验证命令
-harness/
-  changes/
-    active/                       # 当前任务上下文（summary/spec/plan/tasks/reviews）
-    parking/                      # 暂停任务
-    archive/                      # 已关闭任务
-    INDEX.json                    # 脚本生成索引，不手写
-  evolution/
-    state.json                    # auto-evolve 阈值状态
-    results.tsv                   # keep / revert / rejected / noop 记录
-    proposals/                    # 进化提案
-  templates/change/               # 变更模板
-scripts/
-  harness-change.{ps1|sh|mjs|py}  # new / park / resume / close / reindex
-  harness-evolve.{ps1|sh|mjs|py}  # 阈值检查与 pending 生成
-  lint-ecl.{ps1|sh|mjs|py}        # ECL 结构校验
-  lint-encoding.{ps1|sh|mjs|py}   # UTF-8 / 乱码风险校验
-```
+Project Harness 中的 L1/L2/L3 会完整表达经过项目证据验证的知识，不要求项目预先拥有完善的
+架构文档。参考源码也会形成可导航的 source map，让 Agent 知道当前模块借鉴了什么、应该查看
+哪里，以及哪些设计不能直接照搬。
 
-### Structured Change 的 spec/plan gate
+Project Harness 使用稳定项目身份和相对寻址，使项目知识与开发历史不依赖创建时的本机绝对路径。
 
-非平凡任务不会从原始需求直接进入编码，而是先经过轻量的 spec/plan gate：
+## Change 如何工作
 
-- `spec.md` 记录 WHAT/WHY：目标、证据、验收标准、非目标、约束、假设和风险。
-- `plan.md` 记录 HOW：实现路径、模块影响、验证方案，以及规划过程中发现的 spec 缺口。
-- `tasks.md` 只在 spec/plan gate 足够清楚后生成，用来承接可执行任务。
-- 需求先行时，先问少量高影响问题再落到 `spec.md`；方案先行时，把 WHAT/WHY 拆到 `spec.md`，把 HOW 拆到 `plan.md`。
-- `spec.md` 里仍有高影响 `[NEEDS CLARIFICATION: ...]`，或 `plan_review` 未通过时，不进入实现。
-
-小型本地改动可以跳过完整 active-change 模板，但最终仍要记录实际验证。
-
-
-## Auto-Evolve：让 Harness 从项目历史里进化
-
-![Auto evolve](assets/readme/auto-evolve.png)
-
-每关闭一定数量的 ECL changes 后，`harness-evolve check` 的等价脚本会生成：
+局部低风险工作可以直接作为 Small Change 处理。跨模块、contract、数据、权限、架构或多阶段
+验证的任务进入 Structured Change：
 
 ```text
-harness/evolution/pending.md
+需求假设
+-> spec：WHAT / WHY / acceptance
+-> plan：HOW / impact / validation
+-> tasks：可执行任务与验收映射
+-> implementation
+-> validation
+-> review
+-> close
 ```
 
-Codex 看到 pending 后，会把它当成维护提醒；只读 pending 不阻断普通需求。无 active change 时，Codex 应主动询问是否现在处理 pending。用户同意后，Codex 默认请求独立 auditor / subagent，并以当前 eligible archive window 提取重复失败、用户纠正、验证缺口和可机械化规则，生成 proposal，最后以 `results.tsv` + `mark-complete` 结束。
+高影响问题会在实现前澄清；计划经过 review 后才进入任务；验收标准必须能够追踪到实现与验证。
+完成的 Change 会留下可检索历史，供后续 Agent、Integration 和 Evolution 使用。
 
-核心防退化规则：
+## 多 Worktree 与 Integration
 
-> **No independent scorer = no auto-apply**
+同一项目的多个本地 worktree 可以共享一套 project Harness。每个 Lane 保持自己的 active Change，
+共享 Registry 提前暴露路径、contract 和 baseline 冲突。
 
-也就是说：
+Integration 以 Change 的精确完成边界为单位组合候选，而不是笼统合并整个长期分支。聚合验证和
+独立 review 通过后，由用户在 **CHECKPOINT I2** 确认进入 canonical branch。
 
-- 用户同意处理 pending 后，默认允许 Codex 请求独立 auditor / subagent；若环境仍要求额外授权，只问一次。若不可用、仍未授权或用户拒绝，只能生成 proposal，记录 `noop + dry_run`，运行 `mark-complete`，不能自动改 harness。
-- 没有 archive 证据的候选项，只能进入 rejected candidates。
-- 与当前项目文件、模块、命令、失败或用户纠正无关的建议，不能写进 AGENTS/ECL/STATUS/lint/CI。
-- 分数不足、验证失败或污染范围过大时，记录 `rejected`、`noop` 或 `revert`。
-- auto-evolve 自己产生的 archive 只用于审计，不计入下一轮 threshold 或 Candidate Archives。
+## 五 Change Evolution
 
-这借鉴了 Darwin-style ratchet：**只保留有证据、可验证、分数达标的改进。**
+![五 Change Evolution](assets/readme/auto-evolve.png)
 
----
+每积累五个证据和验证完整的 Change，project Harness 会形成一个 Evolution 窗口：
+
+1. 从 Change、审计和知识 findings 中发现重复问题与有效经验。
+2. 将经验分类为 Promote、Retain、Merge、Retire 或 Archive-only。
+3. 在 **CHECKPOINT E1** 确认本轮 Evolution。
+4. 由唯一 Owner 形成候选，并交给独立 Judge 评估。
+5. 只有分数、hard issue 和验证门禁全部通过的候选才会发布。
+
+这是一条只吸收项目真实经验的演进棘轮：项目知识会持续更新，但不会把一次性建议或未经验证的
+经验直接提升为长期规则。
 
 ## 快速开始
 
-安装 skill 后，在项目根目录对 Codex 说：
-
-```text
-Use ecl-harness-engineer to add an ECL-aware harness to this project.
-```
-
-如果项目已有部分 harness，可以说：
-
-```text
-Use ecl-harness-engineer to audit this project harness and fill the ECL gaps.
-```
-
-如果你只想看计划，不想马上写文件：
-
-```text
-Use ecl-harness-engineer to propose the minimal core harness delta for this repo.
-```
-
----
-
-## 命令入口策略
-
-Harness 脚本不强制使用 `.ps1`。`harness-change`、`harness-evolve`、`lint-ecl`、`lint-encoding` 可以生成 PowerShell、Bash、Node 或 Python 的等价实现，但必须保持同一组 ECL 约束和校验强度。
-
-选择顺序：
-
-1. 优先遵守目标项目已有入口：`package.json` scripts、Makefile、README 里的开发命令、CI 现有 shell。
-2. 如果项目明确不接受 `.ps1`，不能把 PowerShell 脚本作为唯一入口。
-3. Windows 项目可以选择 Bash profile，但必须在 `docs/DEVELOPMENT.md` 或 `harness/config/environment.json` 里写明前提：Git Bash、WSL、MSYS2，或 CI Linux runner。
-4. TypeScript/Node 项目优先把 harness 命令挂到 npm/pnpm/yarn/bun scripts；脚本本体可以是 `.mjs` 或 Bash，按项目习惯选择。
-
-一般不需要人工选择脚本形式。`ecl-harness-engineer` 应根据项目事实自动选择；只有现有证据互相冲突，或用户明确要求某种入口时，才需要确认。
-
-示例：
+### 安装
 
 ```bash
-bash scripts/harness-change.sh reindex
-bash scripts/harness-evolve.sh check
-bash scripts/lint-ecl.sh
-bash scripts/lint-encoding.sh
+npx skills add qinghui316/ecl-harness-engineer
 ```
 
----
+### 初始化现有项目
+
+```text
+Use $ecl-harness-engineer to initialize a project-bound local Harness for this project.
+```
+
+### 审计 Project Harness
+
+```text
+Use $ecl-harness-engineer to audit this project's Harness and report the highest-impact gaps without modifying it.
+```
+
+### 迁移或刷新
+
+```text
+Use $ecl-harness-engineer to migrate this project Harness from a fresh evidence-backed analysis while preserving its development history.
+```
+
+### 创建 Greenfield 项目
+
+```text
+Use $ecl-harness-engineer to initialize an honest Harness for this empty project. Ask me to confirm the purpose, language, and CLI or Web API type before planning the first Structured Change.
+```
+
+初始化完成后，日常业务开发直接使用项目入口指向的 project Harness：
+
+```text
+Use this project's Harness to implement the requested feature and follow its Change and validation workflow.
+```
 
 ## 推荐全局提示词
 
-建议把下面这段放进 Codex / Agent 的全局 instructions，让所有项目先遵守本地 `AGENTS.md`、ECL、active change 和验证约束；只有项目还没有 Harness 时，才回退到简化闭环。
+<details>
+<summary><strong>展开推荐提示词</strong></summary>
 
 ```markdown
 # 全局开发原则：演进约束驱动
 
 ## 优先级
 
-1. 优先遵守当前项目的 `AGENTS.md`、`docs/`、`harness/`、lint、CI 和本地开发命令。
-2. 若项目存在 `docs/ECL.md`，按其中的演进约束语言流程执行。
-3. 若项目存在 `harness/changes/active/`，先读取当前 active change，再继续任务。
-4. 若项目没有 Harness，则使用本全局提示词中的简化闭环流程。
-5. 若需要为项目创建或补全 Harness，可使用 `ecl-harness-engineer`。
+1. 优先读取当前项目的 `AGENTS.md` 和 `CLAUDE.md`，遵守它们指向的项目规则、正式文档、lint、测试、CI 和本地命令。
+2. 如果项目入口指向 project Harness，加载对应 `<project-id>-harness/SKILL.md`，并按其中的项目知识、Change 和 workflow 执行。
+3. 如果当前 worktree 缺少 project Harness 链接，按项目入口运行 connector 后重新加载。
+4. 如果项目没有 project Harness，使用本提示中的简化开发闭环。
+5. 只有在用户要求创建、审计或迁移 project Harness 时才使用 `ecl-harness-engineer`。
 
 ## 核心原则
 
-用户需求是待验证假设，不是事实。开发前应澄清目标、边界、依赖、风险和验收标准。
+用户需求是待验证假设。实现前根据项目证据明确目标、边界、依赖、风险和验收标准。
 
-非平凡开发任务按以下闭环推进：
+`需求假设 -> 方案探索 -> 约束收敛 -> 实现 -> 测试验证 -> 问题回流`
 
-`需求假设 → 发散方案 → 约束收敛 → 实现 → 测试验证 → 问题回流`
+实现应能够追踪到：
 
-编码必须能追踪到：
-
-`需求 → 功能 → 模块 → 函数 → 测试`
-
-发现新问题时，不只做局部补丁，应回流为新的约束、测试、文档或 lint 规则。
-
-## Harness 使用规则
-
-1. `AGENTS.md` 是地图，不是手册；详细流程应进入 `docs/ECL.md`。
-2. `harness/changes/active/` 是当前任务上下文；不要覆盖未关闭的 active change。
-3. `harness/changes/parking/` 存放暂停任务；`archive/` 存放已关闭任务。
-4. `harness/changes/INDEX.json` 是脚本生成索引，不允许手写维护。
-5. 规则能机器检查时，优先沉淀为 lint、test 或 CI。
-6. hook/CI 只做校验，不自动写文档、不自动归档。
-7. 结构化 change 使用 `summary.md`、`spec.md`、`plan.md`、`tasks.md` 和 `reviews/`；`spec.md` 写 WHAT/WHY，`plan.md` 写 HOW，未解决的高影响澄清项或未通过的 `plan_review` 会阻塞实现。
+`需求 -> 功能 -> 模块 -> 实现 -> 测试`
 
 ## 执行纪律
 
-1. 不把第一方案直接当最终方案。
-2. 对模糊、矛盾、缺失或可疑需求，先显式列出假设和待确认点。
-3. 编码前确认当前约束足够支撑实现和测试。
-4. 不修改无关文件，不回滚用户已有改动。
-5. 不绕过项目测试、lint、CI 或 Harness 约束。
-6. 小任务可不创建 change；跨多文件、接口、数据库、权限、架构、多步验证或预计超过 20 分钟的任务应创建/更新 change。
+1. 优先从代码和项目证据发现事实；只有无法发现且会影响结果时才询问用户。
+2. 不修改无关文件，不回滚用户已有改动。
+3. 局部低风险任务可以直接处理；跨模块、contract、数据、权限、架构或多阶段验证的任务使用 Structured Change。
+4. 不绕过项目测试、lint、CI 或 project Harness 门禁。
+5. 修复会使受影响的旧验证失效，必须针对当前工作区重新验证。
+
+## 编码与文件安全
+
+1. 所有源码使用 UTF-8。
+2. Windows PowerShell 读写源码时显式指定 `-Encoding UTF8`。
+3. 禁止把终端显示乱码写回源码。
+4. 批量修改后扫描乱码特征：`锅|锛|銆|馃|脳|瑙|褰|闆|鍥|鍙|鍦|鏈`。
+5. 只修复确认损坏的文本，不盲目重编码整个文件。
 ```
 
----
-
-## 设计原则
-
-| 原则 | 含义 |
-|---|---|
-| Repository as Source of Truth | Agent 需要的上下文必须在仓库里 |
-| AGENTS.md is a Map | `AGENTS.md` 是入口地图，不是百科手册 |
-| ECL Before Coding | 非平凡任务先明确证据、约束、验收和计划 |
-| Mechanical Gates First | 能机器检查的规则优先变成 lint、test 或 CI |
-| Evidence Before Rules | 没有项目证据，不写长期规则 |
-| No Independent Scorer = No Auto-Apply | 没有独立评分，不自动进化 harness |
-| Start Core, Add Advanced Later | 默认保持轻量，高级能力按需启用 |
-
----
-
-## 它不做什么
-
-- 不替你实现普通业务功能。
-- 不默认生成 `eval/trace/state/memory/checkpoints/metrics`。
-- 不把文章经验、通用最佳实践、模型猜测直接写进项目 harness。
-- 不让 hook / CI 自动写文档、移动 changes 或修改 STATUS。
-- 不把 `AGENTS.md` 写成又长又重的操作手册。
-
----
+</details>
 
 ## 适合什么项目
 
-适合：
+- 需要 Codex、Claude Code 或多个 Agent 长期协作的项目。
+- 使用多个 worktree 并行开发，需要提前发现 scope 与 contract 冲突的项目。
+- 希望把需求、计划、实现、验证和 review 串成可靠证据链的项目。
+- 希望新会话能够快速理解项目，而不是每次重新扫描整个仓库的项目。
+- 希望项目知识和规则能从真实开发历史中持续演进的项目。
+- 从空仓库启动，希望获得成熟 CLI 或 Web API 架构起点的项目。
 
-- 需要多个 Agent 或多轮会话协作的项目。
-- 经常因为上下文缺失导致 Agent 误改、漏测、重复踩坑的项目。
-- 想把开发纪律沉淀为文档、lint、CI 和变更记录的项目。
-- 想让项目 harness 随着真实历史逐步进化，但又不想让它失控膨胀的项目。
+## 设计灵感与致谢
 
-不适合：
+- [darwin-skill](https://github.com/alchaincyf/darwin-skill)：独立评分、验证门禁与演进棘轮思路。
+- [Harness Skill / HiClaw](https://market.hiclaw.io/skills/product-69e7187be4b0d28be543a809)：Harness Engineering 与 Agent 协作基础设施方向参考。
 
-- 一次性脚本。
-- 没有长期维护价值的 demo。
-- 只想让 Agent 直接写业务代码、不关心协作基础设施的场景。
+ECL Harness Engineer 在这些思路上加入项目知识分层、Structured Change、多 worktree Registry、
+本地 PR 式 Integration、参考源码地图和项目级 Evolution，形成一套面向持续软件开发的 project Harness。
 
 ---
 
-## 参考与致谢
+<div align="center">
 
-- [darwin-skill](https://github.com/alchaincyf/darwin-skill)：独立评分、棘轮机制、keep / revert 思路来源。
-- [原版 Harness Skill / market.hiclaw.io](https://market.hiclaw.io/skills/product-69e7187be4b0d28be543a809)：Harness Engineering、Agent 协作基础设施方向参考。
+**让项目知识可继承，让每次 Change 可验证，让有效经验持续留下。**
 
+MIT License
 
-## License
-
-MIT
+</div>

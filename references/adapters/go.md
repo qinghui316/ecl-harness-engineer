@@ -172,7 +172,7 @@ adapter:
 
 Priority order for detecting the server start command:
 
-1. Existing `harness/config/environment.json` startup command, if present
+1. Configured startup command in `project-profile.json`, with project evidence
 2. `cmd/server/main.go` exists → `go run cmd/server/main.go`
 3. `cmd/api/main.go` exists → `go run cmd/api/main.go`
 4. `main.go` at root with `http` import → `go run main.go`

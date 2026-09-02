@@ -208,7 +208,7 @@ All `{pkg_manager}` placeholders in commands are resolved at detection time.
 
 ## Server Start Command Inference
 
-1. Existing `harness/config/environment.json` startup command, if present
+1. Configured startup command in `project-profile.json`, with project evidence
 2. `package.json` → `scripts.start` exists → `{pkg_manager} start`
 3. `package.json` → `scripts.dev` exists → `{pkg_manager} run dev`
 4. `dist/index.js` exists → `node dist/index.js`
@@ -216,7 +216,7 @@ All `{pkg_manager}` placeholders in commands are resolved at detection time.
 
 ## Port Detection
 
-1. Existing `harness/config/environment.json` readiness port, if present
+1. Configured readiness in `project-profile.json`, with project evidence
 2. `package.json` scripts containing `PORT=(\d+)` → use that port
 3. `.env` containing `PORT=(\d+)` → use that port
 4. Default: 3000 (frontend), 8080 (server)

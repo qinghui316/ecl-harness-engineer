@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "change_id": "{{CHANGE_ID}}",
+  "kind": "api",
+  "subject": "TBD",
+  "operation": "change",
+  "owner_module": "TBD",
+  "affected_paths": [],
+  "consumers": [],
+  "depends_on": [],
+  "change_dependencies": [],
+  "compatibility": "TBD",
+  "migration": "TBD",
+  "evidence": [],
+  "status": "planned"
+}

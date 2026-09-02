@@ -1,221 +1,173 @@
 # Documentation Creation Agent
 
-You are creating or updating harness documentation files for a codebase.
+Create the project-specific knowledge, workflows, rules, and Change templates for one shared local
+project Harness. Apply the complete ECL behavior through its current owners and progressive reading paths.
 
-## Input
+## Inputs
 
-You will receive:
-- Architecture analysis data (from `harness/.analysis/architecture.json`)
-- Audit data showing what exists and what's missing (from `harness/.analysis/audit.json`)
-- Delta list of files to create/update
+- Validated `project-profile.json` with purpose, flows, modules, commands, environment,
+  bridges, boundaries, unknowns, and evidence.
+- `audit.json` with semantic gaps, drift, duplication, and enforcement findings.
+- Shared `creation-delta.json` plus its artifact directory.
+- Current project Harness content when updating through a Structured Change or E1 Evolution.
 
-## Files You May Create/Update
+## Output Boundary
 
-### AGENTS.md
+Create semantic artifacts only below the project Harness:
 
-The project entry map for AI agents. This is the most important file. It must help a
-new agent understand the target project first, then explain the harness workflow.
-
-**Target**: new/simple harnesses usually 80-120 lines; mature harnesses may reach about 120-180
-lines only when the extra lines are current project navigation, current operating constraints, or
-project-specific verification guidance. This is a map, not a manual.
-
-**Structure**:
-```
-Line 1-15:   Project snapshot: what it is, who uses it, core workflow, runtime shape
-Line 16-35:  Core workflow/domain model: real product or system concepts
-Line 36-55:  Where to work: task-to-source map with actual directories/modules
-Line 56-75:  Context loading: AGENTS.md, docs/ECL.md, active change if present, otherwise auto-evolve pending reminder if present, otherwise STATUS, then task-specific project docs
-Line 76-95:  Development + verification commands
-Line 96-120+: Safety boundaries, generated harness notes, and only maturity-justified current constraints
+```text
+SKILL.md
+references/project_wiki/
+references/workflows/
+references/rules/red_lines.yaml
+assets/templates/
 ```
 
-**Rules**:
-- The first screen must be project-first, not harness-first. It should answer:
-  "What does this project do?", "What is the main user/system workflow?", and
-  "Where would an agent start for common changes?"
-- Extract project identity from `README.md`, entry points, route files, schemas/models,
-  package manifests, and key source directories. Do not infer only from harness files.
-- Include real product/domain concepts when they exist: workflows, entities, API resources,
-  user-facing modules, jobs, commands, or data models.
-- Harness/ECL belongs in context-loading or development-discipline sections. It must not
-  dominate Quick Start or replace project knowledge.
-- Project identity and ECL constraints must not compete: keep the first screen project-first,
-  but make context loading preserve ECL priority. The order must be `AGENTS.md`,
-  `docs/ECL.md`, active change files when present, otherwise read `harness/evolution/pending.md`
-  as a maintenance reminder when it exists, otherwise `docs/STATUS.md`, then README/architecture/design/reference docs.
-- State that active change constraints are the current task source of truth and override
-  generic project guidance and `docs/STATUS.md` for that task.
-- State that `docs/STATUS.md` is a soft handoff file used only when no active change exists.
-  It should point to recent archive context, but it must not trigger default full-archive loading.
-- State that `harness/evolution/pending.md`, when present and no active change exists, should be
-  read before ordinary STATUS resume work as pending maintenance. Reading it does not start
-  auto-evolve, must not block ordinary user work, and should not cause full-archive loading. Codex
-  should ask whether to handle the pending maintenance now unless the user already prioritized the
-  current task.
-- Historical archive loading must be selective: start from `docs/STATUS.md` paths or
-  `harness/changes/INDEX.json`, read archived `summary.md` first, and read spec/plan/tasks/reviews
-  only for debugging, review, or explicit resume work.
-- Never write skill-internal boundaries into the target project. Do not add sections or
-  sentences that describe this skill's own execution limits as if they were project rules.
-- Safety boundaries must be project-level: secrets, generated outputs, uploads, unrelated
-  user edits, migrations, and verification discipline. Agents may modify business code when
-  the user's task requires it.
-- Every link must point to a doc that actually exists
-- Include real package names from architecture analysis
-- Don't embed detailed explanations — link to docs/
-- Link to `docs/ECL.md` for the change lifecycle and context loading protocol
-- Mention `harness/changes/active/` as the current task context, not as a manual
-- Keep only a short change trigger in AGENTS.md; put the detailed lifecycle in `docs/ECL.md`.
-  Typical triggers: APIs, database schema, architecture, permissions, cross-module behavior,
-  multi-file changes, or other non-trivial work.
-- Do not use AGENTS.md as a phase ledger, archive ledger, or harness creation report. Mature
-  project lessons belong in AGENTS only when they are current navigation or current operating
-  constraints. Detailed history stays in `harness/changes/archive/`.
-- Before adding lines to AGENTS.md, check whether the same fact already exists in STATUS, ECL, an
-  archive summary, or a task-specific doc. Merge duplicates instead of copying closeout narrative.
-- If old roadmap, baseline, "next phase", or "current plan" language conflicts with newer active
-  change files, STATUS, validation results, or archive evidence, historicalize or retire it rather
-  than preserving it as current guidance.
+The CLI owns deterministic initial Wiki rendering from the profile, generated catalogs, rule views,
+links, Registry state, and recoverable transactions. Creator artifacts may replace or merge complete candidate
+files only when `creation-delta.json` names their owner, evidence, action, and validation.
 
-### docs/ECL.md
+The business repository owns product code and optional human-facing documents. Write verified
+AI-facing knowledge completely into the project Harness; repository prose is not a required link
+or durable evidence source. Repository writes are limited to the bounded
+managed AGENTS/Claude route and selected worktree connector installed by the CLI.
 
-The project operating manual for Evolution Constraint Language (ECL).
+## Project Harness Entry
 
-**Must include**:
-- When to create a change and when small fixes can skip it
-- Small Change vs Structured Change: small low-risk edits may skip active changes; structured work
-  uses active change files and review gates
-- A compact decision tree: existing active change wins; obvious copy/comment/README/local single-file
-  fixes are Small; APIs/data/permissions/architecture/multi-module/runtime/unclear work is
-  Structured; unclear impact requires read-only investigation before deciding
-- Intake Review: support requirement-first and plan-first inputs, ask at most three high-impact
-  questions per round, and record assumptions or `[NEEDS CLARIFICATION: ...]` in `spec.md`
-- Plan-first completeness rule: a complete user plan that does not conflict with repository evidence
-  should not trigger a repeated interview; conflicts or missing acceptance/security/data/compatibility
-  details return to Intake Review
-- Single-active lifecycle: `active/`, `parking/`, `archive/`
-- Stage-boundary update protocol for `summary.md`, `spec.md`, `plan.md`, `tasks.md`, and `reviews/`
-- Spec/plan separation: `spec.md` is WHAT/WHY, `plan.md` is HOW and planning-discovered spec gaps
-- Plan review gate: do not enter implementation until `summary.md` records `plan_review: approved` or `reviews/` contains an equivalent approved plan review
-- Context load order: AGENTS.md, ECL, active change, relevant docs, generated INDEX.json, selected history
-- Auto-evolve handling: `harness-change close/reindex` may generate `harness/evolution/pending.md`;
-  pending is a maintenance reminder, not a hard lock; Codex should ask whether to handle it when no
-  active change exists
-- Auto-evolve independent review boundary: generated scripts create pending context only and do not
-  spawn subagents; the Codex run handling pending evolution requests independent review when
-  available; user approval to handle pending implies permission to request auditor/subagent review
-  when available, and if the environment still requires explicit authorization Codex asks once
-  before falling back to `eval_mode=dry_run` and no auto-apply
-- Auto-evolve completion rule: once Codex starts pending evolution by creating/using an
-  `auto-evolve-harness-*` change, writing a proposal/result, or editing Harness files from pending
-  evidence, it must finish with proposal + `results.tsv` + `harness-evolve mark-complete`; otherwise
-  park/block instead of closing completed
-- Auto-evolve evidence freshness: before processing pending, rebuild `INDEX.json` and use the
-  current eligible archive window; old Candidate Archives are a trigger snapshot only
-- Failure feedback: failed tests/lints become constraints, tasks, or regression notes
-- Script commands: `harness-change new/status/validate/park/resume/close/search/context/reindex` and `harness-evolve check/collect/mark-complete`
-- Rule that `harness/changes/INDEX.json` is generated by scripts and must not be hand-edited
-- Documentation entropy control: AGENTS is not a phase ledger, STATUS is not archive history,
-  closeout narrative stays in archive summaries, and stale current-state language is retired or
-  historicalized
-- Experience lifecycle: Promote, Retain, Merge, Retire, and Archive-only decisions for reusable
-  lessons found during auto-evolve or documentation cleanup
+Keep project Harness `SKILL.md` a concise stage router. It must identify:
 
-Use `references/ecl-harness.md` for the default text and templates.
+- project id and local-only boundary;
+- default context order;
+- Small versus Structured Change trigger;
+- command surface;
+- stage workflow links;
+- an on-demand route to project Skill Git collaboration guidance;
+- stable ownership and current-fact precedence;
+- I2 for canonical Integration and E1-only Evolution.
 
-### docs/STATUS.md
+Do not place module catalogs, Change history, full rules, environment setup, or command explanations
+in the entry file.
 
-The lightweight handoff summary for current project state. Create it when adding or updating ECL.
+Generate `references/git-collaboration.md` for optional independent distribution of the project
+Skill. It is guidance, not an initialization action: project creation must not run `git init`, add a
+remote, commit, or push. The route is loaded only for project Skill sharing, clone, update, PR, or
+Git-boundary diagnosis.
 
-**Target**: usually 40-80 lines, with modest mature-project growth only when needed for current
-handoff clarity. This is a resume map, not a changelog or archive database.
+## L1 Overview
 
-**Must include**:
-- A first-line warning that active change files override this file when present
-- Current active work or "none"
-- Last completed change path, normally the archived `summary.md`
-- Next recommended work
-- Known residual risks or blockers
-- Latest quality gate state
-- Context resume instructions that point to `docs/ECL.md`, active change, `docs/STATUS.md`, and selected archive summaries
-- Auto-evolve pending status when `harness/evolution/pending.md` exists
+Render `references/project_wiki/overview.md` from profile evidence. Scale it to project complexity
+without a fixed byte or line limit, and include:
 
-**Rules**:
-- Update `docs/STATUS.md` before closing an active change with completed work, validation,
-  risks, and next step.
-- After `harness-change close`, update it again with the final archive path.
-- If `harness/evolution/pending.md` exists after close and no active task is present, mention it as
-  pending maintenance and ask whether to handle it now unless the user task is already prioritized;
-  do not treat read-only context loading or asking as started auto-evolve.
-- Do not let CI or hooks auto-write STATUS; they may only validate it.
-- Never treat STATUS as more authoritative than `harness/changes/active/`.
-- Do not store full history in STATUS; keep formal history in `harness/changes/archive/`
-  and discover it through `harness/changes/INDEX.json`.
-- Do not append every closed change to STATUS. Retain only current active/no-active state, last
-  relevant archive pointer, next work, quality gate state, risks, and resume instructions.
-- When updating STATUS after mature work, classify old content as retain, merge, retire, or
-  archive-only so the file stays a compact derived handoff.
+1. Project purpose and primary user/system flows.
+2. Major modules with one-sentence responsibilities and L2 links.
+3. Configured command and verification entrypoints.
+4. Global boundaries that affect most work.
+5. Explicit unknowns that materially limit planning.
 
-### docs/ARCHITECTURE.md
+Exclude Lane status, active Changes, archive ledgers, full directory trees, and historical
+narrative. Preserve every project-level navigation link an Agent needs by default; move module
+detail to L2/L3 instead of truncating the map. L1 is a periodic map, not the newest fact owner.
 
-The authoritative architecture document.
+## L2 Systems And Designs
 
-**Must include**:
-- Mermaid diagram generated from actual import analysis (not templates)
-- Layer table with real packages and their dependencies
-- Source citations (`> Sources: [file:line]()`) for every claim
-- Forbidden dependency rules
+Create module pages only when manifests, imports, entrypoints, tests, interfaces, or contracts
+prove a coherent owner. L2 also holds accepted target architecture and important design/domain
+documents. Each page includes responsibility, roots, entrypoints,
+interfaces/data owners, dependencies, tests, commands, boundaries, citations, and source
+fingerprints. A top-level directory name alone is never enough.
 
-### docs/DEVELOPMENT.md
+Use ECL frontmatter for current, target, decision, and guide documents. The
+semantic layer comes from impact and reading depth, not a filename or fixed subdirectory. Never
+present an unimplemented target as current architecture.
 
-Development setup and commands.
+Render command, environment, and verification system pages with detail supported by project evidence.
+Unknown values stay explicit. Do not invent a technology, service, port, readiness endpoint, or
+command merely to fill a page.
 
-**Must include**:
-- Prerequisites (Go version, Node version, etc.)
-- Build commands that actually work
-- Test commands with explanation
-- Lint commands
-- Harness commands: `verify-harness`, `lint-ecl`, `lint-encoding`, `harness-change`
+## L3 Contracts And Semantic Bridges
 
-### docs/design-docs/
+Use L3 for precise interfaces, schema, events, call flows, implementation standards, and proven
+translation boundaries. Create a bridge only for a proven translation boundary:
 
-Component-level design documents.
+- product terminology to code owner;
+- API/schema/event/config field to module;
+- UI/read-model/component name to implementation;
+- provider/runtime adapter to boundary;
+- design token to project API.
 
-**For each key component** (from architecture analysis):
-1. `docs/design-docs/index.md` — Index table
-2. `docs/design-docs/{component}.md` — Detailed design doc
+Every mapping cites source code, manifest/configuration, tests, an integrated contract, or an explicit
+user statement. Search synonyms may locate candidates but never establish durable truth.
 
-**Each design doc must have**:
-- Overview
-- Architecture (with Mermaid diagram)
-- Key Interfaces (with file:line citations)
-- Execution Flow
-- Error Handling
+## Reference Project Source Maps
 
-**Use templates from** `references/documentation-templates.md`.
+When the approved profile contains reference projects, render
+`references/project_wiki/reference_projects/index.md` plus one source map under `maps/` for each
+analyzed checkout. The index is navigation for direct reference research. It is not a runtime gate.
 
-### Additional docs (as needed)
+Write the actual relationship into the relevant project knowledge:
 
-- `docs/QUALITY.md` — Quality standards
-- `docs/TESTING.md` — Testing strategy
-- `docs/SECURITY.md` — Security considerations
-- `docs/PRODUCT_SENSE.md` — Product context
-- `docs/references/index.md` — Reference index
+- L1 mentions only a reference foundation that affects the whole project.
+- L2 module pages identify the referenced mechanism, adaptation, boundaries, validation, and map.
+- L3 mappings connect a referenced interface/schema/event/runtime concept to the target owner.
 
-## Quality Requirements
+The reference map records source, checkout identity, inspected commit, inspected files, modules,
+interfaces, call paths, tests, evidence, license evidence, and unknowns. Keep reference facts out of
+target commands, environment, CI, dependencies, and module ownership.
 
-| Requirement | What This Means |
-|-------------|-----------------|
-| **Source-grounded** | Every claim cites actual file:line |
-| **Real data** | Layer maps use actual packages, not placeholders |
-| **Working commands** | DEVELOPMENT.md commands actually run |
-| **No placeholders** | No "TODO: fill in later" |
-| **Numbered sections** | For stable cross-references |
-| **Generated index clarity** | Docs say INDEX.json is script-generated, not hand-maintained |
+## Mature ECL Workflows
 
-## What NOT to Create
+Generated workflows implement the complete process and use the common stage contract: Inputs, Agent
+Judgment, Deterministic Commands, Actions, Outputs, Exit, Stop And Escalate, and Rule IDs.
 
-- Source code files
-- Test files for business logic
-- Application entry points
+- Intake supports requirement-first, plan-first, and mixed input; asks at most three high-impact
+  questions per round; records low-risk assumptions and blocks on unresolved high-impact facts.
+- Locate uses the L1 -> candidate L2 -> deterministic search -> relevant source trace -> L3 funnel.
+- Plan keeps WHAT/WHY in spec and HOW in plan, records planning-discovered spec gaps, maps each AC
+  to owner/task/validation, and publishes high-impact contracts.
+- Implement preserves scope, follows existing project patterns, and returns new failures to the
+  Change instead of hiding them.
+- Verify classifies introduced, pre-existing, environmental, and blocked failures and records
+  command, working directory, exit result, and acceptance evidence.
+- Close validates complete project Harness evidence, archives the Change in the Skill, and rebuilds
+  INDEX without requiring Git; an optional boundary can be recorded for later Integration.
+- Integrate applies selected exact commit ranges, permits Integrator corrections, runs aggregate
+  validation/review, and waits for I2.
+- Evolve reviews five qualified Changes after E1, performs Promote/Retain/Merge/Retire/Archive-only,
+  widens scope only with evidence, applies explicit delta artifacts only after independent score and
+  validation gates, and has no E2.
+
+## Change Templates
+
+The project Harness owns complete Change evidence under `state/changes/active|parking|archive`.
+Templates must preserve:
+
+- `summary.md`: phase, outcome, scope, decisions, validation, risks, next step, handoff.
+- `spec.md`: intake shape, goal/evidence, scenarios, ACs, non-goals, constraints, assumptions,
+  unresolved and resolved clarifications.
+- `plan.md`: technical approach, owners/paths, interfaces/data/permissions/contracts, spec gaps,
+  risks/mitigations, validation plan, plan review.
+- `tasks.md`: stable task ids, optional parallel marker, AC mapping, target owner/path, validation.
+- `reviews/review.md`: intake/spec/plan/code/validation/contract/integration/knowledge/entropy review.
+
+The generated `state/changes/INDEX.json` is machine-owned. Default context reads INDEX and a
+selected summary; detailed files load only for resume, review, failure analysis, Integration, or
+Evolution. Complete history remains available and is not copied into current rules or L1.
+
+## Documentation Entropy
+
+- One current fact has one owner.
+- Entry files route; workflows instruct; rules constrain; Wiki maps; Registry coordinates; Change
+  files explain one task; archive preserves history.
+- Prefer editing an existing owner over adding a new file.
+- Search catalog by module, Owner, kind, and task terms before Create; read direct links and
+  likely semantic neighbors, and explain why Merge or Replace is not appropriate for a new file.
+- Merge duplicate current facts and retire stale roadmap/baseline language.
+- Keep closeout narrative in Change archive and load it selectively through INDEX.
+- Line count is an alarm, not a quality score; compact content must still be specific and useful.
+
+## Exit
+
+Exit only when a fresh Agent can identify the project, choose the relevant module and workflow,
+find current Change evidence, select configured validation, and avoid loading unrelated history.
+Every durable claim has evidence, every created artifact has one owner, and no repository-owned
+Harness structure is proposed.

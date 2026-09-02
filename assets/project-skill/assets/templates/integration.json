@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "integration_id": "{{INTEGRATION_ID}}",
+  "status": "preparing",
+  "canonical_base": "{{CANONICAL_BASE}}",
+  "change_ids": [],
+  "completion_commits": [],
+  "change_commit_ranges": {},
+  "applied_commits": [],
+  "remaining_commits": [],
+  "worktree": null,
+  "conflicts": [],
+  "integrator_edits": [],
+  "validation": [],
+  "validation_passed": false,
+  "review": null,
+  "landing_commit": null
+}
